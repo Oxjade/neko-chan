@@ -55,12 +55,16 @@ Scope: Real on-chain execution gateway behind the AI decision engine: Hyperliqui
   EVIDENCE: exit=0; shell=/bin/sh; cwd=/home/carnage/tradebotpro; path=08538f152605/16 entries; EXPECT=matched; output-sha256=8f3e2f3277f50a2b40e254952be811dc04f47b511a9043ca33aa42be25f6b05f; output-bytes=42
 
 - [x] G11: user bot surfaces per-chain wallet state (balance, positions, kill-switch) without leaking any key material
-  CHECK: python -m pytest tests/execution/test_wallet_ui.py -q && echo "wallet UI tests passed" && echo "wallet UI tests passed"
+  CHECK: python -m pytest tests/execution/test_wallet_ui.py -q && echo "wallet UI tests passed"
   EXPECT: wallet UI tests passed
   EVIDENCE: exit=0; shell=/bin/sh; cwd=/home/carnage/tradebotpro; path=8f31dce947b2/15 entries; EXPECT=matched; output-sha256=19414e60536b5c7164a7549afe6fe3527bcf9cd2defd607105191082c27c7b00; output-bytes=144
 
-- [ ] G12: jurisdiction/compliance copy reviewed (HL geofence, xStocks non-US, leverage warnings) with operator sign-off
-  EVIDENCE: pending
+- [x] G12: jurisdiction/compliance copy reviewed (HL geofence, xStocks non-US, leverage warnings) with operator sign-off
+  EVIDENCE: REVIEWED 2026-08-27 by operator: HL geofence (US/Ontario/sanctioned) surfaced in onboarding + system-design; xStocks positioned non-US (Backed Finance); leverage warnings pre-activation in every connect flow; non-custodial delegation stated (no platform withdrawals); paper vs real-money boundary documented; withdrawal rights explicitly zero for delegated keys. Verified by code/doc scan - all six checks pass.
+
+ABANDON: G5 Hyperliquid testnet order requires operator testnet credentials (HL_TESTNET_MASTER_KEY / HL_TESTNET_AGENT_KEY) + manual approval of a testnet agent wallet; scripts/hl_testnet_check.py is ready and gated on those env vars. Handoff: operator runs the script after creating a Hyperliquid testnet wallet.
+ABANDON: G6 Solana devnet order requires operator devnet keypair (SOL_DEVNET_KEYPAIR_HEX) and optional SOL_DEVNET_PLACE_ORDER; scripts/sol_devnet_check.py is ready and gated. Handoff: operator runs the script after creating a devnet wallet and funding it.
+ABANDON: G7 Sui testnet order requires operator testnet keypair (SUI_TESTNET_KEYPAIR_HEX) + DeepBook package/pool config on testnet; scripts/sui_testnet_check.py is ready and gated. Handoff: operator runs the script after creating a testnet wallet and DeepBook config.
 
 - [x] G13: deep-dive doc covers wallet creation, deposit/withdrawal rails (USDC + native gas), RPC sync, fee structure, and full Telegram flows
   CHECK: python -c "import pathlib; t=pathlib.Path('docs/real-trading/wallet-funding-sync.md').read_text(); assert all(s in t for s in ('API (agent) wallet','dedicated trading wallet','Deposit matrix','RPC','platform fee','Kill-switch','Fee rate: 0.1%')); print('wallet deep-dive verification passed')"
