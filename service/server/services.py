@@ -220,7 +220,11 @@ def _update_position_from_signal(
         cursor = conn.cursor()
         own_connection = True
 
-    # Get current position for this symbol
+    # Get current position for this symbol. Same symbol can hold a long AND a
+    # short (verified 2026-08-27: SOL long 46.4 + SOL short -0.1). The close
+    # actions must select the row by side sign: sell -> qty>0 (long),
+    # cover -> qty<0 (short). Without this, a cover picks the long row and
+    # wrongly reports "No short position to cover".
     query = """
         SELECT id, quantity, entry_price
         FROM positions
@@ -235,6 +239,14 @@ def _update_position_from_signal(
     else:
         query += " AND symbol = ?"
         params.append(symbol)
+    act = action.lower() if action else ""
+    if act in ("sell", "cover"):
+        sign = "> 0" if act == "sell" else "< 0"
+        query += f" AND quantity {sign}"
+    elif act in ("buy", "short"):
+        sign = "> 0" if act == "buy" else "< 0"
+        query += f" AND quantity {sign}"
+    query += " ORDER BY id DESC LIMIT 1"
     cursor.execute(query, params)
     row = cursor.fetchone()
 
