@@ -90,7 +90,7 @@ def evaluate(log: pd.DataFrame, ohlc: pd.DataFrame) -> dict:
     entry = 0.0
     equity = []
     fees = 0.0
-    fills = trades[trades["fill_ok"] == True] if "fill_ok" in trades.columns else trades
+    fills = trades[trades["fill_ok"].astype(str).str.strip() == "True"] if "fill_ok" in trades.columns else trades
     for _, row in fills.iterrows():
         px = float(row["price"]) if pd.notna(row["price"]) and row["price"] > 0 else None
         if px is None:

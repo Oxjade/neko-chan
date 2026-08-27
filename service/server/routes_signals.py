@@ -293,6 +293,20 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
             if action_lower in ('sell', 'cover'):
                 pos = get_position_snapshot(cursor, agent_id, market, symbol, polymarket_token_id)
+                # Side-aware: same symbol can be long AND short (SOL 2026-08-27).
+                # A sell must use the LONG row (qty>0), a cover the SHORT row
+                # (qty<0); scan all candidate rows and pick by side sign.
+                if pos is not None:
+                    rows = cursor.execute(
+                        "SELECT quantity, entry_price, leverage FROM positions "
+                        "WHERE agent_id = ? AND symbol = ? AND market = ? ORDER BY id DESC",
+                        (agent_id, symbol, market),
+                    ).fetchall()
+                    if action_lower == 'sell':
+                        rows = [r for r in rows if float(r['quantity']) > 0]
+                    else:
+                        rows = [r for r in rows if float(r['quantity']) < 0]
+                    pos = rows[0] if rows else None
                 current_qty = float(pos['quantity']) if pos else 0.0
                 position_entry_price = float(pos['entry_price']) if pos and pos['entry_price'] is not None else None
                 position_leverage = float(pos['leverage']) if pos and pos['leverage'] is not None else 1.0

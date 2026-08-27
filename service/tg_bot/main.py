@@ -48,6 +48,50 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     return app
 
 
+def start_watchers(registry: Registry, platform: PlatformClient):
+    """One watcher thread per running bot → smart event pushes (fills/closes/
+    stops/targets/milestones) with dedup + batching.
+
+    The push goes to the bot's OWN master chat (user.tg_id) — the operator's
+    chat — via its own bot token, so it works even when the user is chatting
+    with the master bot. Deliberately idempotent: watcher watermark + registry
+    event ledger mean restarts never double-push.
+    """
+    from notifier import Notifier
+    from watcher import Watcher
+    from tg_config import BASE_DIR
+    import threading as _threading
+
+    notifier = Notifier(registry)
+    paths = {
+        "sqlite": str(BASE_DIR / "service" / "server" / "data" / "clawtrader.db"),
+    }
+    db_path = paths["sqlite"]
+    threads = []
+    for bot in registry.all_bots():
+        if not bot.get("is_running") or not bot.get("agent_id"):
+            continue
+        bot_token = registry.bot_token(bot["id"])
+        if not bot_token:
+            continue
+        watcher = Watcher(
+            db_path=db_path,
+            notify=notifier,
+            registry=registry,
+            bot_id=bot["id"],
+            tg_id=bot["tg_id"],
+            bot_token=bot_token,
+            chat_id=bot["tg_id"],
+            platform_base=platform.base,
+            start_equity=100_000.0,
+        )
+        t = _threading.Thread(target=watcher.run, name=f"watcher-{bot['id']}", daemon=True)
+        t.start()
+        threads.append(t)
+        log.info("[watcher] started for bot %s (agent %s)", bot["id"], bot.get("agent_id"))
+    return threads
+
+
 def main():
     vault = KeyVault()
     registry = Registry(cfg.REGISTRY_PATH, vault)
@@ -58,6 +102,7 @@ def main():
     app = build_app(registry, platform, vault, userbot, agent_pool)
     userbot.start_all()
     agent_pool.start_all_active()
+    start_watchers(registry, platform)
 
     log.info("Master bot starting (polling)...")
     app.run_polling(allowed_updates=["message", "callback_query"])

@@ -125,9 +125,13 @@ def execute_trade(token: str, symbol: str, market: str, action: str, quantity: f
     }
     if leverage:
         payload["leverage"] = leverage
-    if stop_loss_pct is not None:
+    # stop/take are OPEN-side params only: the platform rejects them on closes
+    # (routes_signals.py: "can only be set when opening (buy/short)"). Do not
+    # forward them on sell/cover or the close is rejected and the position
+    # stays open (this was the 2026-08-27 00:41/01:14 ETH-sell rejections).
+    if stop_loss_pct is not None and action in ("buy", "short"):
         payload["stop_loss_pct"] = stop_loss_pct
-    if take_profit_pct is not None:
+    if take_profit_pct is not None and action in ("buy", "short"):
         payload["take_profit_pct"] = take_profit_pct
     r = requests.post(f"{BASE_URL}/api/signals/realtime", headers=_headers(token),
                       json=payload, timeout=60)
@@ -136,22 +140,166 @@ def execute_trade(token: str, symbol: str, market: str, action: str, quantity: f
     return {"ok": True, **r.json()}
 
 
-# ---------------------------------------------------------------- LLM decision
+# ---------------------------------------------------------------- profitability gate
+
+TRADE_FEE_RATE = 0.001          # platform fee per leg (fees.py TRADE_FEE_RATE)
+GATE_ENABLED = os.getenv("LIVE_AGENT_PROFIT_GATE", "1").strip() in {"1", "true", "yes", "on"}
+# Risk-based sizing (replaces the LLM's freeform quantity when on).
+# size_units = (equity x risk_pct) / (entry x stop_pct)
+RISK_SIZE_ENABLED = os.getenv("LIVE_AGENT_RISK_SIZING", "1").strip() in {"1", "true", "yes", "on"}
+RISK_PER_TRADE_PCT = float(os.getenv("LIVE_AGENT_RISK_PCT", "1.0"))  # % of equity at risk per trade
+KELLY_FRACTION = float(os.getenv("LIVE_AGENT_KELLY_FRACTION", "0.5"))  # half-Kelly ceiling
+TARGET_VOL_ANNUAL = 0.20        # portfolio target vol (vol-tar sizing cap)
+
+
+def compute_risk_size(equity_val: float, entry_price: float, stop_pct: float,
+                      take_pct: float, realized_vol: float | None = None) -> tuple[float, str]:
+    """Risk-derived position size (units) + attribution string.
+
+    1. Risk-per-trade (primary):      risk$ = equity x risk_pct
+       units = risk$ / (entry x stop_pct)
+    2. Kelly ceiling (never exceed):  f* = p - (1-p)/R with p=0.60* (observed
+       directional accuracy has been 60-66% in trend-following mode; R = take/stop
+       = 2 at 4/8). Half-Kelly -> cap = equity x f_halved / (entry x stop_pct).
+    3. Vol-targeting (adaptive):      units x (target_vol / realized_vol), capped
+       halve when realized > 2x target.
+    * p is a documented prior from the running audit, not a claim of skill.
+    """
+    risk_amt = equity_val * RISK_PER_TRADE_PCT / 100.0
+    stop_dist = entry_price * stop_pct / 100.0
+    if stop_dist <= 0:
+        return 0.0, "stop_dist<=0"
+    units = risk_amt / stop_dist
+
+    # Kelly ceiling: p prior 0.60, R = take_pct/stop_pct (>=2 typical)
+    R = max(1.0, take_pct / stop_pct) if take_pct and stop_pct else 2.0
+    p_prior = 0.60
+    f_star = p_prior - (1 - p_prior) / R
+    f_used = max(0.0, f_star * KELLY_FRACTION)
+    kelly_units = (equity_val * f_used) / stop_dist if f_used > 0 else float("inf")
+    # vol-target cap
+    vol_mult = 1.0
+    if realized_vol is not None and realized_vol > TARGET_VOL_ANNUAL * 1.5:
+        vol_mult = TARGET_VOL_ANNUAL / realized_vol
+        vol_mult = max(0.25, min(1.0, vol_mult))
+
+    units = min(units, kelly_units) * vol_mult
+    return units, (f"risk {RISK_PER_TRADE_PCT:.1f}% -> {units:.6f} units "
+                   f"(kelly {f_used:.2f}, vol x{vol_mult:.2f})")
+
+
+def market_stats(symbol: str, market: str) -> dict:
+    """Regime + trend read from the agent's 5m window (candidates for the gate).
+
+    - trend_ratio: |1h net change|/100 as a decimal bias (sign = direction)
+    - regime: documented classifier (bull | bear | sideways) from 4h lookback:
+        forward-implied 20-bar move > +0.2% bullish, < -0.2% bearish else sideways
+      (vol classifier omitted here — keep the gate deterministic and cheap).
+    """
+    try:
+        if market == "crypto":
+            import requests as _r
+            now_ms = int(time.time() * 1000)
+            r = _r.post("https://api.hyperliquid.xyz/info", json={
+                "type": "candleSnapshot",
+                "req": {"coin": symbol, "interval": "5m",
+                        "startTime": now_ms - 4 * 3600 * 1000, "endTime": now_ms},
+            }, timeout=15)
+            closes = [float(c["c"]) for c in r.json()]
+        else:
+            import yfinance as yf
+            ticker = f"{symbol}=X" if market == "forex" else symbol
+            df = yf.download(ticker, period="5d", interval="5m", progress=False, auto_adjust=True)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            closes = [float(v) for v in df["Close"].dropna().tolist()]
+        if len(closes) < 12:
+            return {"regime": "sideways", "trend_ratio": 0.0, "closes": closes, "realized_vol": None}
+        trend = closes[-1] / closes[-12] - 1  # ~1h reference
+        lookback = closes[-48] if len(closes) >= 48 else closes[0]
+        move20 = closes[-1] / lookback - 1
+        if move20 > 0.002:
+            regime = "bull"
+        elif move20 < -0.002:
+            regime = "bear"
+        else:
+            regime = "sideways"
+        # realized vol (annualized from recent 5m returns) for vol-target sizing
+        rv = 0.0
+        try:
+            rets = [(closes[i] / closes[i - 1] - 1) for i in range(max(1, len(closes) - 48), len(closes))]
+            if len(rets) >= 2:
+                import statistics
+                rv = statistics.pstdev(rets) * (12 * 24 * 365) ** 0.5
+        except Exception:
+            pass
+        return {"regime": regime, "trend_ratio": trend, "closes": closes,
+                "realized_vol": rv if rv else None}
+    except Exception:
+        return {"regime": "sideways", "trend_ratio": 0.0, "closes": []}
+
+
+def profitability_gate(action: str, symbol: str, market: str, prices: dict,
+                       positions: list, cached_data: dict) -> tuple[bool, str]:
+    """Symmetric trend gate: trade direction WITH the trend, both ways.
+
+    Rules:
+      1. REGIME-DIRECTION: bull -> longs allowed (shorts blocked: against trend);
+         bear -> shorts allowed (longs blocked); sideways -> both blocked (fee burn).
+      2. FEE FLOOR: |expected move (1h)| >= ~0.30% before entry (churn filter vs
+         0.22% round-trip cost).
+      3. TREND ALIGNMENT: short must align with negative 1h trend; long with positive.
+
+    Exits (sell/cover) are NEVER blocked. Returns (allowed, reason).
+    """
+    if action in ("sell", "cover"):
+        return True, ""  # exits always allowed
+
+    regime = str(cached_data.get("regime", "sideways"))
+    wanted_long = action == "buy"
+    wanted_short = action == "short"
+    if regime.startswith("bear"):
+        if wanted_long:
+            return False, f"regime={regime}: longs blocked in bear (trend down)"
+        wanted_short = True  # shorts are the trend direction
+    elif regime.startswith("bull"):
+        if wanted_short:
+            return False, f"regime={regime}: shorts blocked in bull (trend up)"
+        wanted_long = True
+    else:
+        return False, f"regime={regime}: sideways - no entries (fee burn)"
+
+    tr = cached_data.get("trend_ratio")
+    if tr is not None:
+        expected_move = abs(tr) * 100
+        cost_floor = (TRADE_FEE_RATE * 4) * 100  # 0.4% round trip incl. slippage
+        if 0 < expected_move < cost_floor * 0.75:
+            return False, f"move {expected_move:.2f}% < fee floor ~{cost_floor:.2f}% (churn filter)"
+        # trend alignment: long wants tr > 0, short wants tr < 0
+        aligned = (tr > 0 if wanted_long else tr < 0)
+        if not aligned and abs(tr) > 1e-6:
+            return False, f"1h trend {tr*100:+.2f}% opposes requested {('long' if wanted_long else 'short')} (trend alignment)"
+    return True, ""
 
 def ask_model(prompt: str) -> dict:
     """Ask the model for a JSON decision: provider API (user key) or opencode CLI."""
     if ACTIVE_MODE:
         system = (
-            "You are an ACTIVE scalper on a paper-trading platform (real prices, simulated money). "
-            "Your mandate: BE IN THE MARKET most of the time. Each cycle you must pick long, short, or flat "
-            "for ONE symbol based on the 5-minute trend and 30d context. "
+            "You are an ACTIVE trader on a paper-trading platform (real prices, simulated money). "
+            "Your mandate: BE IN THE MARKET most of the time, in BOTH directions. Each cycle you "
+            "pick long, short, or flat for ONE symbol based on the 5-minute trend and 30d context. "
             "Rules: hold a position at least 70% of cycles; switch long/short when the 5m trend flips; "
             "go flat only on sharp reversals or extreme uncertainty. "
             "Always set stop_loss_pct 3-8 on new entries. "
+            "Trade the trend BOTH ways: in a downtrend (5m/1h down, 30d weak/negative) OPEN A SHORT "
+            "rather than staying flat; in an uptrend buy. Never force a short against an uptrend or a "
+            "long against a downtrend. "
             "You ALWAYS reply with a single valid JSON object, no markdown, no extra text:\n"
-            '{"action":"buy|sell|hold","symbol":"BTC|ETH|AAPL|EURUSD","quantity":<number>,'
+            '{"action":"buy|short|sell|cover|hold","symbol":"<symbol>","quantity":<number>,'
             '"stop_loss_pct":<number>,"take_profit_pct":<number>,"reasoning":"<1 sentence>"}\n'
-            "buy=go long, sell=close a long, hold=stay as you are. "
+            "buy=OPEN a long, short=OPEN a short, sell=close a long, cover=close a short, "
+            "hold=stay as you are. Greed: 1. Do not stop trading a winning trend because you are already "
+            "exposed - scaling in is allowed up to the cap. "
             "Use quantity that respects the position cap shown in the prompt."
         )
     else:
@@ -226,16 +374,21 @@ def equity(portfolio: dict, prices: dict) -> float:
 # ---------------------------------------------------------------- log
 
 def log_decision(row: dict):
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fresh = not LOG_PATH.exists()
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        if fresh:
-            f.write("ts,symbol,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n")
-        ts = datetime.now(timezone.utc).isoformat()
-        f.write(f"{ts},{row.get('symbol')},{row.get('action')},{row.get('price')},"
-                f"{row.get('quantity')},{row.get('stop_pct')},{row.get('take_pct')},"
-                f"{row.get('fill_ok')},\"{str(row.get('reasoning','')).replace('\"','\"\"')}\","
-                f"{str(row.get('error','')).replace(',',';')}\n")
+    """Append one decision row to the CSV log. Never raises: a cycle that fails
+    to execute a DB fill must still leave a durable log record."""
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fresh = not LOG_PATH.exists()
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            if fresh:
+                f.write("ts,symbol,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n")
+            ts = datetime.now(timezone.utc).isoformat()
+            f.write(f"{ts},{row.get('symbol')},{row.get('action')},{row.get('price')},"
+                    f"{row.get('quantity')},{row.get('stop_pct')},{row.get('take_pct')},"
+                    f"{row.get('fill_ok')},\"{str(row.get('reasoning','')).replace('\"','\"\"')}\","
+                    f"{str(row.get('error','')).replace(',',';')}\n")
+    except Exception as exc:
+        print(f"[agent log] failed to append decision row: {exc}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------- main
@@ -413,6 +566,42 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"; row["error"] = f"no short position in {symbol}"
 
     if row["action"] in ("buy", "sell", "short", "cover"):
+        # PROFITABILITY GATE: new entries must clear regime + fee floor. Closes/
+        # exits are never blocked (stop-loss discipline wins over churn filter).
+        if GATE_ENABLED:
+            stats = market_stats(symbol, market)
+            allowed, reason = profitability_gate(row["action"], symbol, market,
+                                                 prices, positions, stats)
+            # SENTIMENT MULTIPLIER: numeric sentiment (-1..+1) scales size but
+            # never creates or blocks a trade. Negative = tighter size.
+            senti_score = 0.0
+            senti_label = ""
+            try:
+                from sentiment import sentiment_score as _ss
+                senti_score, senti_label = _ss(market, symbol)
+            except Exception:
+                pass
+            if allowed and row["action"] in ("buy", "short") and senti_score < 0:
+                mult = max(0.1, 1.0 + senti_score)  # -0.42 -> 0.58x size
+                qty = qty * mult
+                row["reasoning"] = f"{reasoning} [senti {senti_label}, size x{mult:.2f}]"
+            # RISK-BASED SIZING: overwrite the LLM's freeform quantity with
+            # risk-derivation (risk% / stop distance, Kelly-capped, vol-tar).
+            if RISK_SIZE_ENABLED and allowed and row["action"] in ("buy", "short"):
+                entry_px = prices.get(symbol, 0) or row["price"] or 0
+                eqv = equity(portfolio, prices)
+                rv = stats.get("realized_vol")
+                new_qty, why = compute_risk_size(eqv, entry_px,
+                                                 stop_pct or FORCE_STOP_PCT,
+                                                 take_pct or 0.0, rv)
+                if new_qty > 0:
+                    qty = new_qty
+                    row["quantity"] = new_qty
+                    row["reasoning"] = f"{reasoning} [size {why}]"
+            if not allowed:
+                row["action"] = "hold"
+                row["error"] = reason
+                print(f"[gate] {symbol} {action} blocked: {reason}")
         if dry:
             print(f"[dry] would {action} {qty} {symbol} [{market}] (stop {stop_pct}%, take {take_pct}%)")
             row["fill_ok"] = "dry"
@@ -424,6 +613,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["price"] = fill.get("price", row["price"])
             print(f"[trade] {row['action']} {qty} {symbol} [{market}] @ {fill.get('price', 'n/a')} "
                   f"-> {'OK' if fill['ok'] else fill['error']}")
+            # D2 fix: LOG IMMEDIATELY after the DB fill is acknowledged so a
+            # later exception can never make an executed trade invisible in the
+            # decision log (this was the 2026-08-26 22:42 EURUSD gap).
+            log_decision(row)
+            return
     else:
         print(f"[hold] {reasoning[:120]}")
 

@@ -1,0 +1,14 @@
+audit,check,status,detail,value
+defect,D1_signals_pnl_populated_on_close,PASS,"5 executed signals; 1 closed trade(s) recorded with exit_price/pnl (e.g. signal 18 ETH pnl -$0.25), 3 still open (NULL is correct open-state). D1 write-back fix verified.",
+defect,D2_log_vs_db_completeness,PASS,all 5 executed fills now present in live_agent_log.csv; EURUSD 22:42:12 row backfilled from the DB and the agent now logs immediately after a fill acknowledgment,
+defect,D3_replay_tool_fill_filter,PASS,evaluate_live_agent.py fill_ok filter fixed (string vs bool); corrected replay counts 4 executed fills (was 0),
+defect,D4_fee_rate_applied,PASS,0.1% TRADE_FEE_RATE applied to all 5 entries; total fees $14.6960,
+defect,D5_leverage_and_funding,PASS,live agent leverage={1.0}; funding n/a at 1x; leveraged trades in DB belong to test agent 6 (PerpAgent) — excluded,
+defect,D6_short_close_math,PASS,no short closed in live window; formula site-audit: cash=(2*entry-price)*qty-fee is correct at 1x leverage (not exercised),
+defect,D7_test_agent_excluded,PASS,"PerpAgent (agent 6) BTC entry $80,000 vs market ~$78,750 mark classified as implausible TEST data; excluded from PnL audit",
+defect,D8_stale_platform_marks,PASS,EURUSD position re-marked from realized 5m close (1.16604483127594); POSITION_PRICE_REFRESH_PRICED_MARKETS now includes forex so it refreshes every cycle,
+independent_pnl,book_pnl_at_marks,,"book value $99,994.08",-5.92
+account_equation,cash_matches,PASS,platform=85789.34 expected=85789.34,delta=+0.0000
+scenario,optimistic_pnl,,EURUSD pnl $-11.20; BTC pnl $-7.64; ETH pnl $-0.50; ETH pnl $-0.50; ETH pnl $-1.00,-20.84
+scenario,baseline_pnl,,EURUSD pnl $-12.37; BTC pnl $-9.21; ETH pnl $-0.55; ETH pnl $-0.55; ETH pnl $-1.10,-23.78
+scenario,adverse_pnl,,EURUSD pnl $-162.43; BTC pnl $-375.47; ETH pnl $-0.75; ETH pnl $-0.75; ETH pnl $-23.88,-563.28

@@ -289,7 +289,24 @@ def _update_position_from_signal(
             raise ValueError("Insufficient long position quantity")
         new_qty = current_qty - quantity
         if new_qty <= 0:
-            # Close position
+            # Close position: record exit price + realized net PnL on the open
+            # signal before deleting, so signals.pnl/exit_price are populated
+            # (previously NULL forever — D1 defect, per-trade PnL was orphaned).
+            from fees import TRADE_FEE_RATE
+
+            row_exit = cursor.execute(
+                "SELECT signal_id FROM signals WHERE agent_id = ? AND symbol = ? "
+                "AND side = 'buy' AND exit_price IS NULL "
+                "ORDER BY signal_id DESC LIMIT 1",
+                (agent_id, symbol),
+            ).fetchone()
+            if row_exit:
+                close_fee = quantity * price * TRADE_FEE_RATE
+                realized_pnl = (price - float(row["entry_price"])) * current_qty - close_fee
+                cursor.execute(
+                    "UPDATE signals SET exit_price = ?, pnl = ? WHERE signal_id = ?",
+                    (price, realized_pnl, row_exit["signal_id"]),
+                )
             cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
             print(f"[Position] {symbol}: closed long position")
         else:
@@ -336,6 +353,23 @@ def _update_position_from_signal(
             raise ValueError("Insufficient short position quantity")
         new_qty = current_qty + quantity
         if new_qty >= 0:
+            # Close position: record exit price + realized net PnL (short: exit
+            # above entry is a loss, below is a win; 1x: (2*entry - price)*qty).
+            from fees import TRADE_FEE_RATE
+
+            close_fee = quantity * price * TRADE_FEE_RATE
+            realized_pnl = (float(row["entry_price"]) - price) * quantity - close_fee
+            row_exit = cursor.execute(
+                "SELECT signal_id FROM signals WHERE agent_id = ? AND symbol = ? "
+                "AND side = 'short' AND exit_price IS NULL "
+                "ORDER BY signal_id DESC LIMIT 1",
+                (agent_id, symbol),
+            ).fetchone()
+            if row_exit:
+                cursor.execute(
+                    "UPDATE signals SET exit_price = ?, pnl = ? WHERE signal_id = ?",
+                    (price, realized_pnl, row_exit["signal_id"]),
+                )
             cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
             print(f"[Position] {symbol}: closed short position")
         else:

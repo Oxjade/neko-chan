@@ -20,6 +20,21 @@ MAX_LEVERAGE_BY_VENUE = {
     "jup-perp": 100,
 }
 
+# Venue taker fee in basis points (1/10000) per venue, used by the router to
+# report a truthful venue fee on every fill even when an adapter does not
+# return one. Values are conservative taker rates (2026):
+#   hl-perp / bluefin-perp  ~2.5 bps, jup-perp ~10 bps, deepbook spot ~0
+#   (maker-oriented), xstocks/jup-limit ~10 bps.
+VENUE_FEE_BPS = {
+    "hl-perp": 2.5,
+    "deepbook-spot": 0.0,
+    "deepbook-margin": 2.5,
+    "bluefin-perp": 2.5,
+    "jup-perp": 10.0,
+    "jup-limit": 10.0,
+    "xstocks-spot": 10.0,
+}
+
 
 @dataclass
 class OrderIntent:

@@ -803,6 +803,12 @@ def invalidate_position_cache(ctx: RouteContext, agent_id: int | None = None) ->
 
 
 def get_position_snapshot(cursor: Any, agent_id: int, market: str, symbol: str, token_id: Optional[str]):
+    """Return the single position row for (agent, symbol, market).
+
+    Positions are per-side: long = qty > 0, short = qty < 0, and the same
+    symbol can hold BOTH (verified 2026-08-27: SOL long 46.4 + SOL short -0.1).
+    Return rows newest-first; callers select the side by sign.
+    """
     if market == 'polymarket':
         cursor.execute(
             """
@@ -818,6 +824,7 @@ def get_position_snapshot(cursor: Any, agent_id: int, market: str, symbol: str, 
             SELECT quantity, entry_price, leverage
             FROM positions
             WHERE agent_id = ? AND symbol = ? AND market = ?
+            ORDER BY id DESC
             """,
             (agent_id, symbol, market),
         )
