@@ -766,6 +766,9 @@ class UserBotController:
                     f"💸 Fund {CHAIN_LABELS[chain].replace('🔗 ', '')}",
                     callback_data=f"sb:fund:{chain}")] for chain in self.gateway.adapters]
             kb = fund_buttons + [[
+                telegram.InlineKeyboardButton("🔍 Check Deposits", callback_data="sb:check_deposits"),
+                telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent"),
+            ], [
                 telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys"),
                 telegram.InlineKeyboardButton("💸 Withdraw", callback_data="sb:withdraw"),
             ], [
@@ -851,6 +854,72 @@ class UserBotController:
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
                  [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
+        async def check_deposits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            if not self._exec_ready():
+                await q.message.edit_text(USERBOT["deposit_not_configured"],
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            await q.message.edit_text(USERBOT["deposit_checking"])
+            found_all = []
+            for chain in self.gateway.adapters:
+                try:
+                    found = self.gateway.scan_deposits(bot_id, chain) or []
+                    for ev in found:
+                        ev["chain"] = chain
+                    found_all.extend(found)
+                except Exception:
+                    continue
+            self._exec_path()
+            from wallet_ui import CHAIN_LABELS
+            if found_all:
+                lines = [USERBOT["deposit_found"].format(
+                    chain_label=CHAIN_LABELS.get(ev.get("chain"), ev.get("chain")),
+                    amount=float(ev.get("amount") or 0),
+                    asset=ev.get("asset", "")) for ev in found_all]
+                await q.message.edit_text(
+                    "\n\n".join(lines) + "\n\n▶️ Enable your agent to start trading.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent")],
+                         [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+            else:
+                await q.message.edit_text(USERBOT["deposit_none"],
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton("🔍 Check Again", callback_data="sb:check_deposits")],
+                                               [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+
+        async def enable_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            if q.data == "sb:enable_agent_yes":
+                if not self.registry.get_active_key(tg_id):
+                    await q.message.edit_text(USERBOT["enable_agent_no_key"],
+                                              reply_markup=telegram.InlineKeyboardMarkup(
+                                                  [[telegram.InlineKeyboardButton("🔑 Set AI Key", callback_data="key:start")]]))
+                    return
+                self.registry.update_bot(bot_id, paused=0)
+                if self.agent_pool:
+                    try:
+                        self.agent_pool.start(bot_id)
+                    except Exception:
+                        pass
+                if self.gateway:
+                    try:
+                        self.gateway.provision_all_wallets(bot_id)
+                    except Exception:
+                        pass
+                await q.message.edit_text(USERBOT["enable_agent_ok"],
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton("📊 Dashboard", callback_data="sb:dash")]]))
+                return
+            await q.message.edit_text(USERBOT["enable_agent_prompt"],
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("▶️ Yes, enable across all chains", callback_data="sb:enable_agent_yes")],
+                                           [telegram.InlineKeyboardButton("↩️ Not yet", callback_data="sb:wallet")]]))
+
         async def killswitch_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
@@ -925,6 +994,8 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))
         app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))
+        app.add_handler(CallbackQueryHandler(check_deposits, pattern=r"^sb:check_deposits$"))
+        app.add_handler(CallbackQueryHandler(enable_agent, pattern=r"^sb:enable_agent(_yes)?$"))
         app.add_handler(CallbackQueryHandler(wallet_keys, pattern=r"^sb:keys$"))
         app.add_handler(CallbackQueryHandler(wallet_withdraw, pattern=r"^sb:withdraw$"))
         app.add_handler(CallbackQueryHandler(killswitch_screen, pattern=r"^sb:(kill|kill_yes|kill_release)$"))

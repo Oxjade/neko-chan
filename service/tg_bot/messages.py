@@ -147,6 +147,25 @@ USERBOT = {
                     "• Native gas + USDC are both accepted\n"
                     "• Only send {chain_label} network assets to this address\n"
                     "• The bot becomes active once a deposit is detected"),
+    "deposit_checking": "🔍 Checking for incoming deposits…",
+    "deposit_found": ("💰 <b>Deposit confirmed!</b>\n\n"
+                      "• {chain_label}: +${amount:,.2f} {asset}\n\n"
+                      "Your wallet is now <b>ACTIVE</b>. You can enable the agent to "
+                      "start trading with these funds."),
+    "deposit_none": ("💤 No new deposits found yet.\n\n"
+                     "Fund your wallet address and tap \"Check Deposits\" again, "
+                     "or wait — the bot checks automatically."),
+    "deposit_not_configured": ("⚪ Live execution isn't enabled, so there are no "
+                               "wallet addresses to watch yet."),
+    "enable_agent_prompt": ("▶️ <b>Enable your agent?</b>\n\n"
+                            "This starts the AI agent across all connected chains, "
+                            "using your wallet funds and your configured risk "
+                            "settings.\n\n"
+                            "You can pause it anytime from this bot."),
+    "enable_agent_ok": ("✅ Agent enabled across all connected chains.\n\n"
+                        "Neko-Chan is on the clock. Every trade gets pushed here."),
+    "enable_agent_no_key": ("⚪ You need to set an AI key first.\n\n"
+                            "Tap \"Set AI Key\" to power your agent's decisions."),
     "kill_title": ("🛑 KILL-SWITCH\n\n"
                    "This flattens ALL positions and cancels ALL open orders on "
                    "every chain for this bot, immediately.\n\n"
