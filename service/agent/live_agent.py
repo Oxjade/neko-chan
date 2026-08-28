@@ -1045,7 +1045,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     # Notify the user about AI-key issues (rate limit, errors)
                     if "llm-http-429" in llm_reasoning:
                         notify_error(llm_reasoning, kind="rate_limit")
-                        print("[agent] AI key rate-limited -> falling back to quant engine")
+                        print("[agent] AI key rate-limited -> trading HALTED until refilled")
                     elif llm_reasoning.startswith("llm-") or llm_reasoning.startswith("parse-failed"):
                         notify_error(llm_reasoning, kind="llm")
                     llm_action = str(llm.get("action", "")).lower()
