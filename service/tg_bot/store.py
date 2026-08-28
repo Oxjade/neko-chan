@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS bots (
     last_heartbeat TEXT,
     last_error TEXT,
     scheduled_deletion_at TEXT,
+    trader_type TEXT DEFAULT 'scalp',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -87,6 +88,7 @@ class Registry:
                 "ALTER TABLE bots ADD COLUMN agent_id INTEGER",
                 "ALTER TABLE bots ADD COLUMN paused INTEGER DEFAULT 0",
                 "ALTER TABLE bots ADD COLUMN scheduled_deletion_at TEXT",
+                "ALTER TABLE bots ADD COLUMN trader_type TEXT DEFAULT 'scalp'",
             ):
                 try:
                     self._conn.execute(stmt)
@@ -234,7 +236,8 @@ class Registry:
 
     def update_bot(self, bot_id: int, **fields) -> None:
         allowed = {"bot_name", "symbols", "leverage", "interval_sec", "risk_profile",
-                   "is_running", "paused", "pid", "last_heartbeat", "last_error"}
+                   "is_running", "paused", "pid", "last_heartbeat", "last_error",
+                   "trader_type"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return

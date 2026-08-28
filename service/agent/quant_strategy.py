@@ -82,6 +82,17 @@ TIME_MIN_HOLD_MINUTES = 30         # absolute floor (avoid churn from noise)
 TIME_MIN_PROFIT_MINUTES = 15
 BAR_MINUTES = 5                    # decision cycle length
 PROFIT_TAKE_MIN_PCT = 0.05
+# ---- trader-type selection ----
+# The user picks what kind of trader they are. This FILTERS which horizons the
+# engine is allowed to trade - so a scalp trader only sees scalp targets
+# (~0.36% BTC), never the swing 4% targets the conviction ranking prefers.
+#   scalp:    tight targets, in-out in minutes
+#   intraday: hours, medium targets
+#   swing:    days, let it run
+#   auto:     engine/LLM picks whichever horizon has the best EV (default)
+TRADER_TYPES = {"scalp", "intraday", "swing", "auto"}
+HORIZON_BY_TYPE = {"scalp": ["scalp"], "intraday": ["intraday"],
+                   "swing": ["swing"], "auto": ["scalp", "intraday", "swing"]}
 MAX_POSITION_PCT = 30.0            # of equity per position (notional ceiling)
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
 RISK_PER_TRADE_PCT = 1.0           # risk 1% of equity per trade
@@ -390,18 +401,28 @@ def build_scenarios(symbol: str, closes: list[float], current_price: float,
 
 
 def scenario_matrix(closes_by_symbol: dict, prices: dict,
-                    stop_pct: float | None = None, take_pct: float | None = None) -> list[TradeScenario]:
+                    stop_pct: float | None = None, take_pct: float | None = None,
+                    trader_type: str = "auto") -> list[TradeScenario]:
     """Build the full long/short scenario matrix across the universe.
 
     stop_pct/take_pct default to None -> volatility-based reachable levels
     (see build_scenarios). Pass explicit values only to override.
+
+    trader_type filters which horizons are returned:
+      "scalp"    -> scalp targets only (tight, minutes)
+      "intraday" -> intraday targets only (hours)
+      "swing"    -> swing targets only (days)
+      "auto"     -> all horizons (default, LLM/engine picks best)
     """
+    allowed = HORIZON_BY_TYPE.get(trader_type, ["scalp", "intraday", "swing"])
     out = []
     for symbol, closes in closes_by_symbol.items():
         px = prices.get(symbol, 0)
         if px <= 0 or not closes:
             continue
-        out.extend(build_scenarios(symbol, closes, px, stop_pct, take_pct))
+        for s in build_scenarios(symbol, closes, px, stop_pct, take_pct):
+            if s.horizon in allowed:
+                out.append(s)
     return out
 
 

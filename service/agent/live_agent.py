@@ -65,6 +65,10 @@ ACTIVE_MODE = os.getenv("LIVE_AGENT_ACTIVE_MODE", "1").strip() in {"1", "true", 
 #     (agent_evaluation_report.md) measured it at base-rate accuracy, negative
 #     after fees. Kept only for A/B.
 STRATEGY = os.getenv("LIVE_AGENT_STRATEGY", "momentum20").strip().lower()
+# What kind of trader the user wants to be. Filters which horizon targets the
+# engine can pick: scalp (minutes) / intraday (hours) / swing (days) / auto.
+# A scalp trader never sees 4% swing targets.
+TRADER_TYPE = os.getenv("LIVE_AGENT_TRADER_TYPE", "scalp").strip().lower()
 # Peak-price tracker for trailing stops (in-memory per agent process).
 _trailing_high: dict[str, float] = {}
 # Per-user LLM credentials (set by the Telegram bot network). When LIVE_AGENT_API_KEY
@@ -425,6 +429,32 @@ def _load_skill_context() -> str:
     return "\n\n".join(blocks)
 
 
+def _opencode_completion(system: str, user: str) -> dict:
+    """Use the opencode-go gateway (our own model) via the `opencode run` CLI.
+
+    This bypasses OpenRouter entirely - no external key, no free-tier rate
+    limit. The gateway model is set by MODEL (opencode-go/deepseek-v4-flash).
+    """
+    try:
+        import subprocess as _sp
+        proc = _sp.run(
+            ["opencode", "run", "-m", MODEL, f"{system}\n\n{user}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        out = (proc.stdout or "").strip()
+        if not out:
+            return {"action": "hold", "quantity": 0,
+                    "reasoning": "opencode-gateway: empty response"}
+        start, end = out.find("{"), out.rfind("}")
+        if start == -1 or end == -1:
+            return {"action": "hold", "quantity": 0,
+                    "reasoning": f"parse-failed: {out[:120]}"}
+        return json.loads(out[start:end + 1])
+    except Exception as exc:  # noqa: BLE001
+        return {"action": "hold", "quantity": 0,
+                "reasoning": f"opencode-gateway error: {exc}"}
+
+
 def _provider_completion(system: str, user: str) -> dict:
     """Direct OpenAI-compatible (OpenRouter/Anthropic/etc.) JSON decision call.
 
@@ -434,6 +464,10 @@ def _provider_completion(system: str, user: str) -> dict:
     returns content=None, so we pass a generous budget + low temperature, and
     fall back to a safe hold if content is empty or unparseable.
     """
+    # No external API key -> use the opencode-go gateway (our own model) via the
+    # `opencode run` CLI, which is not rate-limited by OpenRouter.
+    if not LIVE_AGENT_API_KEY:
+        return _opencode_completion(system, user)
     import requests as _requests
 
     base = (LIVE_AGENT_BASE_URL or "https://openrouter.ai/api/v1").rstrip("/")
@@ -984,7 +1018,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         decision["_forced_exit"] = True
                     else:
                         # build the full scenario matrix (long + short per symbol)
-                        matrix = scenario_matrix(closes_by_symbol, prices)
+                        matrix = scenario_matrix(closes_by_symbol, prices, trader_type=TRADER_TYPE)
                         has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
                         has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
                     # top candidates the LLM will choose among (ranked by conviction)
@@ -1005,6 +1039,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     matrix_txt = "\n".join(s.to_prompt() for s in top)
                     system = (
                         "You are the decision layer of an automated trading agent. "
+                        f"Your trader type: <b>{TRADER_TYPE.upper()}</b>. "
                         "You are GIVEN a scenario matrix computed with REAL "
                         "quantitative math: for each symbol there is a LONG and a "
                         "SHORT path, each with P(win) (the probability the take-profit "
