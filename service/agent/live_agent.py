@@ -658,6 +658,8 @@ def _resolve_real_venue(symbol: str, market: str, gw) -> tuple[str, str] | None:
             return "hyperliquid", "hl-perp"
         if "solana" in adapters:
             return "solana", "jup-perp"
+        if "sui" in adapters and getattr(adapters["sui"], "bluefin", None) is not None:
+            return "sui", "bluefin-perp"
         return None
     if market == "us-stock":
         if "solana" in adapters:

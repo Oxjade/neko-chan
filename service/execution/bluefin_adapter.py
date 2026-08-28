@@ -330,5 +330,5 @@ def build_bluefin(ledger: ExecLedger, keypair_hex: str, testnet: bool = True,
     if len(seed) != 32:
         raise ValueError(f"bluefin keypair_hex must be 32 bytes, got {len(seed)}")
     from sui_adapter import _ed25519_pubkey
-    addr = "0x" + hashlib.blake2b(b"\x00" + _ed25519_pubkey(seed) if False else b"\x00" + _ed25519_pubkey(seed), digest_size=32).hexdigest()
+    addr = "0x" + hashlib.blake2b(b"\x00" + _ed25519_pubkey(seed), digest_size=32).hexdigest()
     return BluefinAdapter(ledger, seed, addr, testnet=testnet, api_base=api_base)

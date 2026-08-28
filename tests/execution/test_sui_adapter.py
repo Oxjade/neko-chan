@@ -219,14 +219,14 @@ def test_cancel_all_requires_config(tmp_path):
     adapter = make_adapter(tmp_path)
     result = adapter.cancel_all(1)
     assert result["ok"] is False
-    assert "not configured" in result["error"]
+    assert "no venue configured" in result["error"]
 
 
 def test_flat_and_cancel_graceful_without_config(tmp_path):
     adapter = make_adapter(tmp_path)
     result = adapter.flat_and_cancel(1)
     assert result["ok"] is False
-    assert "not configured" in result["error"]
+    assert "no venue configured" in result["error"]
     assert "flat" in result
 
 

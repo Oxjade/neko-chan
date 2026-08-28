@@ -92,6 +92,7 @@ def _load_execution_cfg() -> dict:
             ("EXEC_SUI_DEEPBOOK_PACKAGE", "deepbook_package"),
             ("EXEC_SUI_POOL_ID", "pool_id"),
             ("EXEC_SUI_BALANCE_MANAGER", "balance_manager"),
+            ("EXEC_BLUEFIN_API_BASE", "bluefin_api_base"),
         ):
             v = _env(env_name)
             if v:

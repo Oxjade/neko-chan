@@ -31,8 +31,14 @@ def build_adapters(ledger, vault, cfg: dict) -> dict:
                                         testnet=bool(c.get("testnet")))
     c = cfg.get("sui") or {}
     if c.get("key_enc"):
+        from bluefin_adapter import build_bluefin
         key_hex = vault.decrypt(c["key_enc"])
+        testnet = bool(c.get("testnet"))
+        bluefin_api = c.get("bluefin_api_base", "")
+        bluefin = build_bluefin(ledger, key_hex, testnet=testnet,
+                                api_base=bluefin_api or None)
         adapters["sui"] = SUIAdapter(ledger, key_hex,
                                      rpc_url=c.get("rpc_url", ""),
-                                     testnet=bool(c.get("testnet")))
+                                     testnet=testnet,
+                                     bluefin=bluefin)
     return adapters

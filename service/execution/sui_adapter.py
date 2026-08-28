@@ -39,6 +39,7 @@ USDC_MAINNET_COIN_TYPE = (
 
 DEEPBOOK_MODULE = "deepbook"
 DEEPBOOK_DECIMALS = 6  # DeepBook prices/quantities are u64 with 6 decimals
+BLUEFIN_PRICE_SCALE = 1e6  # Bluefin perp prices on Sui are u64 scaled by 1e6
 GAS_MIN_BALANCE = 1_000_000_000  # require at least 1 SUI for gas in v1
 RPC_TIMEOUT = 20
 
@@ -357,7 +358,8 @@ class SUIAdapter:
                  deepbook_package: str | None = None,
                  pool_id: str | None = None,
                  balance_manager: str | None = None,
-                 pool_coin_types: list[str] | None = None):
+                 pool_coin_types: list[str] | None = None,
+                 bluefin: object | None = None):
         self.ledger = ledger
         self.testnet = testnet
         self.rpc_url = SUI_TESTNET_RPC if testnet else rpc_url
@@ -366,6 +368,7 @@ class SUIAdapter:
         self.pool_id = pool_id
         self.balance_manager = balance_manager
         self.pool_coin_types = pool_coin_types or [SUI_COIN_TYPE, usdc_coin_type]
+        self.bluefin = bluefin  # optional BluefinAdapter for bluefin-perp venue
         self._shared_cache: dict = {}
         self._rpc_seq = 0
 
@@ -451,9 +454,44 @@ class SUIAdapter:
             return 0.0
 
     def get_positions(self) -> list[dict]:
-        # v1 stub: DeepBook margin positions live on-chain in the balance
-        # manager; indexing them is a build-phase research item.
+        """Open perp positions. DeepBook margin is not indexed (v1); Bluefin
+        perp positions come from the off-chain dapi when a Bluefin adapter is
+        attached. Returns normalized rows: {symbol, side, qty, entry, pnl}."""
+        if self.bluefin is not None:
+            return self._bluefin_positions()
         return []
+
+    def _bluefin_positions(self) -> list[dict]:
+        """Normalized positions from the Bluefin dapi /accounts/positions."""
+        try:
+            resp = self.bluefin.positions()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[sui] bluefin positions failed: %s", exc)
+            return []
+        if not resp.get("ok"):
+            log.warning("[sui] bluefin positions error: %s", resp.get("error"))
+            return []
+        rows = resp.get("data")
+        if not isinstance(rows, list):
+            return []
+        out = []
+        for p in rows:
+            if not isinstance(p, dict):
+                continue
+            symbol = str(p.get("symbol") or p.get("market") or "")
+            qty_raw = float(p.get("quantity") or p.get("position") or 0.0)
+            if not symbol or qty_raw == 0:
+                continue
+            side = "long" if qty_raw > 0 else "short"
+            out.append({
+                "symbol": symbol.split("-")[0],
+                "side": side,
+                "qty": abs(qty_raw),
+                "entry": float(p.get("entryPrice") or p.get("avgEntryPrice") or 0.0) / BLUEFIN_PRICE_SCALE,
+                "pnl": float(p.get("unrealizedPnl") or p.get("pnl") or 0.0) / BLUEFIN_PRICE_SCALE,
+                "venue": "bluefin",
+            })
+        return out
 
     # ------------------------------------------------------------ orders
 
@@ -599,6 +637,14 @@ class SUIAdapter:
         errors = intent.validate(ref_price)
         if errors:
             return {"ok": False, "error": "; ".join(errors)}
+        if intent.venue == "bluefin-perp":
+            if self.bluefin is None:
+                return {"ok": False, "error": "bluefin-perp venue requested but no Bluefin adapter configured"}
+            try:
+                return self.bluefin.place_order(intent, ref_price)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("bluefin place_order failed for %s", intent.idempotency_key)
+                return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
         try:
             built = self.build_spot_order_tx(intent, ref_price)
             if not built.get("ok"):
@@ -624,32 +670,62 @@ class SUIAdapter:
     # ------------------------------------------------------------ killswitch hooks
 
     def cancel_all(self, bot_id) -> dict:
-        if not (self.deepbook_package and self.pool_id and self.balance_manager):
+        """Killswitch cancel: cancels DeepBook orders (on-chain) and Bluefin
+        orders (off-chain dapi) when the respective venue is configured.
+        Best-effort per venue; returns a merged result."""
+        merged = {"ok": True, "cancelled": [], "errors": []}
+        if self.deepbook_package and self.pool_id and self.balance_manager:
+            try:
+                call_args = [
+                    {"kind": "shared", "object_id": self.pool_id, "mutable": True},
+                    {"kind": "shared", "object_id": self.balance_manager, "mutable": True},
+                ]
+                command = {
+                    "package": self.deepbook_package,
+                    "module": DEEPBOOK_MODULE,
+                    "function": "cancel_all_orders",
+                    "type_arguments": self.pool_coin_types,
+                }
+                gas = self._dry_run(_json_kind(call_args, command))
+                out = self._broadcast(call_args, command, gas["gas_price"], gas["budget"])
+                merged["cancelled"].append({"venue": "deepbook", "tx_hash": out["digest"]})
+            except Exception as exc:  # noqa: BLE001
+                log.exception("deepbook cancel_all failed for bot %s", bot_id)
+                merged["errors"].append(f"deepbook: {exc}"[:200])
+                merged["ok"] = False
+        if self.bluefin is not None:
+            try:
+                res = self.bluefin.cancel_all()
+                merged["cancelled"].append({"venue": "bluefin", "ok": bool(res.get("ok"))})
+                if not res.get("ok"):
+                    merged["errors"].append(f"bluefin: {res.get('error')}"[:200])
+                    merged["ok"] = False
+            except Exception as exc:  # noqa: BLE001
+                log.exception("bluefin cancel_all failed for bot %s", bot_id)
+                merged["errors"].append(f"bluefin: {exc}"[:200])
+                merged["ok"] = False
+        if not merged["cancelled"]:
             return {
                 "ok": False,
-                "error": "DeepBook package/pool not configured; cannot cancel (killswitch needs balance_manager configured)",
+                "error": "no venue configured (need deepbook package/pool/balance_manager or Bluefin adapter)",
             }
-        try:
-            call_args = [
-                {"kind": "shared", "object_id": self.pool_id, "mutable": True},
-                {"kind": "shared", "object_id": self.balance_manager, "mutable": True},
-            ]
-            command = {
-                "package": self.deepbook_package,
-                "module": DEEPBOOK_MODULE,
-                "function": "cancel_all_orders",
-                "type_arguments": self.pool_coin_types,
-            }
-            gas = self._dry_run(_json_kind(call_args, command))
-            out = self._broadcast(call_args, command, gas["gas_price"], gas["budget"])
-            return {"ok": True, "tx_hash": out["digest"], "cancelled": "best-effort cancel_all_orders"}
-        except Exception as exc:  # noqa: BLE001
-            log.exception("cancel_all failed for bot %s", bot_id)
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+        return merged
 
     def flat_and_cancel(self, bot_id) -> dict:
-        # Killswitch hook. v1: positions are a stub ([]), so flattening is a
-        # no-op; the critical part is cancelling open orders on the pool.
+        """Killswitch hook: cancels open orders and closes open positions.
+        Bluefin perp positions are flattened via the off-chain dapi; DeepBook
+        margin positions are not indexed in v1 (best-effort cancel only)."""
         result = self.cancel_all(bot_id)
-        result["flat"] = "v1 stub: no margin positions indexed"
+        result["closed"] = []
+        if self.bluefin is not None:
+            try:
+                bf = self.bluefin.flat_and_cancel(bot_id)
+                result["closed"].extend(bf.get("closed") or [])
+                result["flat"] = f"bluefin flattened {len(bf.get('closed') or [])} positions"
+            except Exception as exc:  # noqa: BLE001
+                log.exception("bluefin flat failed for bot %s", bot_id)
+                result["errors"].append(f"bluefin-flat: {exc}"[:200])
+                result["ok"] = False
+        else:
+            result["flat"] = "v1 stub: no bluefin adapter (DeepBook margin not indexed)"
         return result
