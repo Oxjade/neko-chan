@@ -720,13 +720,22 @@ class UserBotController:
                                           parse_mode="HTML",
                                           reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
                 return
+            if q.data.startswith("sb:set_leverage"):
+                lev = float(q.data.rsplit(":", 1)[1])
+                self.registry.update_bot(bot_id, leverage=lev)
+                await q.message.edit_text(f"✅ Leverage set to: <b>{lev:g}x</b>\n\n"
+                                          f"⚠️ Higher leverage = faster liquidation. Restart your bot "
+                                          f"for this to take effect on new trades.",
+                                          parse_mode="HTML",
+                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
+                return
             current_ttype = b.get("trader_type") or "scalp"
             icons = {"scalp": "⚡", "intraday": "⏱", "swing": "📈", "auto": "🤖"}
             ttype_label = f"{icons.get(current_ttype, '❓')} {current_ttype.upper()}"
             text = (f"⚙️ Settings — {b['bot_name']}\n\n"
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Risk:      {b['risk_profile']}\n"
-                    f"Leverage:  {b.get('leverage') or 1.0}x\n"
+                    f"Leverage:  {float(b.get('leverage') or 1):g}x\n"
                     f"Mode:      {USERBOT['real_badge'] if self._exec_ready() else USERBOT['paper_badge']} trading\n"
                     f"Trader:    {ttype_label}\n"
                     f"AI key:    {'set ✓' if self.registry.get_active_key(tg_id) else 'not set'}")
@@ -738,6 +747,9 @@ class UserBotController:
                  telegram.InlineKeyboardButton(f"{icons.get('intraday','⏱')} Intraday", callback_data="sb:set_trader_type:intraday"),
                  telegram.InlineKeyboardButton(f"{icons.get('swing','📈')} Swing", callback_data="sb:set_trader_type:swing")],
                 [telegram.InlineKeyboardButton(f"{icons.get('auto','🤖')} Auto", callback_data="sb:set_trader_type:auto")],
+                [telegram.InlineKeyboardButton(f"⚖️ Lev: {float(b.get('leverage') or 1):g}x", callback_data="sb:set_leverage:5"),
+                 telegram.InlineKeyboardButton("2x", callback_data="sb:set_leverage:2"),
+                 telegram.InlineKeyboardButton("10x", callback_data="sb:set_leverage:10")],
                 [telegram.InlineKeyboardButton("🛡️ Execution Risk", callback_data="sb:execrisk")],
                 [telegram.InlineKeyboardButton("🔑 Change AI Key", callback_data="key:start")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
@@ -1096,7 +1108,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(trades, pattern=r"^sb:trades$"))
         app.add_handler(CallbackQueryHandler(leaderboard, pattern=r"^sb:lb$"))
         app.add_handler(CallbackQueryHandler(bot_controls, pattern=r"^sb:(pause|resume|pause_yes|delete|delete_yes)$"))
-        app.add_handler(CallbackQueryHandler(settings, pattern=r"^sb:(settings|set_interval:\d+|set_trader_type:\w+)$"))
+        app.add_handler(CallbackQueryHandler(settings, pattern=r"^sb:(settings|set_interval:\d+|set_trader_type:\w+|set_leverage:\d+)$"))
         app.add_handler(CallbackQueryHandler(inbox, pattern=r"^sb:inbox$"))
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))

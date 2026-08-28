@@ -76,7 +76,7 @@ _trailing_high: dict[str, float] = {}
 LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
-LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "1"))
+LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "5"))
 # Real execution through the chain adapters (execution gateway). Requires
 # REAL_TRADING_ENABLED=1 AND per-chain keys in the gateway env. Default off:
 # the agent stays paper-only on the platform. When on, orders route through
@@ -1271,7 +1271,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 target=_last_scenario.target)
         else:
             fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
-                     leverage=LIVE_AGENT_LEVERAGE if market == "crypto" and LIVE_AGENT_LEVERAGE > 1 else None)
+                     leverage=LIVE_AGENT_LEVERAGE if market == "crypto" else None)
             row["fill_ok"] = fill["ok"]
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])
@@ -1341,7 +1341,8 @@ def main():
                                 qty = abs(next((p["quantity"] for p in positions if p["symbol"] == pick.symbol), 0))
                             fill = execute_trade(token, pick.symbol,
                                                  dict(UNIVERSE).get(pick.symbol, "crypto"),
-                                                 side, qty)
+                                                 side, qty,
+                                                 leverage=LIVE_AGENT_LEVERAGE)
                             if fill.get("ok"):
                                 print(f"[exit] {label}: {pick.symbol} - {pick.reasoning[:80]}")
                             break

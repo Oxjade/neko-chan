@@ -62,7 +62,7 @@ class AgentPool:
             "LIVE_AGENT_MAX_DAILY_TRADES": str(caps["max_daily_trades"]),
             "LIVE_AGENT_MAX_POSITION_PCT": str(caps["max_position_pct"]),
             "LIVE_AGENT_FORCE_STOP_PCT": str(caps["force_stop_pct"]),
-            "LIVE_AGENT_LEVERAGE": str(bot.get("leverage") or 1.0),
+            "LIVE_AGENT_LEVERAGE": str(bot.get("leverage") or 5),
             "LIVE_AGENT_API_KEY": key["api_key"],
             "LIVE_AGENT_PROVIDER": key["provider"],
             "LIVE_AGENT_BASE_URL": key.get("base_url") or "",
