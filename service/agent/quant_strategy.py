@@ -336,8 +336,12 @@ def build_scenarios(symbol: str, closes: list[float], current_price: float,
 
 
 def scenario_matrix(closes_by_symbol: dict, prices: dict,
-                    stop_pct: float = STOP_PCT, take_pct: float = TAKE_PCT) -> list[TradeScenario]:
-    """Build the full long/short scenario matrix across the universe."""
+                    stop_pct: float | None = None, take_pct: float | None = None) -> list[TradeScenario]:
+    """Build the full long/short scenario matrix across the universe.
+
+    stop_pct/take_pct default to None -> volatility-based reachable levels
+    (see build_scenarios). Pass explicit values only to override.
+    """
     out = []
     for symbol, closes in closes_by_symbol.items():
         px = prices.get(symbol, 0)
