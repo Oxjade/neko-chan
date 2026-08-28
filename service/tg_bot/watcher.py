@@ -293,10 +293,38 @@ class Watcher:
 
     # ------------------------------------------------------------ live position alerts
 
-    # P&L alert thresholds (% move from entry). At each level a notification
-    # fires ONCE per position per level (dedup), showing USD + % and offering a
-    # take-profit button. Negative levels warn, positive levels celebrate.
-    PNL_ALERT_LEVELS = (-3.0, -1.0, 1.0, 2.0, 3.0, 5.0)
+    # Money-based P&L alert levels - NOT hardcoded percentages. A fixed % is
+    # wrong because it ignores position size: +1% on $500 is $5 (noise), on
+    # $30k it's $300 (worth alerting). Instead we alert on the actual USD
+    # profit crossed, stepping up in value, and warn at a USD loss threshold.
+    # Levels scale with the position's notional so small book = tighter alerts,
+    # big book = bigger-money alerts.
+    PNL_ALERT_USD_STEP = 25.0        # alert every +$25 of profit
+    PNL_ALERT_USD_CAP = 1000.0       # stop stepping past $1000 (no spam)
+    PNL_ALERT_USD_MIN = 15.0         # don't alert below $15 (fee/noise floor)
+    PNL_LOSS_WARN_USD = -15.0        # warn when a position is -$15
+    PNL_LOSS_WARN_USD_HARD = -100.0  # louder warning at -$100
+
+    def _pnl_alert_levels(self, notional_usd: float) -> list[float]:
+        """USD alert levels for a position, derived from its size.
+
+        The step scales with notional so alerts mean the same 'weight' whether
+        the book is $1k or $30k: step = max(15, notional x 0.5%). Levels are
+        round dollar marks of profit plus the two loss warnings. Capped at ~10
+        profit levels so a small position doesn't spam.
+        """
+        levels = [self.PNL_LOSS_WARN_USD_HARD, self.PNL_LOSS_WARN_USD]
+        if notional_usd <= 0:
+            return levels
+        step = max(self.PNL_ALERT_USD_MIN, notional_usd * 0.005)  # 0.5% of position
+        step = min(step, self.PNL_ALERT_USD_STEP * 4)             # cap the step
+        pnl = step
+        count = 0
+        while pnl <= self.PNL_ALERT_USD_CAP and count < 10:
+            levels.append(round(pnl, 2))
+            pnl += step
+            count += 1
+        return levels
 
     def _positions(self) -> list[dict]:
         try:
@@ -314,13 +342,11 @@ class Watcher:
     def _check_positions(self) -> None:
         """Push live per-position P&L alerts + take-profit prompt.
 
-        For each open position, when its P&L crosses one of the alert levels
-        (e.g. +1%, +2%, +3%, -1%, -3%), notify the user with:
-          - USD profit/loss
-          - % move
-          - a 'Take Profit' button (offered on positive alerts)
-        Each (symbol, level) alerts once. Exits/closes are handled by the
-        signals watcher (K_CLOSE) - this only surfaces live moves.
+        Alerts fire on USD profit/loss crossed, NOT fixed percentages - the
+        levels adapt to each position's notional (see _pnl_alert_levels), so a
+        $25 profit on a small position alerts the same as a big profit on a big
+        position. Each (symbol, level) alerts once. Exits/closes are handled by
+        the signals watcher (K_CLOSE) - this only surfaces live moves.
         """
         try:
             for p in self._positions():
@@ -328,32 +354,34 @@ class Watcher:
                 qty = float(p.get("quantity") or 0)
                 entry = float(p.get("entry_price") or 0)
                 cur = float(p.get("current_price") or entry)
-                if symbol and entry > 0 and cur > 0:
-                    pnl_pct = (cur / entry - 1.0) * 100.0 * (1 if qty >= 0 else -1)
-                    pnl_usd = (cur - entry) * (qty if qty >= 0 else -qty)
-                    sent = self._sent_position_alerts.setdefault(symbol, set())
-                    for level in self.PNL_ALERT_LEVELS:
-                        crossed = (pnl_pct >= level if level > 0 else pnl_pct <= level)
-                        key = f"{level:+}"
-                        if crossed and key not in sent:
-                            sent.add(key)
-                            sign = "📈" if pnl_usd >= 0 else "📉"
-                            verb = "TAKE PROFIT" if pnl_usd >= 0 else "ALERT"
-                            text = (f"{sign} <b>{verb}: {symbol}</b>\n"
-                                    f"• P&L: <b>${pnl_usd:+,.2f}</b> ({pnl_pct:+.2f}%)\n"
-                                    f"• Entry ${entry:,.4f} → Now ${cur:,.4f}\n"
-                                    f"• Qty: {abs(qty):.4f}")
-                            buttons = None
-                            if pnl_usd >= 0:
-                                buttons = [[
-                                    ("✅ Take Profit", f"sb:close:{symbol}"),
-                                    ("📊 Dashboard", "sb:dash"),
-                                ]]
-                            self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
-                                               self.chat_id, "watcher_pnl",
-                                               f"{symbol}:{key}", text,
-                                               buttons=buttons, dedup=True)
-                            log.info("[push] pnl alert %s %s (%.2f%%)", symbol, key, pnl_pct)
+                if not symbol or entry <= 0 or cur <= 0:
+                    continue
+                pnl_pct = (cur / entry - 1.0) * 100.0 * (1 if qty >= 0 else -1)
+                pnl_usd = (cur - entry) * (qty if qty >= 0 else -qty)
+                notional = abs(qty) * entry
+                sent = self._sent_position_alerts.setdefault(symbol, set())
+                for level in self._pnl_alert_levels(notional):
+                    crossed = (pnl_usd >= level if level >= 0 else pnl_usd <= level)
+                    key = f"${level:+.0f}"
+                    if crossed and key not in sent:
+                        sent.add(key)
+                        sign = "📈" if pnl_usd >= 0 else "📉"
+                        verb = "TAKE PROFIT" if pnl_usd >= 0 else "ALERT"
+                        text = (f"{sign} <b>{verb}: {symbol}</b>\n"
+                                f"• P&L: <b>${pnl_usd:+,.2f}</b> ({pnl_pct:+.2f}%)\n"
+                                f"• Entry ${entry:,.4f} → Now ${cur:,.4f}\n"
+                                f"• Qty: {abs(qty):.4f}")
+                        buttons = None
+                        if pnl_usd >= 0:
+                            buttons = [[
+                                ("✅ Take Profit", f"sb:close:{symbol}"),
+                                ("📊 Dashboard", "sb:dash"),
+                            ]]
+                        self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
+                                           self.chat_id, "watcher_pnl",
+                                           f"{symbol}:{key}", text,
+                                           buttons=buttons, dedup=True)
+                        log.info("[push] pnl alert %s %s (%.2f%%)", symbol, key, pnl_pct)
         except Exception as exc:
             log.warning("[watcher] position check error: %s", exc)
 
