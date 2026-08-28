@@ -68,6 +68,16 @@ class VenueRouter:
             return {"ok": False, "order_id": None, "status": "rejected",
                     "error": f"no wallet for bot {bot_id} on {chain}", "fee": 0.0}
 
+        # FAULT TOLERANCE: pull the freshest on-chain state BEFORE the risk
+        # check. If we skip this, chain_state is empty on the first order and
+        # the exposure cap sees $0 balance -> every order is rejected. Sync is
+        # best-effort; if the fetcher fails we still proceed with what we have.
+        try:
+            if self.sync is not None:
+                self.sync.sync(bot_id, chain)
+        except Exception as exc:
+            log.warning("[router] pre-risk sync failed bot=%s chain=%s: %s", bot_id, chain, exc)
+
         state = self._wallet_state(bot_id, chain, wallet, intent.symbol)
         violations = self.risk_guard.check(bot_id, intent, ref_price, state)
         if violations:

@@ -502,7 +502,9 @@ def _provider_completion(system: str, user: str) -> dict:
         "temperature": 0.2,
     }
     if int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0")) > 0:
-        body["max_tokens"] = int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0"))
+        # Clamp to the provider's accepted range (observed InvalidParameter
+        # error when >393216 on deepseek-v4-flash via b.ai gateway).
+        body["max_tokens"] = min(int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0")), 393216)
     try:
         resp = _requests.post(url, headers=headers, json=body, timeout=300)
         if resp.status_code != 200:

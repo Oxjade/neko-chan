@@ -279,10 +279,6 @@ class ExecGateway:
         ks = KillSwitch(rg, ledger)
         register_chain_hooks(ks, adapters)
 
-        router = VenueRouter(ledger, rg, ks)
-        for chain, adapter in adapters.items():
-            router.register_adapter(chain, adapter)
-
         sync = SyncEngine(ledger)
         chain_fetchers = {
             "hyperliquid": _hl_fetcher(adapters.get("hyperliquid")),
@@ -292,6 +288,10 @@ class ExecGateway:
         for chain, fetcher in chain_fetchers.items():
             if fetcher:
                 sync.register_fetcher(chain, fetcher)
+
+        router = VenueRouter(ledger, rg, ks, sync_engine=sync)
+        for chain, adapter in adapters.items():
+            router.register_adapter(chain, adapter)
 
         dw = DepositWatch(ledger)
         if "solana" in adapters:

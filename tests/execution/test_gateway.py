@@ -67,6 +67,12 @@ def test_gateway_wires_full_stack(monkeypatch, tmp_path):
     assert set(g.sync_engine.fetchers.keys()) == {"hyperliquid", "solana", "sui"}
     assert g.deposit_watch is not None
     assert set(g.deposit_watch._checkers.keys()) == {"solana", "sui"}
+    # The router MUST share the wired sync engine (with fetchers). A router
+    # with its own fallback SyncEngine(ledger) has zero fetchers, so the
+    # pre-risk sync is a no-op and the exposure cap sees $0 -> every order
+    # gets rejected. This was the "exposure $78 > 30% of $0" bug.
+    assert g.router.sync is g.sync_engine
+    assert set(g.router.sync.fetchers.keys()) == {"hyperliquid", "solana", "sui"}
 
 
 def test_gateway_provisions_wallets(monkeypatch, tmp_path):
