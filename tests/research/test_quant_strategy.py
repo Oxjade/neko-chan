@@ -218,3 +218,77 @@ def test_sentiment_adjust_applied_in_momentum_decision():
     assert d.action == "buy"
     assert d.stop_pct < 8.0
     assert d.take_pct < 24.0
+
+
+# ---------------- scenario engine (GBM barrier math) ----------------
+
+from quant_strategy import (
+    build_scenarios, scenario_matrix, pick_best_scenario,
+    barrier_win_prob, estimate_drift_vol, TradeScenario,
+)
+
+
+def test_barrier_prob_flat_is_distance_odds():
+    # no drift -> P(win) = stop_dist / (stop_dist + target_dist) = 1/4 for 1:3
+    p = barrier_win_prob(100.0, 124.0, 92.0, 0.0, 0.5)
+    assert 0.22 < p < 0.30
+
+
+def test_barrier_prob_uptrend_prefers_long():
+    # positive drift -> long P(win) high, short P(win) low
+    p_long = barrier_win_prob(100.0, 124.0, 92.0, 3.0, 0.5)
+    p_short = barrier_win_prob(100.0, 76.0, 108.0, 3.0, 0.5)
+    assert p_long > 0.6
+    assert p_short < 0.4
+
+
+def test_barrier_prob_downtrend_prefers_short():
+    p_long = barrier_win_prob(100.0, 124.0, 92.0, -3.0, 0.5)
+    p_short = barrier_win_prob(100.0, 76.0, 108.0, -3.0, 0.5)
+    assert p_short > 0.6
+    assert p_long < 0.4
+
+
+def test_barrier_prob_is_bounded():
+    for drift in (-5.0, -1.0, 0.0, 1.0, 5.0):
+        for target, stop in [(124, 92), (76, 108)]:
+            p = barrier_win_prob(100.0, float(target), float(stop), drift, 0.5)
+            assert 0.05 <= p <= 0.75
+
+
+def test_build_scenarios_returns_long_and_short():
+    up = _uptrend_closes()
+    sc = build_scenarios("BTC", up, 120.0)
+    assert len(sc) == 2
+    dirs = {s.direction for s in sc}
+    assert dirs == {"long", "short"}
+    for s in sc:
+        assert s.R == 3.0
+        assert 0.05 <= s.p_win <= 0.75
+        assert s.ev == pytest.approx(s.p_win * s.R - (1 - s.p_win))
+
+
+def test_scenario_matrix_and_best_pick():
+    closes = {"BTC": _uptrend_closes(), "ETH": _uptrend_closes()}
+    prices = {"BTC": 120.0, "ETH": 100.0}
+    matrix = scenario_matrix(closes, prices)
+    assert len(matrix) == 4  # 2 symbols x (long+short)
+    best = pick_best_scenario(matrix, has_long={}, has_short={})
+    assert best is not None
+    assert best.ev > 0
+    # best should be a LONG in the uptrend (not short)
+    assert best.direction == "long"
+
+
+def test_pick_best_scenario_respects_existing_position():
+    closes = {"BTC": _uptrend_closes(), "ETH": _uptrend_closes()}
+    prices = {"BTC": 120.0, "ETH": 100.0}
+    matrix = scenario_matrix(closes, prices)
+    # already long BTC -> should not pick the BTC long again
+    best = pick_best_scenario(matrix, has_long={"BTC": True}, has_short={})
+    assert best is not None
+    assert not (best.symbol == "BTC" and best.direction == "long")
+    # if nothing actionable, returns None
+    none = pick_best_scenario(matrix, has_long={"BTC": True, "ETH": True},
+                              has_short={"BTC": True, "ETH": True})
+    assert none is None

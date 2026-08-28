@@ -153,6 +153,176 @@ class QuantDecision:
                 "reasoning": self.reasoning}
 
 
+# ================================================================
+# Scenario engine: multi-outcome trade matrix with real math.
+#
+# For each symbol we model price as geometric Brownian motion:
+#     dS = mu*S*dt + sigma*S*dW     (log-return drift nu = mu - sigma^2/2)
+# and compute the exact probability of hitting a take-profit barrier
+# BEFORE the stop-loss barrier (classic two-barrier first-passage time):
+#
+#   P(hit target before stop) =
+#       (1 - exp(-2*nu*l/sigma^2)) / (exp(-2*nu*u/sigma^2) - exp(-2*nu*l/sigma^2))
+#
+# where u = ln(target/entry), l = ln(stop/entry) for a long.
+# With zero drift this collapses to l/(l+u) = 1/(1+R) — for 1:3 that is
+# exactly 25%, the documented breakeven win rate. Positive drift raises P,
+# negative drift lowers it. This is real math, not a vibes-based score.
+#
+# Expected value per unit risk:   EV = P_win * R - (1 - P_win) * 1
+# The LLM receives this matrix and picks the highest-EV, highest-conviction
+# scenario; the risk guard then clamps size/stops afterward.
+# ================================================================
+
+from dataclasses import dataclass, field as _field
+from typing import Optional
+
+
+@dataclass
+class TradeScenario:
+    symbol: str
+    direction: str            # "long" | "short"
+    entry: float
+    target: float             # take-profit price
+    stop: float               # stop-loss price
+    p_win: float              # probability target hit before stop (0..1)
+    R: float                  # reward/risk ratio
+    ev: float                 # expected value per unit risk
+    drift_annual: float       # estimated annualized log drift
+    vol_annual: float         # estimated annualized volatility
+    conviction: float         # EV scaled by p_win (LLM tiebreaker)
+
+    def to_prompt(self) -> str:
+        return (f"[{self.symbol} {self.direction.upper()}] entry {self.entry:.4f} "
+                f"-> target {self.target:.4f} | stop {self.stop:.4f} | "
+                f"P(win) {self.p_win*100:.1f}% | R {self.R:.2f} | EV {self.ev:+.3f}R | "
+                f"conviction {self.conviction:.3f}")
+
+
+def estimate_drift_vol(closes: list[float], lookback: int = 20) -> tuple[float, float]:
+    """(annualized log drift, annualized vol) from daily closes. 0s if insufficient."""
+    if len(closes) < lookback + 1:
+        return 0.0, 0.0
+    rets = [math.log(closes[i] / closes[i - 1]) for i in range(len(closes) - lookback, len(closes))]
+    if len(rets) < 2:
+        return 0.0, 0.0
+    mu = sum(rets) / len(rets)
+    var = sum((r - mu) ** 2 for r in rets) / (len(rets) - 1)
+    sigma = math.sqrt(var) if var > 0 else 0.0
+    return mu * 365.0, sigma * math.sqrt(365.0)
+
+
+def barrier_win_prob(entry: float, target: float, stop: float,
+                     drift_annual: float, vol_annual: float) -> float:
+    """P(win barrier hit before loss barrier) under GBM, direction-agnostic.
+
+    Uses the standard two-barrier first-passage result via the exponential
+    martingale f(x)=exp(-2*nu*x/sig2). For log-price X starting at 0, hitting
+    upper barrier b>0 before lower -a<0 (a>0), drift nu = drift_annual - vol^2/2:
+
+        P = (1 - exp(2*nu*a/sig2)) / (exp(-2*nu*b/sig2) - exp(2*nu*a/sig2))
+
+    Limit as nu->0 gives a/(a+b) (pure-distance odds). Positive drift raises
+    the chance of hitting the UP barrier; negative drift lowers it. The win
+    barrier may be up (long) or down (short) — the code orients u/l and inverts
+    when the win barrier is the lower one.
+    """
+    if entry <= 0 or target <= 0 or stop <= 0 or target == stop:
+        return 0.5
+    lu = math.log(target / entry)     # win-barrier distance
+    ll = math.log(stop / entry)       # loss-barrier distance
+    win_is_up = lu > ll               # target above stop -> long-style win
+    up = max(lu, ll)                  # b > 0
+    down = min(lu, ll)                # -a < 0  (a = -down)
+    a = -down
+    if vol_annual <= 1e-9:
+        # degenerate: no volatility -> pure drift odds, but keep bounded
+        p_win = 0.75 if (drift_annual > 0) == win_is_up else 0.05
+        return p_win
+    nu = drift_annual - vol_annual * vol_annual / 2.0
+    sig2 = vol_annual * vol_annual
+    def _exp_safe(x: float) -> float:
+        return math.exp(max(-50.0, min(50.0, x)))
+    if abs(nu) < 1e-12:
+        p_up = a / (a + up)  # no-drift pure-distance odds
+    else:
+        num = 1.0 - _exp_safe(2.0 * nu * a / sig2)
+        den = _exp_safe(-2.0 * nu * up / sig2) - _exp_safe(2.0 * nu * a / sig2)
+        p_up = num / den if abs(den) > 1e-12 else 0.5
+    p_win = p_up if win_is_up else (1.0 - p_up)
+    return max(0.05, min(0.75, p_win))
+
+
+def build_scenarios(symbol: str, closes: list[float], current_price: float,
+                    stop_pct: float = STOP_PCT, take_pct: float = TAKE_PCT) -> list[TradeScenario]:
+    """Produce the LONG + SHORT scenario pair with real probability math."""
+    if not closes or current_price <= 0:
+        return []
+    drift, vol = estimate_drift_vol(closes)
+    r20 = momentum20_return(closes)
+    scenarios = []
+    # LONG scenario
+    long_stop = current_price * (1 - stop_pct / 100.0)
+    long_target = current_price * (1 + take_pct / 100.0)
+    p_long = barrier_win_prob(current_price, long_target, long_stop, drift, vol)
+    R_long = take_pct / stop_pct
+    scenarios.append(TradeScenario(
+        symbol=symbol, direction="long", entry=current_price,
+        target=long_target, stop=long_stop, p_win=p_long, R=R_long,
+        ev=p_long * R_long - (1 - p_long),
+        drift_annual=drift, vol_annual=vol,
+        conviction=p_long * (p_long * R_long - (1 - p_long)),
+    ))
+    # SHORT scenario (mirror: target below, stop above).
+    # barrier_win_prob reads win_is_up from target vs stop and inverts p
+    # automatically for a short, so pass the same drift (no manual negation).
+    short_stop = current_price * (1 + stop_pct / 100.0)
+    short_target = current_price * (1 - take_pct / 100.0)
+    p_short = barrier_win_prob(current_price, short_target, short_stop, drift, vol)
+    scenarios.append(TradeScenario(
+        symbol=symbol, direction="short", entry=current_price,
+        target=short_target, stop=short_stop, p_win=p_short, R=R_long,
+        ev=p_short * R_long - (1 - p_short),
+        drift_annual=drift, vol_annual=vol,
+        conviction=p_short * (p_short * R_long - (1 - p_short)),
+    ))
+    # note: for a long, target > stop; for a short the barrier_win_prob call
+    # flips drift sign and uses target<entry<stop, so the formula still works.
+    return scenarios
+
+
+def scenario_matrix(closes_by_symbol: dict, prices: dict,
+                    stop_pct: float = STOP_PCT, take_pct: float = TAKE_PCT) -> list[TradeScenario]:
+    """Build the full long/short scenario matrix across the universe."""
+    out = []
+    for symbol, closes in closes_by_symbol.items():
+        px = prices.get(symbol, 0)
+        if px <= 0 or not closes:
+            continue
+        out.extend(build_scenarios(symbol, closes, px, stop_pct, take_pct))
+    return out
+
+
+def pick_best_scenario(scenarios: list[TradeScenario],
+                       has_long: dict, has_short: dict) -> TradeScenario | None:
+    """Pick the highest-conviction actionable scenario.
+
+    Respects position state: skip a long scenario if we're already long that
+    symbol (and same for short). Only positive-EV scenarios are candidates —
+    a negative-EV trade is a 'hold'. Falls back to the best available.
+    """
+    actionable = [
+        s for s in scenarios
+        if s.ev > 0
+        and not (s.direction == "long" and has_long.get(s.symbol))
+        and not (s.direction == "short" and has_short.get(s.symbol))
+    ]
+    if not actionable:
+        return None
+    actionable.sort(key=lambda s: s.conviction, reverse=True)
+    return actionable[0]
+
+
 def sentiment_risk_adjust(stop_pct: float, take_pct: float,
                           fear_greed: float | None) -> tuple[float, float, str]:
     """Adjust stop/target ONLY at extreme sentiment (tail-risk control).

@@ -886,30 +886,19 @@ def run_cycle(token: str, dry: bool = False) -> None:
         return
 
     if STRATEGY == "momentum20":
-        # HYBRID: the quant engine computes the risk-validated base signal
-        # (20d momentum, 1% risk sizing, vol-adaptive take, trailing stop), then
-        # the LLM — WITH THE STRATEGY SKILLS LOADED — reviews the full picture
-        # (market data, sentiment, funding, news) and makes the final call.
-        # The LLM may confirm, or override to hold/skip; it never expands risk
-        # beyond what the quant engine already capped.
+        # AGENTIC SCENARIO DECISION: the quant engine builds a LONG/SHORT
+        # scenario matrix for every symbol — each with a real probability of
+        # success (barrier-crossing GBM), reward/risk ratio, and expected value.
+        # The LLM (with skills loaded) reads the full matrix + market context,
+        # does the math compilation, and picks the highest-conviction scenario.
+        # Risk guards clamp the chosen trade AFTER the LLM decides.
         try:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from quant_strategy import scan_momentum_book, pick_decision, trail_check
+            from quant_strategy import (
+                scenario_matrix, pick_best_scenario, trail_check,
+            )
 
-            # Fear & Greed for the sentiment tail-risk adjuster (0-100).
-            fg_value = None
-            try:
-                from sentiment import fear_greed as _fg
-                fg_raw = _fg()
-                import re as _re
-                m = _re.search(r"(\d{1,3})", str(fg_raw))
-                fg_value = float(m.group(1)) if m else None
-            except Exception:
-                fg_value = None
-            if fg_value is not None:
-                print(f"[sentiment] Fear & Greed = {fg_value:.0f}")
-
-            decisions = scan_momentum_book(portfolio, closes_by_symbol, prices, fear_greed=fg_value)
+            # update trailing peak tracker for open longs (per symbol)
             for p in positions:
                 sym = p.get("symbol")
                 if sym and p.get("quantity", 0) > 0:
@@ -921,81 +910,111 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 if sym and p.get("quantity", 0) > 0 and _trailing_high.get(sym):
                     p["high_price"] = _trailing_high[sym]
 
-            decisions = scan_momentum_book(portfolio, closes_by_symbol, prices)
-            # trailing-stop exits take priority over new entries (lock profits)
+            # trailing-stop exits ALWAYS win (lock profits / cut losers)
             trail_exits = trail_check(positions, prices)
             if trail_exits:
                 pick = trail_exits[0]
-                decisions = trail_exits + decisions
-            else:
-                pick = pick_decision(decisions)
-            print(f"[quant] base signal: {pick.action} {pick.symbol} qty={pick.qty} :: {pick.reasoning}")
-            # ----- agentic overlay: LLM reviews with skills loaded -----
-            if pick.action in ("buy", "sell") and LIVE_AGENT_API_KEY:
-                skill_ctx = _load_skill_context()
-                candidates = [d for d in decisions if d.action == "buy"]
-                cand_txt = "; ".join(
-                    f"{d.symbol} {d.qty:.4f}u stop {d.stop_pct}% take {d.take_pct}%"
-                    for d in candidates[:5]) or "none"
-                base = pick.to_dict()
-                system = (
-                    "You are the decision layer of an automated trading agent. "
-                    "You are GIVEN a risk-validated base signal from a quant engine "
-                    "that already enforces the strategy's hard rules (position caps, "
-                    "1% risk sizing, stop-loss, vol-adaptive take-profit, trailing "
-                    "stop, no unhedged shorts). Your job is to REVIEW that signal "
-                    "against live market context and either CONFIRM it or override "
-                    "it to hold — you may NOT increase size, widen stops, or add "
-                    "positions the quant engine rejected.\n\n"
-                    "THE STRATEGY SKILLS ARE LOADED BELOW. Follow them exactly; do "
-                    "not invent rules that contradict them.\n\n"
-                    f"{skill_ctx}\n\n"
-                    "Reply with a single JSON object only:\n"
-                    '{"action":"buy|sell|hold","symbol":"<same as base>",'
-                    '"quantity":<same as base or 0 to hold>,'
-                    '"stop_loss_pct":<base stop>,"take_profit_pct":<base take>,'
-                    '"reasoning":"<1-2 sentences, cite the skill/context that '
-                    'justified your call>"}'
-                )
-                user = (
-                    f"Live decision review — {now_iso} UTC.\n"
-                    f"BASE SIGNAL (quant engine, risk-validated):\n"
-                    f"  action={base['action']} symbol={base['symbol']} "
-                    f"qty={base['quantity']:.4f} stop={base['stop_loss_pct']}% "
-                    f"take={base['take_profit_pct']}%\n"
-                    f"  quant reasoning: {base['reasoning']}\n\n"
-                    f"CANDIDATE ENTRIES: {cand_txt}\n"
-                    f"MARKET: {', '.join(price_txt)}\n"
-                    f"FUNDING: {carry_txt if carry_txt else 'none above floor'}\n"
-                    f"CASH: ${portfolio.get('cash', 0):,.2f} | EQUITY: ${eq:,.2f}\n"
-                    f"OPEN POSITIONS: {pos_txt}\n"
-                    f"TODAY: {used}/{MAX_DAILY_TRADES} trades\n"
-                    f"Confirm the base signal or hold. Do NOT exceed the base quantity."
-                )
-                llm = _provider_completion(system, user)
-                if str(llm.get("action", "")).lower() in ("buy", "sell"):
-                    # stay within quant caps: never exceed base qty (tolerance
-                    # for the LLM's decimal rounding), keep stops/targets frozen
-                    llm_qty = float(llm.get("quantity", 0) or 0)
-                    if 0 < llm_qty <= base["quantity"] * 1.001:
-                        llm["quantity"] = llm_qty
-                        llm["symbol"] = base["symbol"]
-                        llm["stop_loss_pct"] = base["stop_loss_pct"]
-                        llm["take_profit_pct"] = base["take_profit_pct"]
-                        llm["reasoning"] = f"[LLM confirmed] {llm.get('reasoning','')}"
-                        decision = llm
-                        print(f"[agent] LLM CONFIRMED {llm['action']} {llm['symbol']} qty={llm_qty:.4f}")
-                    else:
-                        print(f"[agent] LLM qty {llm_qty} out of cap -> keeping base signal")
-                        decision = base
-                else:
-                    # LLM chose hold / malformed -> respect the agent's discretion to stay out
-                    print(f"[agent] LLM override -> hold ({llm.get('reasoning','')[:100]})")
-                    decision = {"action": "hold", "symbol": base["symbol"], "quantity": 0,
-                                "stop_loss_pct": 0, "take_profit_pct": 0,
-                                "reasoning": f"[LLM override] {llm.get('reasoning','')[:200]}"}
-            else:
+                print(f"[quant] trailing-stop exit: {pick.symbol} :: {pick.reasoning}")
                 decision = pick.to_dict()
+            else:
+                # build the full scenario matrix (long + short per symbol)
+                matrix = scenario_matrix(closes_by_symbol, prices)
+                has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
+                has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
+                # top candidates the LLM will choose among (ranked by conviction)
+                actionable = sorted([s for s in matrix if s.ev > 0],
+                                    key=lambda s: s.conviction, reverse=True)
+                top = actionable[:8]
+                print(f"[quant] scenario matrix: {len(matrix)} scenarios, "
+                      f"{len(actionable)} positive-EV")
+
+                if not top:
+                    decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                "stop_loss_pct": 0, "take_profit_pct": 0,
+                                "reasoning": "scenario matrix: no positive-EV trade right now - cash"}
+                elif LIVE_AGENT_API_KEY:
+                    # LLM compiles the matrix and picks the best trade
+                    skill_ctx = _load_skill_context()
+                    matrix_txt = "\n".join(s.to_prompt() for s in top)
+                    system = (
+                        "You are the decision layer of an automated trading agent. "
+                        "You are GIVEN a scenario matrix computed with REAL "
+                        "quantitative math: for each symbol there is a LONG and a "
+                        "SHORT path, each with P(win) (the probability the take-profit "
+                        "barrier is hit before the stop-loss, from a geometric Brownian "
+                        "motion model), a reward/risk ratio R, and expected value EV "
+                        "per unit risk. Your job: DO THE MATH and pick the single "
+                        "best trade from the matrix — the one with the highest "
+                        "conviction (P(win) * EV) that is also actionable given the "
+                        "positions you already hold. This is not a vibe — use the "
+                        "numbers.\n\n"
+                        "THE STRATEGY SKILLS ARE LOADED BELOW. Follow them exactly; "
+                        "do not invent rules that contradict them.\n\n"
+                        f"{skill_ctx}\n\n"
+                        "Reply with a single JSON object only:\n"
+                        '{"action":"buy|sell","symbol":"<SYMBOL>",'
+                        '"direction":"long|short",'
+                        '"quantity":<notional risk size in units of the symbol>,'
+                        '"stop_loss_pct":8,"take_profit_pct":24,'
+                        '"reasoning":"<2-3 sentences: cite the P(win), EV, and why '
+                        'this scenario beats the others>"}\n'
+                        "IMPORTANT: for a SHORT pick, action must be 'sell' and "
+                        "direction 'short'. quantity = dollars-at-risk / entry price, "
+                        "where dollars-at-risk is ~1% of equity. The system will "
+                        "clamp your size and stops afterward — stay conservative."
+                    )
+                    user = (
+                        f"Scenario decision — {now_iso} UTC.\n"
+                        f"SCENARIO MATRIX (ranked by conviction):\n{matrix_txt}\n\n"
+                        f"MARKET: {', '.join(price_txt)}\n"
+                        f"FUNDING: {carry_txt if carry_txt else 'none above floor'}\n"
+                        f"CASH: ${portfolio.get('cash', 0):,.2f} | EQUITY: ${eq:,.2f}\n"
+                        f"OPEN POSITIONS: {pos_txt}\n"
+                        f"TODAY: {used}/{MAX_DAILY_TRADES} trades\n"
+                        f"Pick the best positive-EV scenario. A short is allowed if "
+                        f"its P(win) is genuinely the best. Do not overtrade."
+                    )
+                    llm = _provider_completion(system, user)
+                    llm_action = str(llm.get("action", "")).lower()
+                    llm_dir = str(llm.get("direction", "")).lower()
+                    llm_sym = str(llm.get("symbol", "")).upper()
+                    if llm_action in ("buy", "sell") and llm_sym:
+                        # risk-clamp: never exceed 1% risk / 8% stop / 24% take
+                        qty = float(llm.get("quantity", 0) or 0)
+                        if qty > 0 and llm_sym in prices:
+                            max_qty = (eq * 1.0 / 100.0) / prices[llm_sym]
+                            qty = min(qty, max_qty)
+                        decision = {
+                            "action": llm_action,
+                            "symbol": llm_sym,
+                            "quantity": qty if qty > 0 else 0,
+                            "stop_loss_pct": 8.0,
+                            "take_profit_pct": 24.0,
+                            "reasoning": f"[LLM scenario pick] {llm.get('reasoning','')[:240]}",
+                        }
+                        print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
+                              f"qty={qty:.4f} :: {llm.get('reasoning','')[:80]}")
+                    else:
+                        print(f"[agent] LLM chose no trade ({llm.get('reasoning','')[:100]})")
+                        decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                    "stop_loss_pct": 0, "take_profit_pct": 0,
+                                    "reasoning": f"[LLM] {llm.get('reasoning','')[:200]}"}
+                else:
+                    # no LLM key -> fall back to the math's best scenario
+                    best = pick_best_scenario(matrix, has_long, has_short)
+                    if best is None:
+                        decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                    "stop_loss_pct": 0, "take_profit_pct": 0,
+                                    "reasoning": "best scenario has non-positive EV - cash"}
+                    else:
+                        side = "buy" if best.direction == "long" else "sell"
+                        max_qty = (eq * 1.0 / 100.0) / best.entry
+                        decision = {"action": side, "symbol": best.symbol,
+                                    "quantity": max_qty,
+                                    "stop_loss_pct": 8.0,
+                                    "take_profit_pct": 24.0,
+                                    "reasoning": f"[quant] best scenario {best.direction} "
+                                                 f"{best.symbol} EV={best.ev:+.2f}R"}
         except Exception as exc:
             print(f"[quant] engine failed, holding: {exc}")
             decision = {"action": "hold", "symbol": "", "quantity": 0,
