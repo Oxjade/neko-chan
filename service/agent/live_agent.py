@@ -707,15 +707,32 @@ def humanize_error(raw: str, max_len: int = 300) -> str:
     return f"⚠️ {raw}"
 
 
-def notify_error(message: str) -> None:
-    """Push one human-friendly error to the user's bot chat (best-effort)."""
+def notify_error(message: str, kind: str = "error") -> None:
+    """Push one human-friendly message to the user's bot chat (best-effort).
+
+    kind: 'error' | 'rate_limit' | 'llm' | 'venue' - picks the right copy so
+    the user knows exactly what's happening (AI key rate-limited vs venue
+    down vs a trade rejected).
+    """
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         return
+    text = humanize_error(message)
+    if kind == "rate_limit":
+        text = ("⏳ <b>Your AI key hit a rate limit</b>\n\n"
+                "The model provider is limiting requests (free-tier daily cap "
+                "or too many calls). Your bot is holding — it will keep running "
+                "on the quantitative engine until the limit resets.\n\n"
+                "• Free tier: daily cap resets at midnight UTC\n"
+                "• Add credits / switch models to lift the cap")
+    elif kind == "llm":
+        text = (f"🧠 <b>AI model hiccup</b>\n\n{humanize_error(message)}\n\n"
+                "Your bot stays safe — it falls back to the quant engine and "
+                "keeps trading. No fake trades.")
     try:
         import requests as _r
         _r.post(
             f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
-            json={"chat_id": TG_CHAT_ID, "text": humanize_error(message)},
+            json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "HTML"},
             timeout=15,
         )
     except Exception:
@@ -1024,10 +1041,17 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         f"its P(win) is genuinely the best. Do not overtrade."
                     )
                     llm = _provider_completion(system, user)
+                    llm_reasoning = str(llm.get("reasoning", ""))
+                    # Notify the user about AI-key issues (rate limit, errors)
+                    if "llm-http-429" in llm_reasoning:
+                        notify_error(llm_reasoning, kind="rate_limit")
+                        print("[agent] AI key rate-limited -> falling back to quant engine")
+                    elif llm_reasoning.startswith("llm-") or llm_reasoning.startswith("parse-failed"):
+                        notify_error(llm_reasoning, kind="llm")
                     llm_action = str(llm.get("action", "")).lower()
                     llm_dir = str(llm.get("direction", "")).lower()
                     llm_sym = str(llm.get("symbol", "")).upper()
-                    if llm_action in ("buy", "sell") and llm_sym:
+                    if llm_action in ("buy", "sell") and llm_sym and llm_action != "":
                         # risk-clamp: never exceed 1% risk; stop/target come from
                         # the chosen scenario's REAL volatility-based levels.
                         # Correct retail sizing: risk$ = 1% of equity, and the
@@ -1043,7 +1067,6 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
                                 if _last_scenario is not None else 0.3
                             risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                            # cap at 30% of equity (position limit)
                             cap_notional = eq * 0.30
                             max_qty = min(risk_notional, cap_notional) / prices[llm_sym]
                             qty = min(qty, max_qty)
@@ -1058,16 +1081,30 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             "quantity": qty if qty > 0 else 0,
                             "stop_loss_pct": round(stop_pct, 2),
                             "take_profit_pct": round(take_pct, 2),
-                            "reasoning": f"[LLM scenario pick] {llm.get('reasoning','')[:240]}",
+                            "reasoning": f"[LLM scenario pick] {llm_reasoning[:240]}",
                         }
                         print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
                               f"qty={qty:.4f} stop={stop_pct:.1f}% take={take_pct:.1f}% "
-                              f":: {llm.get('reasoning','')[:60]}")
+                              f":: {llm_reasoning[:60]}")
                     else:
-                        print(f"[agent] LLM chose no trade ({llm.get('reasoning','')[:100]})")
-                        decision = {"action": "hold", "symbol": "", "quantity": 0,
-                                    "stop_loss_pct": 0, "take_profit_pct": 0,
-                                    "reasoning": f"[LLM] {llm.get('reasoning','')[:200]}"}
+                        # LLM is the decision layer. If it failed (rate-limited,
+                        # network, parse) or chose hold, the bot HALTS new entries
+                        # - it does NOT silently fall back to trading on its own.
+                        # Capital preservation: no new positions without the AI
+                        # decision layer. Exits still run (they protect capital).
+                        if llm_reasoning.startswith("llm-http-429"):
+                            decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                        "stop_loss_pct": 0, "take_profit_pct": 0,
+                                        "reasoning": "AI key rate-limited - trading HALTED until refilled"}
+                        elif llm_reasoning.startswith("llm-") or llm_reasoning.startswith("parse-failed"):
+                            decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                        "stop_loss_pct": 0, "take_profit_pct": 0,
+                                        "reasoning": f"AI model error - holding ({llm_reasoning[:100]})"}
+                        else:
+                            print(f"[agent] LLM chose no trade ({llm_reasoning[:100]})")
+                            decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                        "stop_loss_pct": 0, "take_profit_pct": 0,
+                                        "reasoning": f"[LLM] {llm_reasoning[:200]}"}
                         _last_scenario = None
                 else:
                     # no LLM key -> fall back to the math's best scenario
@@ -1081,7 +1118,6 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         side = "buy" if best.direction == "long" else "sell"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
-                        # correct retail sizing: risk$ = 1% equity / stop%, capped at 30% notional
                         risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
                         cap_notional = eq * 0.30
                         max_qty = min(risk_notional, cap_notional) / best.entry
