@@ -526,7 +526,7 @@ class UserBotController:
                 [telegram.InlineKeyboardButton("🏦 Live Markets", callback_data="sb:live"),
                  telegram.InlineKeyboardButton("📡 Trades", callback_data="sb:trades")],
                 [telegram.InlineKeyboardButton("💼 Wallet", callback_data="sb:wallet"),
-                 telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="sb:lb")],
+                 telegram.InlineKeyboardButton("📈 Stocks", callback_data="sb:stocks")],
                 [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
                  telegram.InlineKeyboardButton("📬 Inbox", callback_data="sb:inbox")],
                 [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help"),
@@ -613,9 +613,27 @@ class UserBotController:
                 except Exception:
                     lines.append(f"{icon} {sym}  (market closed / unavailable)")
             lines.append("\n[↻ Now] refreshes live prices.")
+            if markets.get("us-stock") or markets.get("forex"):
+                lines.append(f"\n{USERBOT['release_live']}")
             await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("↻ Now", callback_data="sb:live")],
                  [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
+        async def stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            lines = [
+                "📈 US Stocks\n",
+                "AAPL · NVDA · SPY\n",
+                "\n",
+                f"{USERBOT['release_live']}\n",
+                "\nNeko-Chan is working on Solana xStocks integration. "
+                "When the code is live, you'll be able to trade tokenized "
+                "US stocks (AAPL, NVDA, SPY) 24/7 with leverage.",
+            ]
+            await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                  telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def trades(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1105,6 +1123,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))
         app.add_handler(CallbackQueryHandler(live_markets, pattern=r"^sb:live$"))
+        app.add_handler(CallbackQueryHandler(stocks, pattern=r"^sb:stocks$"))
         app.add_handler(CallbackQueryHandler(trades, pattern=r"^sb:trades$"))
         app.add_handler(CallbackQueryHandler(leaderboard, pattern=r"^sb:lb$"))
         app.add_handler(CallbackQueryHandler(bot_controls, pattern=r"^sb:(pause|resume|pause_yes|delete|delete_yes)$"))

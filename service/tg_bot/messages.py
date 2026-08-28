@@ -185,6 +185,9 @@ USERBOT = {
                            "when the operator activates execution."),
     "real_badge": "🔐 LIVE",
     "paper_badge": "🧪 SIM",
+    # Release status: Sui (Bluefin perps) is live; every other chain/instrument
+    # carries this until it is validated and released slowly.
+    "release_live": "🟢 code is live, Neko is working hard to make it better for you 🐾",
 }
 
 NOTIF = {

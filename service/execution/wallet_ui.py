@@ -5,6 +5,12 @@ from exec_vault import ExecVault
 
 CHAIN_LABELS = {"hyperliquid": "🔗 Hyperliquid", "solana": "🔗 Solana", "sui": "🔗 Sui"}
 
+# Release plan: Sui (Bluefin perps) is live now; every other chain carries the
+# "code is live, Neko is working hard to make it better for you" status until
+# it is fully validated and released slowly.
+LIVE_CHAINS = {"sui"}
+COMING_SOON_MSG = "code is live, Neko is working hard to make it better for you 🐾"
+
 
 def render_wallet_panel(bots: list[dict], wallets: dict, chain_state: dict) -> str:
     """bots: [{id, bot_name, paused}], wallets: {chain: wallet-row},
@@ -13,6 +19,10 @@ def render_wallet_panel(bots: list[dict], wallets: dict, chain_state: dict) -> s
     parts = ["<b>💼 Wallet — Neko Real Trading</b>", f"<code>{line}</code>"]
     for chain, label in CHAIN_LABELS.items():
         w = wallets.get(chain)
+        if chain not in LIVE_CHAINS:
+            parts.append(f"{label} · 🟢 code is live")
+            parts.append(f"    {COMING_SOON_MSG}")
+            continue
         if not w:
             parts.append(f"{label} · ⚪ NOT CONNECTED")
             parts.append("[connect via Bot Settings]")
@@ -31,7 +41,7 @@ def render_wallet_panel(bots: list[dict], wallets: dict, chain_state: dict) -> s
             f"    USDC <code>${usdc:,.2f}</code> · native {native:,.4f} · {npos} open"
         )
     parts.append(f"<code>{line}</code>")
-    parts.append("💱 Forex on all chains — COMING SOON 🔜")
+    parts.append("💱 Forex — coming soon 🔜")
     return "\n".join(parts)
 
 

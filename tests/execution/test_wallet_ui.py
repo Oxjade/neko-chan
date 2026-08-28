@@ -10,19 +10,22 @@ from wallet_ui import render_wallet_panel, render_killswitch_line
 
 def test_panel_shows_connected_chain_masked(env=None):
     bots = [{"id": 1, "bot_name": "Whale", "paused": 0}]
-    wallets = {"solana": {"address": "8xZqKjL2pAbCdEfGh1234567890abcdef", "status": "active"}}
-    state = {"solana": {"balances": {"USDC": 412.50, "native": 0.02}, "positions": [{"symbol": "SOL"}]}}
+    wallets = {"sui": {"address": "0x8zqKjL2pAbCdEfGh1234567890abcdef1234567890", "status": "active"}}
+    state = {"sui": {"balances": {"USDC": 412.50, "native": 0.02}, "positions": [{"symbol": "SUI"}]}}
     text = render_wallet_panel(bots, wallets, state)
     # masked, never full address
-    assert "8xZq…" in text or "8xZqKj…" in text
-    assert "8xZqKjL2pAbCdEfGh1234567890abcdef" not in text
+    assert "0x8zqK…" in text
+    assert "0x8zqKjL2pAbCdEfGh1234567890abcdef1234567890" not in text
     assert "$412.50" in text and "1 open" in text
+    # non-live chains carry the release message
+    assert "code is live" in text
 
 
 def test_panel_shows_not_connected_and_coming_soon(env=None):
     text = render_wallet_panel([], {}, {})
+    assert "code is live" in text
+    assert "Neko is working hard" in text
     assert "NOT CONNECTED" in text
-    assert "COMING SOON" in text
     assert "Hyperliquid" in text and "Sui" in text and "Solana" in text
 
 

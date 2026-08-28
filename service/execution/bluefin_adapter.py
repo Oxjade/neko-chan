@@ -205,7 +205,46 @@ class BluefinAdapter:
     # ---------------------------------------------------------------- market
 
     def market(self, symbol: str) -> str | None:
-        return MARKET_SYMBOLS.get((symbol or "").upper())
+        sym = (symbol or "").upper()
+        mapped = MARKET_SYMBOLS.get(sym)
+        if mapped:
+            return mapped
+        # Fall back to the live listing: any base symbol Bluefin lists becomes
+        # tradable even if it is not in the static map.
+        listed = self.markets()
+        if sym in listed:
+            return f"{sym}-PERP"
+        return None
+
+    def markets(self) -> list[str]:
+        """All tradable perp base symbols (long + short) offered by Bluefin.
+
+        Prefers the live /exchangeInfo listing; falls back to the static
+        MARKET_SYMBOLS map when the API is unreachable (offline/test). Each
+        entry is the base symbol, e.g. 'BTC' for 'BTC-PERP'."""
+        cached = getattr(self, "_markets_cache", None)
+        if cached:
+            return list(cached)
+        try:
+            resp = self._req("GET", "/exchangeInfo", public=True)
+            rows = resp.get("data") if isinstance(resp.get("data"), list) else None
+            if rows is None:
+                rows = resp.get("data", {}).get("symbols") if isinstance(resp.get("data"), dict) else None
+            out = []
+            if isinstance(rows, list):
+                for r in rows:
+                    sym = str(r.get("symbol") or r.get("name") or "")
+                    if sym.endswith("-PERP"):
+                        base = sym[: -len("-PERP")]
+                        if base:
+                            out.append(base.upper())
+            if out:
+                self._markets_cache = sorted(set(out))
+                return self._markets_cache
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[bluefin] exchangeInfo failed (%s); using static map", exc)
+        self._markets_cache = sorted({v.split("-")[0].upper() for v in MARKET_SYMBOLS.values()})
+        return list(self._markets_cache)
 
     def price(self, symbol: str, ref_price: float) -> int:
         """Bluefin expects u64 prices scaled by 1e6."""

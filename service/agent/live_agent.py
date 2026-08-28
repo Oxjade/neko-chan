@@ -642,12 +642,42 @@ def _get_exec_gateway():
                 gw.provision_all_wallets(EXEC_BOT_ID)
                 print(f"[exec] gateway ready: chains={list(gw.adapters.keys())}")
                 _exec_gateway = gw
+                _expand_universe_from_gateway(gw)
             else:
                 print("[exec] LIVE_AGENT_EXECUTION=1 but gateway not ready (keys not configured) - staying paper")
         except Exception as exc:
             print(f"[exec] gateway init failed (staying paper): {exc}")
             _exec_gateway = None
     return _exec_gateway
+
+
+def _expand_universe_from_gateway(gw) -> None:
+    """When the active perp venue is Sui/Bluefin, add every token Bluefin
+    offers (long + short) to the trading universe so the agent can trade them.
+    Best-effort: any failure leaves the configured universe untouched."""
+    try:
+        if "sui" not in gw.adapters:
+            return
+        bluefin = getattr(gw.adapters["sui"], "bluefin", None)
+        if bluefin is None:
+            return
+        # Only override when the user has not pinned an explicit perp universe.
+        pinned = [s for s, m in UNIVERSE if m == "crypto"]
+        if pinned:
+            return
+        listed = bluefin.markets()
+        current = {s.upper() for s, _ in UNIVERSE}
+        added = 0
+        for sym in listed:
+            if sym not in current:
+                UNIVERSE.append((sym, "crypto"))
+                current.add(sym)
+                added += 1
+        if added:
+            print(f"[exec] universe expanded with {added} Bluefin perp markets "
+                  f"({len(UNIVERSE)} total)")
+    except Exception as exc:
+        print(f"[exec] universe expansion skipped: {exc}")
 
 
 def _resolve_real_venue(symbol: str, market: str, gw) -> tuple[str, str] | None:
