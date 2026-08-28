@@ -1031,7 +1031,9 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
                                 if _last_scenario is not None else 0.3
                             risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                            max_qty = risk_notional / prices[llm_sym]
+                            # cap at 30% of equity (position limit)
+                            cap_notional = eq * 0.30
+                            max_qty = min(risk_notional, cap_notional) / prices[llm_sym]
                             qty = min(qty, max_qty)
                         if _last_scenario is not None:
                             stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
@@ -1067,9 +1069,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         side = "buy" if best.direction == "long" else "sell"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
-                        # correct retail sizing: risk$ = 1% equity / stop%
+                        # correct retail sizing: risk$ = 1% equity / stop%, capped at 30% notional
                         risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                        max_qty = risk_notional / best.entry
+                        cap_notional = eq * 0.30
+                        max_qty = min(risk_notional, cap_notional) / best.entry
                         decision = {"action": side, "symbol": best.symbol,
                                     "quantity": max_qty,
                                     "stop_loss_pct": round(stop_pct, 2),
