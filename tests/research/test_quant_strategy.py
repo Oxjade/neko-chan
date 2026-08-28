@@ -263,9 +263,14 @@ def test_build_scenarios_returns_long_and_short():
     dirs = {s.direction for s in sc}
     assert dirs == {"long", "short"}
     for s in sc:
-        assert s.R == 3.0
+        assert s.R >= 1.3  # vol-based target keeps reward/risk >= 1.3:1
         assert 0.05 <= s.p_win <= 0.75
         assert s.ev == pytest.approx(s.p_win * s.R - (1 - s.p_win))
+        # reachable levels: stop/target must be within sane bounds, not 24% fantasy
+        stop_pct = abs(s.entry - s.stop) / s.entry * 100
+        take_pct = abs(s.target - s.entry) / s.entry * 100
+        assert 1.0 <= stop_pct <= 6.5
+        assert 2.0 <= take_pct <= 11.0
 
 
 def test_scenario_matrix_and_best_pick():

@@ -984,13 +984,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         '{"action":"buy|sell","symbol":"<SYMBOL>",'
                         '"direction":"long|short",'
                         '"quantity":<notional risk size in units of the symbol>,'
-                        '"stop_loss_pct":8,"take_profit_pct":24,'
                         '"reasoning":"<2-3 sentences: cite the P(win), EV, and why '
                         'this scenario beats the others>"}\n'
-                        "IMPORTANT: for a SHORT pick, action must be 'sell' and "
-                        "direction 'short'. quantity = dollars-at-risk / entry price, "
+                        "IMPORTANT: stop and take are already set per scenario. "
+                        "quantity = dollars-at-risk / entry price, "
                         "where dollars-at-risk is ~1% of equity. The system will "
-                        "clamp your size and stops afterward — stay conservative."
+                        "clamp your size afterward — stay conservative."
                     )
                     user = (
                         f"Scenario decision — {now_iso} UTC.\n"
@@ -1008,27 +1007,34 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     llm_dir = str(llm.get("direction", "")).lower()
                     llm_sym = str(llm.get("symbol", "")).upper()
                     if llm_action in ("buy", "sell") and llm_sym:
-                        # risk-clamp: never exceed 1% risk / 8% stop / 24% take
+                        # risk-clamp: never exceed 1% risk; stop/target come from
+                        # the chosen scenario's REAL volatility-based levels
                         qty = float(llm.get("quantity", 0) or 0)
                         if qty > 0 and llm_sym in prices:
                             max_qty = (eq * 1.0 / 100.0) / prices[llm_sym]
                             qty = min(qty, max_qty)
-                        decision = {
-                            "action": llm_action,
-                            "symbol": llm_sym,
-                            "quantity": qty if qty > 0 else 0,
-                            "stop_loss_pct": 8.0,
-                            "take_profit_pct": 24.0,
-                            "reasoning": f"[LLM scenario pick] {llm.get('reasoning','')[:240]}",
-                        }
-                        # find the scenario the LLM chose, for prediction tracking
+                        # find the scenario the LLM chose, for levels + tracking
                         _last_scenario = None
                         for _s in top:
                             if _s.symbol == llm_sym and _s.direction == llm_dir:
                                 _last_scenario = _s
                                 break
+                        if _last_scenario is not None:
+                            stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
+                            take_pct = abs(_last_scenario.target - _last_scenario.entry) / _last_scenario.entry * 100
+                        else:
+                            stop_pct, take_pct = 8.0, 24.0  # fallback if no match
+                        decision = {
+                            "action": llm_action,
+                            "symbol": llm_sym,
+                            "quantity": qty if qty > 0 else 0,
+                            "stop_loss_pct": round(stop_pct, 2),
+                            "take_profit_pct": round(take_pct, 2),
+                            "reasoning": f"[LLM scenario pick] {llm.get('reasoning','')[:240]}",
+                        }
                         print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
-                              f"qty={qty:.4f} :: {llm.get('reasoning','')[:80]}")
+                              f"qty={qty:.4f} stop={stop_pct:.1f}% take={take_pct:.1f}% "
+                              f":: {llm.get('reasoning','')[:60]}")
                     else:
                         print(f"[agent] LLM chose no trade ({llm.get('reasoning','')[:100]})")
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
@@ -1046,10 +1052,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     else:
                         side = "buy" if best.direction == "long" else "sell"
                         max_qty = (eq * 1.0 / 100.0) / best.entry
+                        stop_pct = abs(best.entry - best.stop) / best.entry * 100
+                        take_pct = abs(best.target - best.entry) / best.entry * 100
                         decision = {"action": side, "symbol": best.symbol,
                                     "quantity": max_qty,
-                                    "stop_loss_pct": 8.0,
-                                    "take_profit_pct": 24.0,
+                                    "stop_loss_pct": round(stop_pct, 2),
+                                    "take_profit_pct": round(take_pct, 2),
                                     "reasoning": f"[quant] best scenario {best.direction} "
                                                  f"{best.symbol} EV={best.ev:+.2f}R"}
                         _last_scenario = best

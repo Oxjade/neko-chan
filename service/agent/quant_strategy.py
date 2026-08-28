@@ -50,6 +50,18 @@ FEAR_STOP_WIDEN = 2.0              # stop 8% -> 10% in extreme fear
 # These are the numbers that make the calibration honest, not optimistic.
 DRIFT_SHRINK = 0.15                # keep 15% of observed drift (mean-reversion)
 DRIFT_ANNUAL_CAP = 0.35            # max |annualized log drift| = 35%/yr
+# ---- volatility-based stop/target (REACHABLE, not fantasy) ----
+# The old 8% stop / 24% target is a monthly-momentum spec: on BTC that means
+# waiting for $80k -> $98k, which almost never resolves and never banks profit.
+# Instead, size stop/target off the asset's REAL realized daily volatility so a
+# trade resolves in DAYS, not months:
+#   stop   = 1.2 x daily vol   (a 1-day adverse move)
+#   target = 2.0 x daily vol   (a 2-day favorable move)  -> ~1.7:1 reward/risk
+# These are anchored to what the market actually moves, so targets get HIT.
+VOL_DAILY_STOP_MULT = 1.2
+VOL_DAILY_TARGET_MULT = 2.0
+VOL_STOP_MIN_PCT = 1.5            # never tighter than 1.5%
+VOL_STOP_MAX_PCT = 6.0            # never wider than 6%
 MAX_POSITION_PCT = 30.0            # of equity per position
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
 RISK_PER_TRADE_PCT = 1.0           # risk 1% of equity per trade
@@ -271,11 +283,26 @@ def barrier_win_prob(entry: float, target: float, stop: float,
 
 
 def build_scenarios(symbol: str, closes: list[float], current_price: float,
-                    stop_pct: float = STOP_PCT, take_pct: float = TAKE_PCT) -> list[TradeScenario]:
-    """Produce the LONG + SHORT scenario pair with real probability math."""
+                    stop_pct: float | None = None, take_pct: float | None = None) -> list[TradeScenario]:
+    """Produce the LONG + SHORT scenario pair with REAL, reachable levels.
+
+    If stop_pct/take_pct are not given, they are derived from the asset's
+    actual daily volatility so the target is hit-able in days, not months
+    (a +24% BTC target = waiting for $98k, which never resolves). Defaults:
+      stop   = 1.2x daily vol (bounded 1.5%..6%)
+      target = 2.0x daily vol (bounded 3%..10%)
+      -> ~1.7:1 reward/risk anchored to what the market actually moves.
+    """
     if not closes or current_price <= 0:
         return []
     drift, vol = estimate_drift_vol(closes)
+    daily_vol = (vol / math.sqrt(365.0)) * 100.0  # daily stdev in %
+    if stop_pct is None or take_pct is None:
+        stop_pct = max(VOL_STOP_MIN_PCT, min(VOL_STOP_MAX_PCT, daily_vol * VOL_DAILY_STOP_MULT))
+        take_pct = max(2 * VOL_STOP_MIN_PCT, min(10.0, daily_vol * VOL_DAILY_TARGET_MULT))
+        # keep reward/risk >= 1.3:1 (never worse than the old Kelly line)
+        if take_pct / stop_pct < 1.3:
+            take_pct = stop_pct * 1.3
     r20 = momentum20_return(closes)
     scenarios = []
     # LONG scenario
