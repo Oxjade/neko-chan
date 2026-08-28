@@ -304,25 +304,26 @@ def test_expected_time_scales_with_volatility():
 def test_build_scenarios_returns_long_and_short():
     up = _uptrend_closes()
     sc = build_scenarios("BTC", up, 120.0)
-    assert len(sc) == 2
+    assert len(sc) == 6  # 3 horizons x 2 directions
     dirs = {s.direction for s in sc}
     assert dirs == {"long", "short"}
+    horizons = {s.horizon for s in sc}
+    assert horizons == {"scalp", "intraday", "swing"}
     for s in sc:
-        assert s.R >= 1.3  # vol-based target keeps reward/risk >= 1.3:1
+        assert s.R >= 1.3
         assert 0.05 <= s.p_win <= 0.75
         assert s.ev == pytest.approx(s.p_win * s.R - (1 - s.p_win))
-        # reachable levels: stop/target must be within retail scalper bounds
         stop_pct = abs(s.entry - s.stop) / s.entry * 100
         take_pct = abs(s.target - s.entry) / s.entry * 100
-        assert 0.10 <= stop_pct <= 0.7
-        assert 0.20 <= take_pct <= 2.0
+        assert 0.10 <= stop_pct <= 2.0
+        assert 0.20 <= take_pct <= 5.0
 
 
 def test_scenario_matrix_and_best_pick():
     closes = {"BTC": _uptrend_closes(), "ETH": _uptrend_closes()}
     prices = {"BTC": 120.0, "ETH": 100.0}
     matrix = scenario_matrix(closes, prices)
-    assert len(matrix) == 4  # 2 symbols x (long+short)
+    assert len(matrix) == 12  # 2 symbols x 3 horizons x 2 directions
     best = pick_best_scenario(matrix, has_long={}, has_short={})
     assert best is not None
     assert best.ev > 0

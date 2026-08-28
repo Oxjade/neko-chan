@@ -221,6 +221,7 @@ from typing import Optional
 class TradeScenario:
     symbol: str
     direction: str            # "long" | "short"
+    horizon: str              # "scalp" | "intraday" | "swing"
     entry: float
     target: float             # take-profit price
     stop: float               # stop-loss price
@@ -232,7 +233,7 @@ class TradeScenario:
     conviction: float         # EV scaled by p_win (LLM tiebreaker)
 
     def to_prompt(self) -> str:
-        return (f"[{self.symbol} {self.direction.upper()}] entry {self.entry:.4f} "
+        return (f"[{self.symbol} {self.direction.upper()} {self.horizon}] entry {self.entry:.4f} "
                 f"-> target {self.target:.4f} | stop {self.stop:.4f} | "
                 f"P(win) {self.p_win*100:.1f}% | R {self.R:.2f} | EV {self.ev:+.3f}R | "
                 f"conviction {self.conviction:.3f}")
@@ -302,59 +303,89 @@ def barrier_win_prob(entry: float, target: float, stop: float,
     return max(0.05, min(0.75, p_win))
 
 
+# Horizon definitions: each produces its own target/stop pair on a 5-min bar
+# sigma scale. The engine builds ALL horizons per symbol and the LLM picks the
+# best EV one - so it's not always scalping. As drift strengthens, wider-horizon
+# targets become more attractive (higher P(win) at distance).
+HORIZONS = {
+    "scalp":    {"stop": 1.2, "target": 3.0,  "min_r": 1.5},
+    "intraday": {"stop": 2.0, "target": 7.0,  "min_r": 1.8},
+    "swing":    {"stop": 4.0, "target": 16.0, "min_r": 2.0},
+}
+
+
+def _horizon_stop_take(sigma_5m: float, horizon: str,
+                       drift_annual: float) -> tuple[float, float]:
+    """Stop/target (%) for a horizon, scaled by drift.
+
+    stop  = horizon.stop x sigma_5m (bounded)
+    target = horizon.target x sigma_5m x drift_scalar, where drift_scalar grows
+             with |drift| so a strong trend extends the target (let it run) and
+             a weak trend stays a tight scalp. Always keeps R >= min_r.
+    """
+    h = HORIZONS[horizon]
+    stop = sigma_5m * h["stop"]
+    stop = max(VOL_STOP_MIN_PCT, min(VOL_STOP_MAX_PCT * 3, stop))
+    # drift scalar: 1.0 at low drift -> up to ~2.5x at strong drift
+    drift_mag = abs(drift_annual)
+    scalar = 1.0 + min(1.5, drift_mag / 0.5)
+    take = sigma_5m * h["target"] * scalar
+    take = max(VOL_TARGET_MIN_PCT, take)
+    # floor R
+    if take / stop < h["min_r"]:
+        take = stop * h["min_r"]
+    return round(stop, 4), round(take, 4)
+
+
 def build_scenarios(symbol: str, closes: list[float], current_price: float,
                     stop_pct: float | None = None, take_pct: float | None = None) -> list[TradeScenario]:
-    """Produce LONG + SHORT scenario pair with VOLATILITY-BASED levels.
+    """Produce LONG+SHORT scenarios across THREE horizons: scalp / intraday /
+    swing, with targets scaled by drift strength (not one fixed 0.6%).
 
-    stop/target are derived from the asset's intraday 5m volatility (real
-    data: BTC per-5m sigma ~0.12%, avg |5m move| ~0.09%). Targets are set
-    to resolve in minutes-to-hours, not days:
-      stop   = 1.5 sigma (an adverse bar)   ~0.18% for BTC
-      target = 4.0 sigma (a strong bar)     ~0.48% for BTC
-      -> ~2.7:1 reward/risk, reachable in 30-60 min
+    - scalp:    1.2 sigma stop, 3 sigma target  (~0.14% / ~0.36% BTC)
+    - intraday: 2 sigma stop,   7 sigma target  (~0.25% / ~0.85% BTC)
+    - swing:    4 sigma stop,   16 sigma target (~0.5%  / ~1.9% BTC)
+    In a strong trend the swing target extends further (let it run); in a weak
+    trend the scalp dominates. The LLM picks the best-EV horizon per cycle.
     """
     if not closes or current_price <= 0:
         return []
-    # compute 5m-scale volatility from daily closes
     drift, vol = estimate_drift_vol(closes)
     daily_vol_pct = (vol / math.sqrt(365.0)) * 100.0 if vol > 0 else 1.0
-    # 5m sigma = daily_vol / sqrt(288)   (288 five-min bars per day)
     sigma_5m = daily_vol_pct / math.sqrt(288.0)
-    if stop_pct is None or take_pct is None:
-        stop_pct = max(VOL_STOP_MIN_PCT, min(VOL_STOP_MAX_PCT, sigma_5m * VOL_5M_SIGMA_STOP))
-        take_pct = max(VOL_TARGET_MIN_PCT, min(VOL_TARGET_MAX_PCT, sigma_5m * VOL_5M_SIGMA_TARGET))
-        # keep reward/risk >= 1.5:1 so the trade is always worth the fees
-        if take_pct / stop_pct < 1.5:
-            take_pct = stop_pct * 1.5
     r20 = momentum20_return(closes)
     scenarios = []
-    # LONG scenario
-    long_stop = current_price * (1 - stop_pct / 100.0)
-    long_target = current_price * (1 + take_pct / 100.0)
-    p_long = barrier_win_prob(current_price, long_target, long_stop, drift, vol)
-    R_long = take_pct / stop_pct
-    scenarios.append(TradeScenario(
-        symbol=symbol, direction="long", entry=current_price,
-        target=long_target, stop=long_stop, p_win=p_long, R=R_long,
-        ev=p_long * R_long - (1 - p_long),
-        drift_annual=drift, vol_annual=vol,
-        conviction=p_long * (p_long * R_long - (1 - p_long)),
-    ))
-    # SHORT scenario (mirror: target below, stop above).
-    # barrier_win_prob reads win_is_up from target vs stop and inverts p
-    # automatically for a short, so pass the same drift (no manual negation).
-    short_stop = current_price * (1 + stop_pct / 100.0)
-    short_target = current_price * (1 - take_pct / 100.0)
-    p_short = barrier_win_prob(current_price, short_target, short_stop, drift, vol)
-    scenarios.append(TradeScenario(
-        symbol=symbol, direction="short", entry=current_price,
-        target=short_target, stop=short_stop, p_win=p_short, R=R_long,
-        ev=p_short * R_long - (1 - p_short),
-        drift_annual=drift, vol_annual=vol,
-        conviction=p_short * (p_short * R_long - (1 - p_short)),
-    ))
-    # note: for a long, target > stop; for a short the barrier_win_prob call
-    # flips drift sign and uses target<entry<stop, so the formula still works.
+    horizons = ("scalp", "intraday", "swing") if (stop_pct is None or take_pct is None) else ("custom",)
+    for horizon in horizons:
+        if horizon == "custom":
+            stop, take = stop_pct, take_pct
+            hname = "swing"
+        else:
+            stop, take = _horizon_stop_take(sigma_5m, horizon, drift)
+            hname = horizon
+        # LONG scenario
+        long_stop = current_price * (1 - stop / 100.0)
+        long_target = current_price * (1 + take / 100.0)
+        p_long = barrier_win_prob(current_price, long_target, long_stop, drift, vol)
+        R = take / stop
+        scenarios.append(TradeScenario(
+            symbol=symbol, direction="long", horizon=hname, entry=current_price,
+            target=long_target, stop=long_stop, p_win=p_long, R=R,
+            ev=p_long * R - (1 - p_long),
+            drift_annual=drift, vol_annual=vol,
+            conviction=p_long * (p_long * R - (1 - p_long)),
+        ))
+        # SHORT scenario (mirror): barrier_win_prob inverts via win_is_up
+        short_stop = current_price * (1 + stop / 100.0)
+        short_target = current_price * (1 - take / 100.0)
+        p_short = barrier_win_prob(current_price, short_target, short_stop, drift, vol)
+        scenarios.append(TradeScenario(
+            symbol=symbol, direction="short", horizon=hname, entry=current_price,
+            target=short_target, stop=short_stop, p_win=p_short, R=R,
+            ev=p_short * R - (1 - p_short),
+            drift_annual=drift, vol_annual=vol,
+            conviction=p_short * (p_short * R - (1 - p_short)),
+        ))
     return scenarios
 
 
