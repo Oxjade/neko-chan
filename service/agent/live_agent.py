@@ -65,6 +65,8 @@ ACTIVE_MODE = os.getenv("LIVE_AGENT_ACTIVE_MODE", "1").strip() in {"1", "true", 
 #     (agent_evaluation_report.md) measured it at base-rate accuracy, negative
 #     after fees. Kept only for A/B.
 STRATEGY = os.getenv("LIVE_AGENT_STRATEGY", "momentum20").strip().lower()
+# Peak-price tracker for trailing stops (in-memory per agent process).
+_trailing_high: dict[str, float] = {}
 # Per-user LLM credentials (set by the Telegram bot network). When LIVE_AGENT_API_KEY
 # is set, decisions call the provider API directly instead of the opencode CLI.
 LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
@@ -375,6 +377,52 @@ def profitability_gate(action: str, symbol: str, market: str, prices: dict,
         if not aligned and abs(tr) > 1e-6:
             return False, f"1h trend {tr*100:+.2f}% opposes requested {('long' if wanted_long else 'short')} (trend alignment)"
     return True, ""
+
+
+# ---------------------------------------------------------------- skills (loaded before LLM)
+
+
+def _load_skill_context() -> str:
+    """Load the strategy skills into the LLM context BEFORE any decision.
+
+    Reads the repo's skills (momentum + funding-carry), condenses each to its
+    binding spec, and returns a prompt block. This is the 'skill is loaded
+    before anything' guarantee - the LLM never decides without seeing the
+    strategy it is implementing.
+    """
+    import re
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]  # agent/ -> service/ -> repo root
+    skills_root = repo_root / "skills"
+    wanted = {"momentum", "funding-carry"}
+    blocks = []
+    for name in ("momentum", "funding-carry"):
+        path = skills_root / name / "SKILL.md"
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        lines = []
+        capture = False
+        for line in text.splitlines():
+            if line.strip().startswith("## ") or line.strip().startswith("# "):
+                capture = line.strip().startswith("## ")  # capture sections, skip title
+            if not capture:
+                continue
+            lines.append(line)
+        body = "\n".join(lines).strip()
+        # collapse blank runs
+        body = re.sub(r"\n{3,}", "\n\n", body)
+        # keep it bounded so we don't blow the context window
+        if len(body) > 4000:
+            body = body[:4000] + "\n…[truncated]"
+        blocks.append(f"=== SKILL: {name.upper()} ===\n{body}")
+    if not blocks:
+        return ""
+    return "\n\n".join(blocks)
 
 
 def _provider_completion(system: str, user: str) -> dict:
@@ -838,18 +886,103 @@ def run_cycle(token: str, dry: bool = False) -> None:
         return
 
     if STRATEGY == "momentum20":
-        # Deterministic, validated strategy: 20d momentum + funding-carry overlay.
-        # No LLM in the decision loop - the skills validate this math, not a model.
+        # HYBRID: the quant engine computes the risk-validated base signal
+        # (20d momentum, 1% risk sizing, vol-adaptive take, trailing stop), then
+        # the LLM — WITH THE STRATEGY SKILLS LOADED — reviews the full picture
+        # (market data, sentiment, funding, news) and makes the final call.
+        # The LLM may confirm, or override to hold/skip; it never expands risk
+        # beyond what the quant engine already capped.
         try:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from quant_strategy import scan_momentum_book, pick_decision
+            from quant_strategy import scan_momentum_book, pick_decision, trail_check
+
+            # update trailing peak tracker for open longs (per symbol)
+            for p in positions:
+                sym = p.get("symbol")
+                if sym and p.get("quantity", 0) > 0:
+                    px = prices.get(sym) or p.get("current_price") or p.get("entry_price") or 0
+                    if px > 0:
+                        _trailing_high[sym] = max(_trailing_high.get(sym, 0.0), px)
+            for p in positions:
+                sym = p.get("symbol")
+                if sym and p.get("quantity", 0) > 0 and _trailing_high.get(sym):
+                    p["high_price"] = _trailing_high[sym]
+
             decisions = scan_momentum_book(portfolio, closes_by_symbol, prices)
-            pick = pick_decision(decisions)
-            decision = pick.to_dict()
-            print(f"[quant] {pick.action} {pick.symbol} qty={pick.qty} :: {pick.reasoning}")
-            for d in decisions:
-                if d.action in ("buy", "sell"):
-                    print(f"  [quant] {d.symbol}: {d.action} - {d.reasoning}")
+            # trailing-stop exits take priority over new entries (lock profits)
+            trail_exits = trail_check(positions, prices)
+            if trail_exits:
+                pick = trail_exits[0]
+                decisions = trail_exits + decisions
+            else:
+                pick = pick_decision(decisions)
+            print(f"[quant] base signal: {pick.action} {pick.symbol} qty={pick.qty} :: {pick.reasoning}")
+
+            # ----- agentic overlay: LLM reviews with skills loaded -----
+            if pick.action in ("buy", "sell") and LIVE_AGENT_API_KEY:
+                skill_ctx = _load_skill_context()
+                candidates = [d for d in decisions if d.action == "buy"]
+                cand_txt = "; ".join(
+                    f"{d.symbol} {d.qty:.4f}u stop {d.stop_pct}% take {d.take_pct}%"
+                    for d in candidates[:5]) or "none"
+                base = pick.to_dict()
+                system = (
+                    "You are the decision layer of an automated trading agent. "
+                    "You are GIVEN a risk-validated base signal from a quant engine "
+                    "that already enforces the strategy's hard rules (position caps, "
+                    "1% risk sizing, stop-loss, vol-adaptive take-profit, trailing "
+                    "stop, no unhedged shorts). Your job is to REVIEW that signal "
+                    "against live market context and either CONFIRM it or override "
+                    "it to hold — you may NOT increase size, widen stops, or add "
+                    "positions the quant engine rejected.\n\n"
+                    "THE STRATEGY SKILLS ARE LOADED BELOW. Follow them exactly; do "
+                    "not invent rules that contradict them.\n\n"
+                    f"{skill_ctx}\n\n"
+                    "Reply with a single JSON object only:\n"
+                    '{"action":"buy|sell|hold","symbol":"<same as base>",'
+                    '"quantity":<same as base or 0 to hold>,'
+                    '"stop_loss_pct":<base stop>,"take_profit_pct":<base take>,'
+                    '"reasoning":"<1-2 sentences, cite the skill/context that '
+                    'justified your call>"}'
+                )
+                user = (
+                    f"Live decision review — {now_iso} UTC.\n"
+                    f"BASE SIGNAL (quant engine, risk-validated):\n"
+                    f"  action={base['action']} symbol={base['symbol']} "
+                    f"qty={base['quantity']:.4f} stop={base['stop_loss_pct']}% "
+                    f"take={base['take_profit_pct']}%\n"
+                    f"  quant reasoning: {base['reasoning']}\n\n"
+                    f"CANDIDATE ENTRIES: {cand_txt}\n"
+                    f"MARKET: {', '.join(price_txt)}\n"
+                    f"FUNDING: {carry_txt if carry_txt else 'none above floor'}\n"
+                    f"CASH: ${portfolio.get('cash', 0):,.2f} | EQUITY: ${eq:,.2f}\n"
+                    f"OPEN POSITIONS: {pos_txt}\n"
+                    f"TODAY: {used}/{MAX_DAILY_TRADES} trades\n"
+                    f"Confirm the base signal or hold. Do NOT exceed the base quantity."
+                )
+                llm = _provider_completion(system, user)
+                if str(llm.get("action", "")).lower() in ("buy", "sell"):
+                    # stay within quant caps: never exceed base qty, keep stops
+                    llm_qty = float(llm.get("quantity", 0) or 0)
+                    if 0 < llm_qty <= base["quantity"]:
+                        llm["quantity"] = llm_qty
+                        llm["symbol"] = base["symbol"]
+                        llm["stop_loss_pct"] = base["stop_loss_pct"]
+                        llm["take_profit_pct"] = base["take_profit_pct"]
+                        llm["reasoning"] = f"[LLM confirmed] {llm.get('reasoning','')}"
+                        decision = llm
+                        print(f"[agent] LLM CONFIRMED {llm['action']} {llm['symbol']} qty={llm_qty:.4f}")
+                    else:
+                        print(f"[agent] LLM qty {llm_qty} out of cap -> keeping base signal")
+                        decision = base
+                else:
+                    # LLM chose hold / malformed -> respect the agent's discretion to stay out
+                    print(f"[agent] LLM override -> hold ({llm.get('reasoning','')[:100]})")
+                    decision = {"action": "hold", "symbol": base["symbol"], "quantity": 0,
+                                "stop_loss_pct": 0, "take_profit_pct": 0,
+                                "reasoning": f"[LLM override] {llm.get('reasoning','')[:200]}"}
+            else:
+                decision = pick.to_dict()
         except Exception as exc:
             print(f"[quant] engine failed, holding: {exc}")
             decision = {"action": "hold", "symbol": "", "quantity": 0,

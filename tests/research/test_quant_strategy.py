@@ -14,7 +14,11 @@ from quant_strategy import (
     momentum_decision,
     scan_momentum_book,
     pick_decision,
+    adaptive_take_pct,
+    trailing_stop_pct,
+    trail_check,
     MOMENTUM_THRESHOLD,
+    TARGET_VOL_ANNUAL,
 )
 
 
@@ -132,3 +136,49 @@ def test_pick_decision_prefers_exit_then_strongest_entry():
     sell = QuantDecision("sell", "ETH", 0.0, 0.0, 0.0, "decayed")
     pick2 = pick_decision([*buys, sell])
     assert pick2.action == "sell" and pick2.symbol == "ETH"
+
+
+# ---------------- adaptive take-profit + trailing stop ----------------
+
+def test_adaptive_take_pct_scales_with_volatility():
+    # normal vol -> spec 3R (24%)
+    assert adaptive_take_pct(TARGET_VOL_ANNUAL) == pytest.approx(24.0)
+    # calm vol -> wider target (let it run)
+    assert adaptive_take_pct(0.10) > 24.0
+    # high vol -> NEVER below the frozen 3R spec (24%)
+    assert adaptive_take_pct(0.40) == pytest.approx(24.0)
+    assert adaptive_take_pct(5.0) >= 24.0
+    # None/zero -> base spec
+    assert adaptive_take_pct(None) == 24.0
+
+
+def test_trailing_stop_activates_after_1R_and_locks_gain():
+    # 80k entry, stop 8% (1R = 6.4k). At +10% gain, trail activates.
+    assert trailing_stop_pct(80000, 84000) is None  # +5%, below 1R
+    assert trailing_stop_pct(80000, 88000) == pytest.approx(4.0)  # +10%, 0.5R trail
+    # trail is from the peak, so it ratchets as the peak rises
+    assert trailing_stop_pct(80000, 100000) == pytest.approx(4.0)
+
+
+def test_trail_check_exits_on_retrace_from_peak():
+    positions = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
+                  "current_price": 100000, "high_price": 100000}]
+    # price fell 4.5% from the 100k peak -> 95.5k, below 4% trail -> SELL
+    exits = trail_check(positions, {"BTC": 95500})
+    assert len(exits) == 1 and exits[0].action == "sell"
+    assert "trailing stop" in exits[0].reasoning
+    # still above trail -> no exit
+    assert trail_check(positions, {"BTC": 97000}) == []
+    # not enough gain yet -> no exit
+    flat = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
+             "current_price": 82000, "high_price": 82000}]
+    assert trail_check(flat, {"BTC": 81000}) == []
+
+
+def test_adaptive_take_used_in_momentum_decision():
+    d = momentum_decision("BTC", "crypto", _uptrend_closes(), 100000.0,
+                          has_long=False, has_short=False, current_price=120.0)
+    assert d.action == "buy"
+    # take target adapts with volatility but stays >= 1.5R (12%)
+    assert d.take_pct >= 12.0 and d.take_pct <= 40.0
+    assert d.stop_pct == 8.0
