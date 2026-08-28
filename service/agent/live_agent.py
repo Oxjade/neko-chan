@@ -1122,9 +1122,9 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
                                 if _last_scenario is not None else 0.3
                             risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                            # cap at 30% of equity AND available cash (open positions
-                            # already use cash - a new trade must fit the free margin)
-                            cap_notional = min(eq * 0.30, portfolio.get('cash', eq))
+                            # cap at 30% of equity AND ~95% of available cash (leave
+                            # a fee buffer so margin + fee always fits)
+                            cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
                             max_qty = min(risk_notional, cap_notional) / prices[llm_sym]
                             qty = min(qty, max_qty)
                         if _last_scenario is not None:
@@ -1176,7 +1176,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
                         risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                        cap_notional = min(eq * 0.30, portfolio.get('cash', eq))
+                        cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
                         max_qty = min(risk_notional, cap_notional) / best.entry
                         decision = {"action": side, "symbol": best.symbol,
                                     "quantity": max_qty,
