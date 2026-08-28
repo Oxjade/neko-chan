@@ -43,6 +43,13 @@ FEAR_COLD = 15.0
 GREED_STOP_CUT = 2.0               # stop 8% -> 6% in extreme greed
 GREED_TARGET_CUT = 6.0             # take 24% -> 18% in extreme greed
 FEAR_STOP_WIDEN = 2.0              # stop 8% -> 10% in extreme fear
+# ---- drift shrinkage for the scenario engine ----
+# Raw 20d drift extrapolated to annual is nonsense (+366% to +744% on a hot
+# week), which inflates P(win) to the cap. Momentum persists but mean-reverts:
+# shrink the observed drift toward zero and cap it at a sane annualized level.
+# These are the numbers that make the calibration honest, not optimistic.
+DRIFT_SHRINK = 0.15                # keep 15% of observed drift (mean-reversion)
+DRIFT_ANNUAL_CAP = 0.35            # max |annualized log drift| = 35%/yr
 MAX_POSITION_PCT = 30.0            # of equity per position
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
 RISK_PER_TRADE_PCT = 1.0           # risk 1% of equity per trade
@@ -200,7 +207,14 @@ class TradeScenario:
 
 
 def estimate_drift_vol(closes: list[float], lookback: int = 20) -> tuple[float, float]:
-    """(annualized log drift, annualized vol) from daily closes. 0s if insufficient."""
+    """(annualized log drift, annualized vol) from daily closes. 0s if insufficient.
+
+    The raw drift is SHRUNK toward zero (DRIFT_SHRINK) and capped at a sane
+    annualized level (DRIFT_ANNUAL_CAP). A 20-day hot streak does NOT mean the
+    asset grows 700%/yr forever — momentum persists but mean-reverts, so the
+    barrier probabilities must use an honest, conservative drift or P(win) is
+    systematically over-optimistic (the 2026-08-28 calibration lesson).
+    """
     if len(closes) < lookback + 1:
         return 0.0, 0.0
     rets = [math.log(closes[i] / closes[i - 1]) for i in range(len(closes) - lookback, len(closes))]
@@ -209,7 +223,10 @@ def estimate_drift_vol(closes: list[float], lookback: int = 20) -> tuple[float, 
     mu = sum(rets) / len(rets)
     var = sum((r - mu) ** 2 for r in rets) / (len(rets) - 1)
     sigma = math.sqrt(var) if var > 0 else 0.0
-    return mu * 365.0, sigma * math.sqrt(365.0)
+    raw_annual = mu * 365.0
+    shrunk = raw_annual * DRIFT_SHRINK
+    capped = max(-DRIFT_ANNUAL_CAP, min(DRIFT_ANNUAL_CAP, shrunk))
+    return capped, sigma * math.sqrt(365.0)
 
 
 def barrier_win_prob(entry: float, target: float, stop: float,
