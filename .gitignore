@@ -142,3 +142,10 @@ service/tg_bot/registry.db
 service/tg_bot/*.db*
 service/agent/.agent_token
 impeccable.context.tmp
+
+# ====================
+# Runtime artifacts
+# ====================
+exec_ledger.db
+research/exports/live_agent_log.csv
+service/tg_bot/cards/output/

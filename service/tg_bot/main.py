@@ -10,8 +10,11 @@ Run:
 import logging
 import os
 import sys
+import threading
+import time
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 
 from telegram.ext import Application
 
@@ -21,6 +24,7 @@ from store import Registry
 from platform_client import PlatformClient
 from userbot import UserBotController
 from agent_pool import AgentPool
+from gateway import ExecGateway
 from handlers.common import menu_keyboard
 from handlers.master import register_master_handlers
 from handlers.wizard import simple_flow_handlers
@@ -92,17 +96,74 @@ def start_watchers(registry: Registry, platform: PlatformClient):
     return threads
 
 
+def start_bot_cleanup(registry: Registry, userbot: UserBotController,
+                      agent_pool: AgentPool, deadline_hours: int = 3,
+                      poll_seconds: int = 60) -> threading.Thread:
+    """Janitor: delete unconfigured bots whose owner never added an AI key.
+
+    When a user cancels/declines key setup, the bot is scheduled for deletion
+    `deadline_hours` later (see userbot.key_cancel). This loop enforces it:
+    due bots are stopped, deleted from the registry, and their owner is
+    notified on the master bot (so they can re-add if they change their mind).
+    Keeps the network free of idle load-bots.
+    """
+    import threading as _threading
+
+    def _notify_owner(bot: dict, message: str):
+        try:
+            token = registry.bot_token(bot["id"])
+            if not token:
+                return
+            import requests as _r
+            _r.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": bot["tg_id"], "text": message}, timeout=15)
+        except Exception:
+            pass
+
+    def _loop():
+        while True:
+            try:
+                for bot in registry.due_bot_deletions():
+                    bot_id = bot["id"]
+                    _notify_owner(bot, (
+                        f"🗑️ Bot <b>{bot['bot_name']}</b> was removed from the network "
+                        f"because no AI key was added within {deadline_hours} hours.\n\n"
+                        "You can re-add it anytime from the master bot."))
+                    try:
+                        userbot.stop_bot(bot_id)
+                    except Exception:
+                        pass
+                    try:
+                        agent_pool.stop(bot_id)
+                    except Exception:
+                        pass
+                    registry.delete_bot(bot_id, bot["tg_id"])
+                    log.info("[cleanup] removed unconfigured bot %s (%s)", bot_id, bot.get("bot_name"))
+            except Exception as exc:
+                log.warning("[cleanup] sweep error: %s", exc)
+            time.sleep(poll_seconds)
+
+    t = _threading.Thread(target=_loop, name="bot-cleanup", daemon=True)
+    t.start()
+    return t
+
+
 def main():
     vault = KeyVault()
     registry = Registry(cfg.REGISTRY_PATH, vault)
     platform = PlatformClient()
     agent_pool = AgentPool(registry)
-    userbot = UserBotController(registry, platform, vault=vault, agent_pool=agent_pool)
+    gateway = ExecGateway.build()
+    if gateway.ready:
+        log.info("execution gateway ready: chains=%s", list(gateway.adapters.keys()))
+    userbot = UserBotController(registry, platform, vault=vault, agent_pool=agent_pool,
+                                gateway=gateway)
 
     app = build_app(registry, platform, vault, userbot, agent_pool)
     userbot.start_all()
     agent_pool.start_all_active()
     start_watchers(registry, platform)
+    start_bot_cleanup(registry, userbot, agent_pool)
 
     log.info("Master bot starting (polling)...")
     app.run_polling(allowed_updates=["message", "callback_query"])

@@ -326,9 +326,12 @@ class HLAdapter:
             data = _post_json_with_retry(
                 self.info_url, {"type": "clearinghouseState", "user": self.master_address})
             margin = data.get("marginSummary") or {}
+            account_value = float(margin.get("accountValue", 0.0))
+            margin_used = float(margin.get("totalMarginUsed", 0.0))
             balances = {
-                "USDC": float(margin.get("accountValue", 0.0)),
-                "total_margin_used": float(margin.get("totalMarginUsed", 0.0)),
+                "USDC": max(0.0, account_value - margin_used),  # free margin = cash
+                "equity": account_value,
+                "total_margin_used": margin_used,
                 "withdrawable": float(data.get("withdrawable", 0.0)),
             }
             positions = []

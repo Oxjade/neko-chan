@@ -50,6 +50,20 @@ WIZARD = {
                        "Most likely you never pressed Start on it — open the bot in "
                        "Telegram, tap Start (this activates the chat), then send this code:\n\n"
                        "  {code}\n\nThen tap \"I sent it\"."),
+    "disclaimer": ("⚠️ IMPORTANT — READ BEFORE CONTINUING\n\n"
+                   "This bot is an automated trading agent. Before you connect it, "
+                   "please understand:\n\n"
+                   "• This is NOT financial advice. No one at this platform is "
+                   "giving you investment advice.\n"
+                   "• The bot does NOT guarantee profit. It CAN lose money.\n"
+                   "• You are trusting your funds to an automated agent. It will "
+                   "make mistakes — sometimes costly ones.\n"
+                   "• You alone are responsible for the money you allocate and "
+                   "for any losses.\n"
+                   "• Only trade with money you can afford to lose.\n\n"
+                   "By continuing you confirm you have read and accept these "
+                   "terms."),
+    "disclaimer_accepted": "✅ Disclaimer accepted. You may now proceed.",
     "ai_key_provider": "3️⃣ Your AI API key — this powers your bot's decisions.\nPick a provider:",
     "ai_key_prompt": "Paste your {label} key:",
     "ai_key_ok": "✅ Key works ({provider}). Model: {model}",
@@ -112,6 +126,41 @@ USERBOT = {
     "delete_confirm": "Really delete {name}? This stops it and removes your keys from our servers.",
     "deleted": "🗑️ Deleted. Goodbye. Your agent history stays on the platform.",
     "settings_saved": "Saved ✓ ({value})",
+    # ---- real trading (execution gateway) ----
+    "wallet_header": "💼 Wallet — {name}",
+    "wallet_disabled": ("💼 Wallet — {name}\n\n"
+                        "⚪ Real trading is not enabled for this bot yet.\n"
+                        "Paper trading (real prices, simulated money) is active.\n\n"
+                        "When the operator enables real execution, your on-chain "
+                        "wallet, balances, positions and the kill-switch will appear here."),
+    "wallet_not_connected": ("💼 Wallet — {name}\n\n"
+                             "⚪ No chain wallet is connected for this bot.\n"
+                             "[connect via Bot Settings]"),
+    "wallet_fund": ("💸 Fund this wallet\n\n"
+                    "Send funds to this address on the {chain_label} network.\n\n"
+                    "  <code>{address}</code>\n\n"
+                    "• Native gas + USDC are both accepted\n"
+                    "• Only send {chain_label} network assets to this address\n"
+                    "• The bot becomes active once a deposit is detected"),
+    "kill_title": ("🛑 KILL-SWITCH\n\n"
+                   "This flattens ALL positions and cancels ALL open orders on "
+                   "every chain for this bot, immediately.\n\n"
+                   "⚠️ It cannot be undone automatically. Trading stays halted "
+                   "until you release it."),
+    "kill_no_exec": "🛑 Kill-switch: real trading is not enabled on this bot.",
+    "kill_engaged": ("🛑 KILL-SWITCH ENGAGED\n\n"
+                     "{summary}\n\n"
+                     "All trading for this bot is halted."),
+    "kill_released": "✅ Kill-switch released. Trading can resume.",
+    "exec_risk": ("🛡️ Execution risk — {name}\n\n"
+                  "{lines}\n\n"
+                  "These hard caps are checked BEFORE any order is signed. They "
+                  "cannot be overridden by the AI model."),
+    "exec_risk_disabled": ("🛡️ Execution risk — {name}\n\n"
+                           "Real trading is not enabled. These caps apply only "
+                           "when the operator activates execution."),
+    "real_badge": "🔐 REAL",
+    "paper_badge": "📝 PAPER",
 }
 
 NOTIF = {
@@ -144,3 +193,64 @@ def mask_key(k: str) -> str:
     from key_vault import KeyVault
 
     return KeyVault.mask(k)
+
+
+# ---------------------------------------------------------------------------
+# Human-readable error mapping. Platform/venue errors are terse technical
+# strings; map the known ones to actionable copy so a non-technical user
+# understands what happened and what to do. Unknown errors pass through with a
+# short prefix.
+# ---------------------------------------------------------------------------
+
+_ERROR_MAP = (
+    # platform (service/server) trade-validation errors
+    ("Short position entry price is missing",
+     "Couldn't open the short — the platform needs an entry price for shorts. "
+     "This is a known platform quirk; the bot will keep trying with a valid price."),
+    ("stop_loss_pct/take_profit_pct can only be set when opening (buy/short) a position",
+     "Closing trades can't carry a stop/target — the close was sent without one and "
+     "is safe to retry."),
+    ("US market is closed", "US stocks only trade Mon–Fri 9:30–16:00 ET. Try again during market hours."),
+    ("market is currently closed", "That market is closed right now — the bot will retry when it reopens."),
+    ("Invalid quantity", "The bot asked for an invalid quantity. No trade was placed."),
+    ("Quantity too large", "That position size is over the limit. The bot sized down."),
+    ("Leverage must be between 1 and 10", "That leverage is out of range (1–10x). The bot stayed flat."),
+    ("Leverage is only supported for crypto",
+     "Leverage only applies to crypto perps — the bot traded without leverage instead."),
+    ("Unable to fetch current price", "Couldn't get a live price for this market. No trade was placed."),
+    ("Unable to fetch historical price", "Historical price unavailable — the bot skipped the backfill."),
+    ("Invalid token", "Your bot's session expired. Reconnect it in the master bot."),
+    ("Invalid price", "The trade had an invalid price. No order was placed."),
+    ("Price too large", "The trade price was out of range. No order was placed."),
+    ("already long in symbol", "Your bot is already long this symbol — it didn't double up."),
+    ("already short in symbol", "Your bot is already short this symbol — it didn't double up."),
+    ("daily trade limit reached", "Today's trade limit is hit. Your bot will resume tomorrow."),
+    ("position size cap exceeded", "The position was too large for your risk settings. The bot stayed flat."),
+    # execution / venue errors
+    ("no adapter registered", "No trading venue is configured for this chain yet."),
+    ("no wallet for bot", "No wallet is linked to this bot on that chain."),
+    ("not configured", "This feature isn't configured on the trading backend yet."),
+    ("killswitch engaged", "Trading is halted by the kill-switch."),
+    ("duplicate idempotency_key", "This order was already placed — it wasn't sent twice."),
+    ("timeout", "The trading venue timed out. The bot will retry."),
+    ("rate limit", "The trading venue is rate-limiting. The bot will retry shortly."),
+    ("connection", "Couldn't reach the trading venue. The bot will retry."),
+)
+
+
+def humanize_error(raw: str, max_len: int = 300) -> str:
+    """Map a terse technical error to friendly, actionable copy.
+
+    Falls back to the raw text (truncated) for unknown errors so the user is
+    never left with nothing.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return "Unknown error — no trade was placed."
+    lowered = raw.lower()
+    for needle, friendly in _ERROR_MAP:
+        if needle.lower() in lowered:
+            return friendly
+    if len(raw) > max_len:
+        return f"⚠️ {raw[:max_len]}…"
+    return f"⚠️ {raw}"

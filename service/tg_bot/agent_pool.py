@@ -69,6 +69,12 @@ class AgentPool:
             "LIVE_AGENT_MODEL": key.get("model") or "gpt-4o-mini",
             "LIVE_AGENT_TOKEN": bot["platform_token"],
             "LIVE_AGENT_NAME": bot["agent_name"],
+            "LIVE_AGENT_BOT_ID": str(bot["id"]),
+            "LIVE_AGENT_EXECUTION": os.environ.get("LIVE_AGENT_EXECUTION", "0"),
+            "LIVE_AGENT_STRATEGY": os.environ.get("LIVE_AGENT_STRATEGY", "momentum20"),
+            # for pushing human-friendly error notifications straight to the user
+            "TG_BOT_TOKEN": self.registry.bot_token(bot_id) or "",
+            "TG_CHAT_ID": str(bot["tg_id"]),
         })
         try:
             proc = subprocess.Popen(

@@ -311,11 +311,7 @@ class SOLAdapter:
     # ---------------- cancel / flatten ----------------
 
     def cancel_all(self, bot_id: int) -> dict:
-        result = {"ok": True, "perp_closed": [], "limit_cancelled": [], "errors": []}
-        try:
-            result["perp_closed"] = self._perp_close_all()
-        except Exception as exc:  # noqa: BLE001
-            result["errors"].append(f"perp close: {exc}")
+        result = {"ok": True, "limit_cancelled": [], "errors": []}
         token = self._trigger_auth()
         if not token:
             result["errors"].append("trigger auth failed - limit orders not cancelled")

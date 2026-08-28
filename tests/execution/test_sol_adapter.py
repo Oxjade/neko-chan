@@ -289,6 +289,44 @@ def test_cancel_all_best_effort_on_auth_failure(monkeypatch):
     assert "auth failed" in res["errors"][0]
 
 
+def test_cancel_all_never_closes_positions(monkeypatch):
+    """cancel_all() must only cancel resting orders - never flatten perps.
+    (Regression: it used to call _perp_close_all(), so flat_and_cancel closed
+    positions twice and a 'cancel my orders' control liquidated the account.)"""
+    calls = []
+    close_bodies = []
+
+    def handler(method, url, **kw):
+        calls.append(url)
+        if url.startswith(PERPS_POSITIONS_URL):
+            return Resp({"positions": [
+                {"symbol": "SOL", "side": "long", "qty": 2.0, "entryPrice": 150.0, "leverage": 2},
+            ]})
+        if url == PERPS_ORDERS_URL:
+            close_bodies.append(kw["json"])
+            return Resp({"transaction": "dG94"})
+        if url == f"{TRIGGER_BASE}/auth/challenge":
+            return Resp({"message": "m"})
+        if url == f"{TRIGGER_BASE}/auth/verify":
+            return Resp({"token": "jwt"})
+        if url.startswith(f"{TRIGGER_BASE}/orders/history"):
+            return Resp({"orders": [{"id": "lo-1"}]})
+        if url == f"{TRIGGER_BASE}/orders/price/cancel/lo-1":
+            return Resp({"cancelRequestId": "cr-1", "transaction": "dG94"})
+        if url == f"{TRIGGER_BASE}/orders/price/confirm-cancel/lo-1":
+            return Resp({"status": "cancelled"})
+        raise AssertionError(f"unexpected url {url}")
+
+    a = fake_network(monkeypatch, make_adapter(), handler)
+    res = a.cancel_all(7)
+    assert res["ok"] is True
+    assert "limit_cancelled" in res
+    assert "perp_closed" not in res
+    # PERPS_POSITIONS_URL (positions read) must never be hit, and no perp close body sent.
+    assert not any(u == PERPS_POSITIONS_URL for u in calls)
+    assert close_bodies == []
+
+
 # ---------------- rpc selection ----------------
 
 def test_devnet_rpc_selected_when_testnet_true():

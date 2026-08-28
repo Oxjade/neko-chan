@@ -188,6 +188,23 @@ def test_place_order_builds_signs_and_broadcasts(monkeypatch, tmp_path):
     assert not _ed25519_verify(pub, b"tampered", sig[1:65])
 
 
+def test_type_arguments_encoded_as_struct_tags(monkeypatch, tmp_path):
+    """MoveCall type_arguments must be BCS TypeTag::Struct (0x07), not strings."""
+    rec = RpcRecorder(canned_rpc())
+    monkeypatch.setattr(sui_adapter.requests, "post", rec.post)
+    adapter = make_configured_adapter(tmp_path)
+    result = adapter.place_order(intent(), 2.5)
+    assert result["ok"] is True
+    tx_bytes, _signatures, _opts = rec.calls[-1]["params"]
+    raw = base64.b64decode(tx_bytes)
+    # Every coin type (0x2::sui::SUI, USDC) must appear as a TypeTag::Struct (0x07),
+    # NOT as a bare length-prefixed string (0x0d == len 13 of "0x2::sui::SUI").
+    assert raw.count(b"\x07") >= 2, "expected TypeTag::Struct markers for both coin types"
+    assert b"\x0d" + b"0x2::sui::SUI" not in raw, "type args must not be plain strings"
+    # Padded address for 0x2 must be present (00..00 02).
+    assert b"\x00" * 31 + b"\x02" in raw
+
+
 def test_place_order_limit_uses_limit_entrypoint(monkeypatch, tmp_path):
     rec = RpcRecorder(canned_rpc())
     monkeypatch.setattr(sui_adapter.requests, "post", rec.post)

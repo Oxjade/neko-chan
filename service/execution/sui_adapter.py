@@ -94,6 +94,13 @@ def _bcs_addr(a: str) -> bytes:
     return b
 
 
+def _bcs_addr_padded(a: str) -> bytes:
+    raw = a[2:] if a.startswith("0x") else a
+    if len(raw) % 2:
+        raw = "0" + raw
+    return bytes.fromhex(raw).rjust(32, b"\x00")
+
+
 def _bcs_bytes(b: bytes) -> bytes:
     return _uleb128(len(b)) + b
 
@@ -129,13 +136,61 @@ def _bcs_command_move_call(command: dict, arguments: list[bytes]) -> bytes:
         + _bcs_addr(command["package"])
         + _bcs_str(command["module"])
         + _bcs_str(command["function"])
-        + _bcs_vec([_bcs_str(t) for t in command["type_arguments"]])
+        + _bcs_vec([_bcs_type_tag(t) for t in command["type_arguments"]])
         + _bcs_vec(arguments)
     )
 
 
 def _bcs_programmable(inputs: list[bytes], commands: list[bytes]) -> bytes:
     return _bcs_vec(inputs) + _bcs_vec(commands)
+
+
+def _bcs_type_tag(tag: str) -> bytes:
+    tag = tag.strip()
+    primitives = {
+        "bool": 0, "u8": 1, "u64": 2, "u128": 3, "address": 4,
+        "signer": 5, "u16": 8, "u32": 9, "u256": 10,
+    }
+    if tag in primitives:
+        return bytes([primitives[tag]])
+    if tag.startswith("vector<") and tag.endswith(">"):
+        inner = tag[7:-1].strip()
+        return b"\x06" + _bcs_type_tag(inner)
+    if "::" not in tag:
+        raise ValueError(f"invalid type tag: {tag}")
+    idx = tag.index("::")
+    addr = tag[:idx]
+    rest = tag[idx + 2:]
+    idx2 = rest.index("::")
+    module = rest[:idx2]
+    name_and_params = rest[idx2 + 2:]
+    if "<" in name_and_params:
+        name, params_str = name_and_params.split("<", 1)
+        if not params_str.endswith(">"):
+            raise ValueError(f"unmatched < in type tag: {tag}")
+        params_str = params_str[:-1]
+        params = []
+        depth = 0
+        current = []
+        for ch in params_str:
+            if ch == "<":
+                depth += 1
+                current.append(ch)
+            elif ch == ">":
+                depth -= 1
+                current.append(ch)
+            elif ch == "," and depth == 0:
+                params.append("".join(current).strip())
+                current = []
+            else:
+                current.append(ch)
+        if current:
+            params.append("".join(current).strip())
+        type_params = [_bcs_type_tag(p) for p in params]
+    else:
+        name = name_and_params
+        type_params = []
+    return b"\x07" + _bcs_addr_padded(addr) + _bcs_str(module) + _bcs_str(name) + _bcs_vec(type_params)
 
 
 def _serialize_tx_data_v1(call_args: list[dict], command: dict, sender: str,

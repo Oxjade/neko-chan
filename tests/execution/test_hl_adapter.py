@@ -265,7 +265,8 @@ def test_get_account_state_and_fills_shape(fake, ledger):
     adapter = HLAdapter(ledger, AGENT_KEY, MASTER_ADDR, testnet=True)
     state = adapter.get_account_state()
     assert state["ok"] is True
-    assert state["balances"]["USDC"] == 1000.0
+    assert state["balances"]["USDC"] == 950.0  # accountValue(1000) - totalMarginUsed(50) = free cash
+    assert state["balances"]["equity"] == 1000.0
     assert state["balances"]["withdrawable"] == 900.0
     pos = state["positions"][0]
     assert pos["coin"] == "BTC" and pos["side"] == "long" and pos["qty"] == 0.05

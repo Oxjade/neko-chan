@@ -6,6 +6,7 @@ settings, inbox. All data comes from the AI-Trader platform in real time.
 """
 
 import json
+import sys
 import threading
 from datetime import datetime, timezone
 
@@ -15,7 +16,7 @@ from telegram.ext import (Application, ContextTypes, CommandHandler,
                           CallbackQueryHandler, ConversationHandler,
                           MessageHandler, filters)
 
-from messages import USERBOT, NOTIF, mask_key
+from messages import USERBOT, WIZARD, NOTIF, mask_key, humanize_error
 from store import utcnow
 from provider import validate_key, ProviderError
 
@@ -149,13 +150,82 @@ def render_positions_text(portfolio: dict) -> str:
 class UserBotController:
     """Builds and tracks one Application per user bot."""
 
-    def __init__(self, registry, platform, vault=None, agent_pool=None):
+    def __init__(self, registry, platform, vault=None, agent_pool=None, gateway=None):
         self.registry = registry
         self.platform = platform
         self.vault = vault
         self.agent_pool = agent_pool
+        self.gateway = gateway  # ExecGateway (real execution) or None
         self._apps: dict[int, Application] = {}
         self._lock = threading.Lock()
+
+    # ---------------- real trading helpers ----------------
+
+    def _exec_ready(self) -> bool:
+        return bool(self.gateway and getattr(self.gateway, "ready", False))
+
+    @staticmethod
+    def _exec_path():
+        import os as _os
+        p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "execution")
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        return p
+
+    def _exec_chain_state(self, bot_id: int) -> tuple[dict, dict]:
+        """(wallets, chain_state) for the bot from the execution ledger."""
+        if not self._exec_ready():
+            return {}, {}
+        self._exec_path()
+        try:
+            self.gateway.provision_all_wallets(bot_id)
+        except Exception:
+            pass
+        wallets, chain_state = {}, {}
+        for chain in self.gateway.adapters:
+            try:
+                wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+                if not wallet:
+                    continue
+                wallets[chain] = wallet
+                try:
+                    self.gateway.sync(bot_id, chain)
+                except Exception:
+                    pass
+                state = self.gateway.ledger.load_chain_state(wallet["id"]) or {}
+                chain_state[chain] = state
+            except Exception:
+                continue
+        return wallets, chain_state
+
+    def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
+        self._exec_path()
+        from wallet_ui import render_wallet_panel
+
+        if not self._exec_ready():
+            return USERBOT["wallet_disabled"].format(name=bot_name)
+        wallets, chain_state = self._exec_chain_state(bot_id)
+        if not wallets:
+            return USERBOT["wallet_not_connected"].format(name=bot_name)
+        return render_wallet_panel(
+            [{"id": bot_id, "bot_name": bot_name, "paused": paused}],
+            wallets, chain_state)
+
+    def _exec_risk_lines(self) -> list[str]:
+        self._exec_path()
+        from risk_guard import BotRiskProfile
+
+        profile = BotRiskProfile()
+        lines = [
+            f"• Max notional per order  <code>${profile.max_notional_usd:,.0f}</code>",
+            f"• Max exposure           <code>{profile.max_exposure_pct:.0f}%</code> of balance",
+            f"• Max leverage           <code>{profile.max_leverage:.0f}x</code>",
+            f"• Stop-loss              <code>{'required' if profile.require_stop else 'optional'}</code> "
+            f"({profile.min_stop_pct:.0f}–{profile.max_stop_pct:.0f}%)",
+            f"• Daily loss halt        <code>-{profile.daily_loss_halt_pct:.0f}%</code>",
+            f"• Max open positions     <code>{profile.max_open_positions}</code>",
+        ]
+        return lines
 
     # ---------------- lifecycle ----------------
 
@@ -257,6 +327,27 @@ class UserBotController:
         async def key_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
+            # Gate: disclaimer must be accepted before key setup.
+            user = self.registry.get_user(tg_id)
+            if user and user.get("accepted_disclaimer"):
+                await _show_key_provider(q)
+                return K_PROVIDER
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("✅ I understand, continue", callback_data="key:disclaimer_accept")],
+                [telegram.InlineKeyboardButton("✖️ I don't accept", callback_data="key:decline")],
+                [telegram.InlineKeyboardButton(CANCEL, callback_data="key:cancel")],
+            ])
+            await q.message.edit_text(WIZARD["disclaimer"], reply_markup=kb)
+            return K_PROVIDER  # re-use the provider state; we handle the accept below
+
+        async def key_disclaimer_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            self.registry.accept_disclaimer(tg_id)
+            await _show_key_provider(q)
+            return K_PROVIDER
+
+        async def _show_key_provider(q):
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("OpenAI", callback_data="keyp:openai"),
                  telegram.InlineKeyboardButton("OpenRouter", callback_data="keyp:openrouter")],
@@ -269,7 +360,6 @@ class UserBotController:
                 "Your key pays for your own model calls. We test it before saving.",
                 reply_markup=kb,
             )
-            return K_PROVIDER
 
         async def key_provider(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -318,6 +408,7 @@ class UserBotController:
                 await update.message.reply_text(msg)
                 return K_KEY
             self.registry.store_key(tg_id, provider, api_key, base, model)
+            self.registry.cancel_bot_deletion(bot_id)  # key set -> keep the bot
             context.bot_data.pop("key_provider", None)
             context.bot_data.pop("key_provider_url", None)
             context.bot_data.pop("key_provider_model", None)
@@ -336,17 +427,50 @@ class UserBotController:
         async def key_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            await q.message.edit_text("Key setup canceled. Your bot stays paused until you add one.",
-                                      reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("🔑 Set AI Key", callback_data="key:start")]]))
+            declined = q.data == "key:decline"
+            # Unconfigured bot (no AI key yet) -> schedule cleanup so we don't
+            # hold idle bots. The user gets a clear deadline + how to keep it.
+            try:
+                active_key = self.registry.get_active_key(tg_id)
+            except Exception:
+                active_key = None
+            deadline = ""
+            if not active_key:
+                from datetime import timedelta
+                from store import utcnow
+                try:
+                    self.registry.schedule_bot_deletion(
+                        bot_id, (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat())
+                    deadline = (
+                        "\n\n🕒 Your bot is unconfigured — it will be removed from the "
+                        "network in 3 hours unless you add your AI key.\n"
+                        "To keep it, just tap \"Set AI Key\" and complete setup."
+                    )
+                except Exception:
+                    deadline = ""
+            if declined:
+                text = ("✅ Understood — nothing was saved.\n\n"
+                        "Your bot stays OFF. No AI key was stored, no agent was "
+                        "started, and nothing was charged." + deadline)
+            else:
+                text = ("Key setup canceled. Your bot stays paused until you add one." + deadline)
+            await q.message.edit_text(
+                text,
+                reply_markup=telegram.InlineKeyboardMarkup(
+                    [[telegram.InlineKeyboardButton("🔑 Set AI Key", callback_data="key:start")],
+                     [telegram.InlineKeyboardButton("🏠 Home", callback_data="sb:dash")]]))
             return ConversationHandler.END
 
         key_conv = ConversationHandler(
             entry_points=[CallbackQueryHandler(key_start, pattern=r"^key:start$")],
             states={
-                K_PROVIDER: [CallbackQueryHandler(key_provider, pattern=r"^keyp:")],
+                K_PROVIDER: [
+                    CallbackQueryHandler(key_provider, pattern=r"^keyp:"),
+                    CallbackQueryHandler(key_disclaimer_accept, pattern=r"^key:disclaimer_accept$"),
+                ],
                 K_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, key_input)],
             },
-            fallbacks=[CallbackQueryHandler(key_cancel, pattern=r"^key:cancel$")],
+            fallbacks=[CallbackQueryHandler(key_cancel, pattern=r"^key:(cancel|decline)$")],
             name="userbot_key_setup",
             allow_reentry=True,
         )
@@ -370,16 +494,19 @@ class UserBotController:
                     pass
             b = self.registry.get_bot(bot_id)
             text = render_dashboard_text(b, pf, lb_row)
+            badge = USERBOT["real_badge"] if self._exec_ready() else USERBOT["paper_badge"]
+            text = f"{badge} · {text}"
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
                  telegram.InlineKeyboardButton("💰 Positions", callback_data="sb:pos")],
                 [telegram.InlineKeyboardButton("🏦 Live Markets", callback_data="sb:live"),
                  telegram.InlineKeyboardButton("📡 Trades", callback_data="sb:trades")],
-                [telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="sb:lb"),
-                 telegram.InlineKeyboardButton("🤖 Bot", callback_data="sb:bot")],
+                [telegram.InlineKeyboardButton("💼 Wallet", callback_data="sb:wallet"),
+                 telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="sb:lb")],
                 [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
                  telegram.InlineKeyboardButton("📬 Inbox", callback_data="sb:inbox")],
-                [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help")],
+                [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help"),
+                 telegram.InlineKeyboardButton("🛑 Kill-Switch", callback_data="sb:kill")],
             ])
             if update.message:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
@@ -544,7 +671,7 @@ class UserBotController:
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Markets:   {b['symbols']}\n"
                     f"Leverage:  {b.get('leverage') or 1.0}x\n"
-                    f"Last error: {b['last_error'] or 'none'}")
+                    f"Last error: {humanize_error(b['last_error']) if b['last_error'] else 'none'}")
             kb = [[telegram.InlineKeyboardButton("⏸️ Pause", callback_data="sb:pause") if b["is_running"] else telegram.InlineKeyboardButton("▶️ Resume", callback_data="sb:resume")],
                   [telegram.InlineKeyboardButton("🗑️ Delete Bot", callback_data="sb:delete")],
                   [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]
@@ -564,11 +691,13 @@ class UserBotController:
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Risk:      {b['risk_profile']}\n"
                     f"Leverage:  {b.get('leverage') or 1.0}x\n"
+                    f"Mode:      {USERBOT['real_badge'] if self._exec_ready() else USERBOT['paper_badge']} trading\n"
                     f"AI key:    {'set ✓' if self.registry.get_active_key(tg_id) else 'not set'}")
             kb = [
                 [telegram.InlineKeyboardButton(f"⏱ Interval: {b['interval_sec']}s", callback_data="sb:set_interval:120"),
                  telegram.InlineKeyboardButton("60s", callback_data="sb:set_interval:60"),
                  telegram.InlineKeyboardButton("5m", callback_data="sb:set_interval:300")],
+                [telegram.InlineKeyboardButton("🛡️ Execution Risk", callback_data="sb:execrisk")],
                 [telegram.InlineKeyboardButton("🔑 Change AI Key", callback_data="key:start")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
             ]
@@ -600,6 +729,112 @@ class UserBotController:
             await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
+        async def wallet_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            b = self.registry.get_bot(bot_id)
+            text = self._render_wallet(bot_id, b["bot_name"], b.get("paused", 0))
+            fund_buttons = []
+            if self._exec_ready():
+                self._exec_path()
+                from wallet_ui import CHAIN_LABELS
+                fund_buttons = [[telegram.InlineKeyboardButton(
+                    f"💸 Fund {CHAIN_LABELS[chain].replace('🔗 ', '')}",
+                    callback_data=f"sb:fund:{chain}")] for chain in self.gateway.adapters]
+            kb = fund_buttons + [[
+                telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                telegram.InlineKeyboardButton(HOME, callback_data="sb:dash"),
+            ]]
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(kb))
+
+        async def wallet_fund(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            _, _, chain = q.data.split(":")
+            if not self._exec_ready():
+                await q.message.edit_text(USERBOT["kill_no_exec"],
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            wallet = None
+            try:
+                self.gateway.provision_wallet(bot_id, chain)
+                wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+            except Exception:
+                wallet = None
+            if not wallet:
+                await q.message.edit_text(USERBOT["wallet_not_connected"].format(name=self.registry.get_bot(bot_id)["bot_name"]),
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            self._exec_path()
+            from wallet_ui import CHAIN_LABELS
+            text = USERBOT["wallet_fund"].format(
+                chain_label=CHAIN_LABELS.get(chain, chain),
+                address=wallet["address"])
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
+                 [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
+        async def killswitch_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            if q.data == "sb:kill_yes":
+                if not self._exec_ready():
+                    await q.message.edit_text(USERBOT["kill_no_exec"],
+                                              reply_markup=telegram.InlineKeyboardMarkup(
+                                                  [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
+                    return
+                try:
+                    res = self.gateway.engage_killswitch(bot_id, "user requested via Telegram")
+                except Exception as exc:
+                    res = {"ok": False, "error": str(exc)[:200]}
+                summary = f"Fully flattened: {'YES' if res.get('fully_flattened') else 'NO — see errors below'}"
+                errors = []
+                for chain, r in (res.get("results") or {}).items():
+                    if isinstance(r, dict) and not r.get("ok"):
+                        errors.append(f"• {chain}: {r.get('error', 'failed')}")
+                if errors:
+                    summary += "\n" + "\n".join(errors)
+                await q.message.edit_text(
+                    USERBOT["kill_engaged"].format(summary=summary),
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton("✅ Release", callback_data="sb:kill_release")],
+                         [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            if q.data == "sb:kill_release":
+                try:
+                    if self._exec_ready():
+                        self.gateway.release_killswitch(bot_id)
+                except Exception:
+                    pass
+                await q.message.edit_text(USERBOT["kill_released"],
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            if not self._exec_ready():
+                await q.message.edit_text(USERBOT["kill_no_exec"],
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            await q.message.edit_text(USERBOT["kill_title"],
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("🛑 Engage Kill-Switch", callback_data="sb:kill_yes")],
+                                           [telegram.InlineKeyboardButton("↩️ Cancel", callback_data="sb:dash")]]))
+
+        async def exec_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            b = self.registry.get_bot(bot_id)
+            if not self._exec_ready():
+                text = USERBOT["exec_risk_disabled"].format(name=b["bot_name"])
+            else:
+                text = USERBOT["exec_risk"].format(name=b["bot_name"],
+                                                   lines="\n".join(self._exec_risk_lines()))
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")],
+                 [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
         app.add_handler(CommandHandler("start", welcome))
         app.add_handler(CallbackQueryHandler(key_help, pattern=r"^key:help$"))
         app.add_handler(key_conv)
@@ -613,3 +848,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(settings, pattern=r"^sb:(settings|set_interval:\d+)$"))
         app.add_handler(CallbackQueryHandler(inbox, pattern=r"^sb:inbox$"))
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
+        app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))
+        app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))
+        app.add_handler(CallbackQueryHandler(killswitch_screen, pattern=r"^sb:(kill|kill_yes|kill_release)$"))
+        app.add_handler(CallbackQueryHandler(exec_risk, pattern=r"^sb:execrisk$"))

@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 
 from tg_config import ADMIN_TG_IDS
 from key_vault import KeyVault
-from messages import WELCOME_NEW, WELCOME_RETURNING, HOW_IT_WORKS, MENU, ERRORS
+from messages import WELCOME_NEW, WELCOME_RETURNING, HOW_IT_WORKS, MENU, ERRORS, humanize_error
 from handlers.common import HOME, menu_keyboard, home_keyboard
 
 
@@ -177,13 +177,70 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         lines = [f"👑 Fleet — {len(bots)} bots · {sum(b['is_running'] for b in bots)} running"]
         for b in bots[:50]:
             mark = "🟢" if b["is_running"] else ("🔴" if b["last_error"] else "⏸️")
+            err = humanize_error(b["last_error"]) if b["last_error"] else "-"
             lines.append(f"{mark} {b['bot_name']}  @{b['bot_username']}  agent:{b['agent_name']}  "
-                         f"err:{b['last_error'] or '-'}")
-        await update.message.reply_text("\n".join(lines) if lines else "No bots.")
+                         f"err:{err}")
+        kb = []
+        gw = getattr(userbot_controller, "gateway", None)
+        if gw and getattr(gw, "ready", False):
+            kb.append([telegram.InlineKeyboardButton("🛑 Kill ALL bots",
+                                                     callback_data="admin:killall")])
+        await update.message.reply_text("\n".join(lines) if lines else "No bots.",
+                                        reply_markup=telegram.InlineKeyboardMarkup(kb) if kb else None)
+
+    async def admin_killall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        q = update.callback_query
+        user = q.from_user if q else update.effective_user
+        if user.id not in ADMIN_TG_IDS and not registry.is_admin(user.id):
+            if q:
+                await q.message.edit_text(ERRORS["unauthorized"])
+            else:
+                await update.message.reply_text(ERRORS["unauthorized"])
+            return
+        n = len(registry.all_bots())
+        text = (f"🛑 NETWORK KILL-SWITCH\n\n"
+                f"Flatten ALL positions and cancel ALL open orders on every chain "
+                f"for all {n} bot(s), immediately.\n\n"
+                f"⚠️ This cannot be undone automatically. Trading stays halted for "
+                f"each bot until released.")
+        kb = telegram.InlineKeyboardMarkup(
+            [[telegram.InlineKeyboardButton("🛑 Yes, kill all", callback_data="admin:killall_yes")],
+             [telegram.InlineKeyboardButton("↩️ Cancel", callback_data="nav:home")]])
+        if q:
+            await q.message.edit_text(text, reply_markup=kb)
+        else:
+            await update.message.reply_text(text, reply_markup=kb)
+
+    async def admin_killall_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        q = update.callback_query
+        await q.answer()
+        if q.from_user.id not in ADMIN_TG_IDS and not registry.is_admin(q.from_user.id):
+            await q.message.edit_text(ERRORS["unauthorized"])
+            return
+        gw = getattr(userbot_controller, "gateway", None)
+        if not gw or not getattr(gw, "ready", False):
+            await q.message.edit_text("🛑 Kill-switch: real execution is not configured.")
+            return
+        results = []
+        for b in registry.all_bots():
+            try:
+                res = gw.engage_killswitch(b["id"], "operator: network kill-switch")
+                results.append((b["bot_name"], res.get("fully_flattened")))
+            except Exception as exc:
+                results.append((b["bot_name"], f"error: {str(exc)[:60]}"))
+        ok = sum(1 for _, r in results if r is True)
+        lines = [f"🛑 NETWORK KILL-SWITCH ENGAGED\n",
+                 f"Flattened: {ok}/{len(results)} bots\n"]
+        for name, r in results[:25]:
+            lines.append(f"  {'✅' if r is True else '❌'} {name}" + ("" if r is True else f" ({r})"))
+        await q.message.edit_text("\n".join(lines),
+                                  reply_markup=telegram.InlineKeyboardMarkup(
+                                      [[telegram.InlineKeyboardButton("🏠 Home", callback_data="nav:home")]]))
 
     app.add_handler(CommandHandler("start", on_start))
     app.add_handler(CommandHandler("menu", on_start))
     app.add_handler(CommandHandler("admin", admin_list))
+    app.add_handler(CommandHandler("adminkill", admin_killall))
     app.add_handler(CallbackQueryHandler(nav_how, pattern=r"^nav:how$"))
     app.add_handler(CallbackQueryHandler(how_page, pattern=r"^how:\d+$"))
     app.add_handler(CallbackQueryHandler(nav_home, pattern=r"^nav:home$"))
@@ -194,3 +251,5 @@ def register_master_handlers(app, registry, platform, userbot_controller):
     app.add_handler(CallbackQueryHandler(bot_remove, pattern=r"^bot:remove:\d+$"))
     app.add_handler(CallbackQueryHandler(bot_remove_yes, pattern=r"^bot:remove_yes:\d+$"))
     app.add_handler(CallbackQueryHandler(nav_help, pattern=r"^nav:help$"))
+    app.add_handler(CallbackQueryHandler(admin_killall, pattern=r"^admin:killall$"))
+    app.add_handler(CallbackQueryHandler(admin_killall_yes, pattern=r"^admin:killall_yes$"))

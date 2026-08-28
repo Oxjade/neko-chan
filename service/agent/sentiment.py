@@ -17,6 +17,11 @@ import requests
 
 _CACHE: dict[str, tuple[float, str]] = {}
 _CACHE_TTL = 900  # 15 min
+# Shared bulk-funding cache: metaAndAssetCtxs returns ALL coins in one heavy call.
+# We parse it once and reuse within a short TTL so an 8-symbol cycle makes one
+# bulk call, not eight.
+_BULK_TTL = 60
+_bulk_funding: dict = {}
 
 
 def _cached(key: str, ttl: float, fetcher):
@@ -43,17 +48,36 @@ def fear_greed() -> str:
     return _cached("fng", _CACHE_TTL, fetch)
 
 
+def _funding_map() -> dict[str, float]:
+    """Coin -> funding/8h from a single metaAndAssetCtxs call, cached briefly."""
+    now = time.time()
+    if _bulk_funding and now - _bulk_funding["_ts"] < _BULK_TTL:
+        return _bulk_funding
+    r = requests.post("https://api.hyperliquid.xyz/info",
+                      json={"type": "metaAndAssetCtxs"}, timeout=15)
+    meta, ctxs = r.json()
+    out = {"_ts": now}
+    found = 0
+    for asset, ctx in zip(meta.get("universe", []), ctxs):
+        name = asset.get("name")
+        try:
+            out[name] = float(ctx.get("funding", 0.0))
+            found += 1
+        except (TypeError, ValueError):
+            continue
+    if found:
+        _bulk_funding.clear()
+        _bulk_funding.update(out)
+    return _bulk_funding
+
+
 def hyperliquid_funding(coin: str) -> str:
     """Current funding rate on Hyperliquid for a coin (longs pay when +)."""
     def fetch():
-        r = requests.post("https://api.hyperliquid.xyz/info",
-                          json={"type": "metaAndAssetCtxs"}, timeout=15)
-        meta, ctxs = r.json()
-        for asset, ctx in zip(meta["universe"], ctxs):
-            if asset["name"] == coin.upper():
-                rate = float(ctx["funding"])
-                return f"{rate * 100:.4f}%/8h"
-        return "n/a"
+        rate = _funding_map().get(coin.upper(), None)
+        if rate is None:
+            return "n/a"
+        return f"{rate * 100:.4f}%/8h"
 
     return _cached(f"funding:{coin}", _CACHE_TTL, fetch)
 

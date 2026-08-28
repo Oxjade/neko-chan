@@ -93,18 +93,20 @@ class VenueRouter:
 
         ok = bool(result.get("ok"))
         if ok:
-            ven_id = ""
-            if isinstance(result.get("data"), dict):
-                ven_id = str(result["data"].get("order_hash") or result["data"].get("orderId") or "")
+            data = result.get("data") if isinstance(result.get("data"), dict) else {}
+            ven_id = str(data.get("order_hash") or data.get("orderId")
+                         or result.get("venue_order_id") or result.get("tx_hash") or "")
+            fill_price = float(result.get("avg_px") or result.get("price") or ref_price)
+            fill_qty = float(result.get("filled_qty") or intent.qty)
             self.ledger.set_order_status(order_id, "submitted", venue_order_id=ven_id[:80] or None)
             fee_venue = float(result.get("fee") or 0.0)
             if fee_venue <= 0:
                 # Adapter did not report a venue fee (HL/Sui/Bluefin do not) -
                 # fall back to the venue's taker basis so P&L is truthful.
                 fee_venue = round(intent.notional(ref_price) * VENUE_FEE_BPS.get(venue, 0.0) / 10000, 6)
-            self.ledger.record_fill(order_id, price=ref_price, qty=intent.qty,
+            self.ledger.record_fill(order_id, price=fill_price, qty=fill_qty,
                                     fee_venue=fee_venue, tx_hash=ven_id[:80], bot_id=bot_id)
-            log.info("[router] bot=%s %s %s %s @ %s ok", bot_id, venue, intent.side, intent.symbol, ref_price)
+            log.info("[router] bot=%s %s %s %s @ %s ok", bot_id, venue, intent.side, intent.symbol, fill_price)
         else:
             self.ledger.set_order_status(order_id, "rejected")
         return {"ok": ok, "order_id": order_id, "status": "submitted" if ok else "rejected",

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS bots (
     pid INTEGER,
     last_heartbeat TEXT,
     last_error TEXT,
+    scheduled_deletion_at TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -85,6 +86,7 @@ class Registry:
                 "ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0",
                 "ALTER TABLE bots ADD COLUMN agent_id INTEGER",
                 "ALTER TABLE bots ADD COLUMN paused INTEGER DEFAULT 0",
+                "ALTER TABLE bots ADD COLUMN scheduled_deletion_at TEXT",
             ):
                 try:
                     self._conn.execute(stmt)
@@ -251,6 +253,37 @@ class Registry:
                 "DELETE FROM bots WHERE id = ? AND tg_id = ?", (bot_id, tg_id)
             )
             self._conn.commit()
+
+    # ---------------- scheduled deletion (unconfigured-bot cleanup) ----------------
+
+    def schedule_bot_deletion(self, bot_id: int, at: str) -> None:
+        """Mark a bot for removal at `at` (ISO UTC) unless cancelled before then."""
+        with _LOCK:
+            self._conn.execute(
+                "UPDATE bots SET scheduled_deletion_at = ? WHERE id = ?", (at, bot_id)
+            )
+            self._conn.commit()
+
+    def cancel_bot_deletion(self, bot_id: int) -> None:
+        with _LOCK:
+            self._conn.execute(
+                "UPDATE bots SET scheduled_deletion_at = NULL WHERE id = ?", (bot_id,)
+            )
+            self._conn.commit()
+
+    def pending_bot_deletions(self, cutoff_iso: str) -> list[dict]:
+        """Bots scheduled for deletion whose deadline has passed."""
+        with _LOCK:
+            rows = self._conn.execute(
+                "SELECT * FROM bots WHERE scheduled_deletion_at IS NOT NULL "
+                "AND scheduled_deletion_at <= ? ORDER BY scheduled_deletion_at ASC",
+                (cutoff_iso,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def due_bot_deletions(self) -> list[dict]:
+        from datetime import datetime, timezone
+        return self.pending_bot_deletions(datetime.now(timezone.utc).isoformat())
 
     # ---------------- events (notification dedup) ----------------
 
