@@ -1376,9 +1376,18 @@ def main():
                                                  leverage=clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE))
                             if fill.get("ok"):
                                 print(f"[exit] {label}: {pick.symbol} - {pick.reasoning[:80]}")
+                            else:
+                                # ERROR DISCLOSURE: a forced exit that fails must
+                                # be surfaced - the user needs to know their stop
+                                # or time-exit didn't go through.
+                                print(f"[exit] FAILED {label}: {pick.symbol} - {fill.get('error','')[:100]}")
+                                notify_error(f"{label} for {pick.symbol} failed: {fill.get('error','')}", kind="error")
                             break
                 except Exception as exc:
-                    pass
+                    # FAULT TOLERANCE: never crash the exit thread, but do surface
+                    # recurring failures instead of silently swallowing them.
+                    print(f"[exit] loop error: {exc}")
+                    notify_error(f"exit monitor hiccup: {exc}", kind="error")
         import threading as _threading
         _threading.Thread(target=_exit_loop, name="exit-check", daemon=True).start()
         while True:
