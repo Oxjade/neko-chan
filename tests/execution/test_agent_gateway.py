@@ -145,3 +145,20 @@ def test_get_real_portfolio_aggregates_chains():
 def test_gateway_none_when_execution_disabled():
     live_agent.EXEC_ENABLED = False
     assert live_agent._get_exec_gateway() is None
+
+# ---------------- per-asset leverage clamping ----------------
+
+def test_clamp_leverage_asset_caps():
+    from live_agent import clamp_leverage
+    # BTC caps at 40x on Hyperliquid
+    assert clamp_leverage("BTC", "crypto", 50) == 40
+    assert clamp_leverage("BTC", "crypto", 20) == 20
+    # SOL caps at 20x
+    assert clamp_leverage("SOL", "crypto", 25) == 20
+    # ATOM/SEI cap at 5x
+    assert clamp_leverage("ATOM", "crypto", 10) == 5
+    assert clamp_leverage("SEI", "crypto", 10) == 5
+    # 1x stays 1x (safe default)
+    assert clamp_leverage("BTC", "crypto", 1) == 1
+    # non-crypto is always 1x
+    assert clamp_leverage("AAPL", "us-stock", 10) == 1

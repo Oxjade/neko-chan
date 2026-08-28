@@ -76,7 +76,26 @@ _trailing_high: dict[str, float] = {}
 LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
-LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "5"))
+LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "1"))
+# Max leverage is PER ASSET, not per chain (verified live from Hyperliquid:
+# BTC 40x, ETH 25x, SOL 20x, HYPE/SUI/NEAR 10x, ATOM/SEI 5x). Jupiter perps
+# allow up to 100x, Bluefin 25x, DeepBook margin 10x. The bot clamps any
+# user-selected leverage to the asset's venue max so it never asks for more
+# than the venue allows.
+HL_MAX_LEVERAGE = {
+    "BTC": 40, "ETH": 25, "SOL": 20, "SUI": 10, "HYPE": 10,
+    "SEI": 5, "NEAR": 10, "ATOM": 5,
+}
+
+
+def clamp_leverage(symbol: str, market: str, lev: float) -> float:
+    """Clamp requested leverage to the venue/asset max. 1x if market not a perp."""
+    if market != "crypto":
+        return 1.0
+    if lev <= 1:
+        return lev
+    cap = HL_MAX_LEVERAGE.get(symbol.upper(), 10)
+    return min(lev, cap)
 # Real execution through the chain adapters (execution gateway). Requires
 # REAL_TRADING_ENABLED=1 AND per-chain keys in the gateway env. Default off:
 # the agent stays paper-only on the platform. When on, orders route through
@@ -683,11 +702,12 @@ def route_real_order(gw, bot_id: int, symbol: str, market: str, action: str,
         return {"ok": False, "error": f"no real venue for {symbol} [{market}]"}
     chain, venue = resolved
     side = "buy" if action in ("buy", "cover") else "sell"
+    lev = clamp_leverage(symbol, market, leverage)
     intent_kw = dict(
         chain=chain, venue=venue, symbol=symbol, side=side, qty=qty,
         order_type="market",
         # closes (sell/cover) are always 1x with no stop/target re-armed
-        leverage=leverage if action in ("buy", "short") else 1.0,
+        leverage=lev if action in ("buy", "short") else 1.0,
         idempotency_key=(
             f"agent:{os.getenv('LIVE_AGENT_NAME', 'agent')}:{symbol}:{action}:{int(time.time() * 1000)}"
         ),
@@ -1253,7 +1273,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
             fill = route_real_order(gw, EXEC_BOT_ID, symbol, market, row["action"], qty,
                                     stop_pct or None, take_pct or None,
                                     prices.get(symbol, 0) or 0,
-                                    LIVE_AGENT_LEVERAGE if market == "crypto" else 1.0)
+                                    clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE))
             row["fill_ok"] = fill.get("ok")
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])
@@ -1271,7 +1291,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 target=_last_scenario.target)
         else:
             fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
-                     leverage=LIVE_AGENT_LEVERAGE if market == "crypto" else None)
+                     leverage=clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE))
             row["fill_ok"] = fill["ok"]
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])
@@ -1342,7 +1362,7 @@ def main():
                             fill = execute_trade(token, pick.symbol,
                                                  dict(UNIVERSE).get(pick.symbol, "crypto"),
                                                  side, qty,
-                                                 leverage=LIVE_AGENT_LEVERAGE)
+                                                 leverage=clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE))
                             if fill.get("ok"):
                                 print(f"[exit] {label}: {pick.symbol} - {pick.reasoning[:80]}")
                             break
