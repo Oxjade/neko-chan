@@ -62,6 +62,16 @@ VOL_DAILY_STOP_MULT = 1.2
 VOL_DAILY_TARGET_MULT = 2.0
 VOL_STOP_MIN_PCT = 1.5            # never tighter than 1.5%
 VOL_STOP_MAX_PCT = 6.0            # never wider than 6%
+# ---- time-based exit (respect the trade's shelf life) ----
+# A trade that hasn't hit its target within a reasonable window is dead
+# capital - it decays in range and never banks profit. Close it:
+#   MAX_HOLD_DAYS        = hard cap: exit at market after this many days
+#   PROFIT_TAKE_DAYS     = if a position is GREEN after this many days but
+#                          hasn't hit target, bank the profit anyway
+#   PROFIT_TAKE_MIN_PCT  = minimum gain to bank under the time rule
+MAX_HOLD_DAYS = 5
+PROFIT_TAKE_DAYS = 3
+PROFIT_TAKE_MIN_PCT = 0.5
 MAX_POSITION_PCT = 30.0            # of equity per position
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
 RISK_PER_TRADE_PCT = 1.0           # risk 1% of equity per trade
@@ -478,6 +488,56 @@ def trail_check(positions: list[dict], prices: dict) -> list[QuantDecision]:
                 "sell", symbol, 0.0, 0.0, 0.0,
                 f"trailing stop hit: +{(peak/entry-1)*100:.1f}% peak, "
                 f"exited ~{(peak-cur)/peak*100:.1f}% off the high"))
+    return exits
+
+
+def time_exit_check(positions: list[dict], prices: dict,
+                    max_hold_days: float = MAX_HOLD_DAYS,
+                    profit_take_days: float = PROFIT_TAKE_DAYS,
+                    profit_min_pct: float = PROFIT_TAKE_MIN_PCT) -> list[QuantDecision]:
+    """Time-based exit: a trade that hasn't resolved within its shelf life
+    is dead capital. Close it to free the margin and respect the opportunity cost.
+
+    - HARD CUT: any position open > max_hold_days closes at market (win or loss).
+    - PROFIT TAKE: a GREEN position open > profit_take_days that hasn't hit
+      target banks the profit anyway (even if below target).
+
+    Rules:
+      - AAPL opened at 314.74, target 339.92 (+7.9%). If it's green at 316.30
+        after 3 days and hasn't hit 339.92, it's a time-based profit take.
+      - A position open > 5 days closes regardless of PnL.
+
+    Time is measured from the position's `opened_at` ISO timestamp.
+    """
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    exits = []
+    for p in positions:
+        symbol = p.get("symbol")
+        qty = p.get("quantity", 0)
+        if qty <= 0:
+            continue
+        entry = float(p.get("entry_price") or 0)
+        cur = prices.get(symbol) or p.get("current_price") or entry
+        opened = p.get("opened_at")
+        if not opened or entry <= 0 or cur <= 0:
+            continue
+        try:
+            opened_dt = datetime.fromisoformat(opened.replace('Z', '+00:00'))
+        except Exception:
+            continue
+        age_days = (now - opened_dt).total_seconds() / 86400.0
+        pnl_pct = (cur / entry - 1.0) * 100.0
+        # hard cut: past max hold
+        if age_days >= max_hold_days:
+            exits.append(QuantDecision(
+                "sell", symbol, 0.0, 0.0, 0.0,
+                f"time stop: {age_days:.1f}d > {max_hold_days:.0f}d max hold {'(+' + f'{pnl_pct:+.1f}' + '%)' if pnl_pct >= 0 else f'({pnl_pct:.1f}%)'}"))
+        # profit take: green but not hitting target, take the win
+        elif age_days >= profit_take_days and pnl_pct >= profit_min_pct:
+            exits.append(QuantDecision(
+                "sell", symbol, 0.0, 0.0, 0.0,
+                f"time profit take: {age_days:.1f}d, green {pnl_pct:+.1f}% - bank it"))
     return exits
 
 

@@ -256,6 +256,37 @@ def test_barrier_prob_is_bounded():
             assert 0.05 <= p <= 0.75
 
 
+def test_time_exit_hard_cut_after_max_hold():
+    from datetime import datetime, timedelta, timezone
+    from quant_strategy import time_exit_check
+    old = (datetime.now(timezone.utc) - timedelta(days=6)).isoformat()
+    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
+            "current_price": 79500, "opened_at": old}]
+    exits = time_exit_check(pos, {"BTC": 79500}, max_hold_days=5)
+    assert len(exits) == 1
+    assert "time stop" in exits[0].reasoning
+
+
+def test_time_exit_profit_take_banks_green():
+    from datetime import datetime, timedelta, timezone
+    from quant_strategy import time_exit_check
+    old = (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()
+    pos = [{"symbol": "AAPL", "quantity": 18, "entry_price": 314,
+            "current_price": 316, "opened_at": old}]
+    exits = time_exit_check(pos, {"AAPL": 316}, max_hold_days=5, profit_take_days=3)
+    assert len(exits) == 1
+    assert "profit take" in exits[0].reasoning
+
+
+def test_time_exit_does_not_trigger_prematurely():
+    from datetime import datetime, timedelta, timezone
+    from quant_strategy import time_exit_check
+    recent = datetime.now(timezone.utc).isoformat()
+    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
+            "current_price": 79500, "opened_at": recent}]
+    assert time_exit_check(pos, {"BTC": 79500}) == []
+
+
 def test_build_scenarios_returns_long_and_short():
     up = _uptrend_closes()
     sc = build_scenarios("BTC", up, 120.0)
