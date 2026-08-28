@@ -962,9 +962,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 )
                 llm = _provider_completion(system, user)
                 if str(llm.get("action", "")).lower() in ("buy", "sell"):
-                    # stay within quant caps: never exceed base qty, keep stops
+                    # stay within quant caps: never exceed base qty (tolerance
+                    # for the LLM's decimal rounding), keep stops/targets frozen
                     llm_qty = float(llm.get("quantity", 0) or 0)
-                    if 0 < llm_qty <= base["quantity"]:
+                    if 0 < llm_qty <= base["quantity"] * 1.001:
                         llm["quantity"] = llm_qty
                         llm["symbol"] = base["symbol"]
                         llm["stop_loss_pct"] = base["stop_loss_pct"]
