@@ -924,6 +924,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from quant_strategy import (
                 scenario_matrix, pick_best_scenario, trail_check, time_exit_check,
+                partial_profit_check,
             )
 
             # update trailing peak tracker for open longs (per symbol)
@@ -940,24 +941,32 @@ def run_cycle(token: str, dry: bool = False) -> None:
 
             # TIME-BASED EXITS take top priority: a trade that hasn't resolved
             # within its shelf life is dead capital. Green + old = bank it;
-            # any position past max_hold_days = hard cut at market.
+            # any position past max_hold_minutes = hard cut at market.
             time_exits = time_exit_check(positions, prices)
             if time_exits:
                 pick = time_exits[0]
                 print(f"[quant] time exit: {pick.symbol} :: {pick.reasoning}")
                 decision = pick.to_dict()
             else:
-                # trailing-stop exits lock profits / cut losers
-                trail_exits = trail_check(positions, prices)
-                if trail_exits:
-                    pick = trail_exits[0]
-                    print(f"[quant] trailing-stop exit: {pick.symbol} :: {pick.reasoning}")
+                # SCALE OUT: if a position has reached its target, bank half and
+                # let the rest trail (proven retail technique - lock profit early)
+                partial = partial_profit_check(positions, prices)
+                if partial:
+                    pick = partial[0]
+                    print(f"[quant] scale out: {pick.symbol} :: {pick.reasoning}")
                     decision = pick.to_dict()
                 else:
-                    # build the full scenario matrix (long + short per symbol)
-                    matrix = scenario_matrix(closes_by_symbol, prices)
-                    has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
-                    has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
+                    # trailing-stop exits lock profits / cut losers
+                    trail_exits = trail_check(positions, prices)
+                    if trail_exits:
+                        pick = trail_exits[0]
+                        print(f"[quant] trailing-stop exit: {pick.symbol} :: {pick.reasoning}")
+                        decision = pick.to_dict()
+                    else:
+                        # build the full scenario matrix (long + short per symbol)
+                        matrix = scenario_matrix(closes_by_symbol, prices)
+                        has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
+                        has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
                     # top candidates the LLM will choose among (ranked by conviction)
                     actionable = sorted([s for s in matrix if s.ev > 0],
                                         key=lambda s: s.conviction, reverse=True)

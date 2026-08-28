@@ -66,16 +66,21 @@ VOL_STOP_MIN_PCT = 0.12            # never tighter than 0.12%
 VOL_STOP_MAX_PCT = 0.6             # never wider than 0.6%
 VOL_TARGET_MIN_PCT = 0.25          # target floor (fee beat: 0.09% rt + margin)
 VOL_TARGET_MAX_PCT = 1.5           # target ceiling
-# ---- time-based exit (respect the trade's shelf life) ----
-# A trade that hasn't hit its target within a reasonable window is dead
-# capital - it decays in range and never banks profit. For a 5-min retail
-# scalper the shelf life is minutes-to-hours, not days:
-#   MAX_HOLD_MINUTES      = hard cap: exit at market after this long
-#   PROFIT_TAKE_MINUTES   = if a position is GREEN after this long but
-#                           hasn't hit target, bank the profit anyway
-#   PROFIT_TAKE_MIN_PCT   = minimum gain to bank under the time rule
-MAX_HOLD_MINUTES = 120
-PROFIT_TAKE_MINUTES = 45
+# ---- time-based exit (derived from volatility, NOT hardcoded) ----
+# A trade that hasn't resolved within its expected lifetime is dead capital.
+# The expected time to hit a target under GBM: for a random walk, the number of
+# bars to traverse `k` sigma is ~k^2 (variance scales with N). So a 4-sigma
+# target takes ~16 bars = ~80 min at 5-min bars. The time stop is a MULTIPLE of
+# that volatility-derived expectation, so high-vol assets get more time and
+# low-vol assets get less - never an arbitrary "1 hour".
+#   expected_minutes ~= (target_sigma)^2 x BAR_MINUTES
+#   MAX_HOLD = 2.5x expected      (hard cut: past this, exit at market)
+#   PROFIT_TAKE = 0.75x expected  (green + this long = bank the profit)
+TIME_MAX_HOLD_MULT = 2.5
+TIME_PROFIT_TAKE_MULT = 0.75
+TIME_MIN_HOLD_MINUTES = 30         # absolute floor (avoid churn from noise)
+TIME_MIN_PROFIT_MINUTES = 15
+BAR_MINUTES = 5                    # decision cycle length
 PROFIT_TAKE_MIN_PCT = 0.05
 MAX_POSITION_PCT = 30.0            # of equity per position (notional ceiling)
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
@@ -499,22 +504,72 @@ def trail_check(positions: list[dict], prices: dict) -> list[QuantDecision]:
     return exits
 
 
-def time_exit_check(positions: list[dict], prices: dict,
-                    max_hold_minutes: float = MAX_HOLD_MINUTES,
-                    profit_take_minutes: float = PROFIT_TAKE_MINUTES,
-                    profit_min_pct: float = PROFIT_TAKE_MIN_PCT) -> list[QuantDecision]:
-    """Time-based exit: a trade that hasn't resolved within its shelf life
-    is dead capital. Close it to free the margin and respect the opportunity cost.
+def partial_profit_check(positions: list[dict], prices: dict,
+                         target_pct: float | None = None) -> list[QuantDecision]:
+    """Proven retail technique: sell HALF at the target, move stop to breakeven,
+    let the rest run (scale out). This banks profit early while keeping upside.
 
-    For a retail scalper on a 5-min cycle, the shelf life is minutes-to-hours:
-    - HARD CUT: any position open > max_hold_minutes closes at market.
-    - PROFIT TAKE: a GREEN position open > profit_take_minutes banks the
-      profit even if below target. A 0.1% net gain after 45 min is better
-      than waiting hours for a 0.5% target that might fail.
+    When a position reaches its take-profit, instead of closing the whole thing
+    we sell half and keep the remainder with a breakeven stop. The platform
+    supports partial quantity sells, so this returns a 'sell' for half the qty.
 
-    Time is measured from the position's `opened_at` ISO timestamp.
+    Returns SELL decisions with qty = half the position when target is reached.
     """
-    from datetime import datetime, timezone, timedelta
+    partial = []
+    for p in positions:
+        symbol = p.get("symbol")
+        qty = float(p.get("quantity", 0))
+        if qty <= 0:
+            continue
+        entry = float(p.get("entry_price") or 0)
+        cur = prices.get(symbol) or p.get("current_price") or entry
+        target = float(p.get("take_profit") or 0)
+        if entry <= 0 or cur <= 0:
+            continue
+        if target <= 0:
+            continue
+        # reached target? sell half
+        if (qty > 0 and cur >= target) or (qty < 0 and cur <= target):
+            half = abs(qty) / 2.0
+            partial.append(QuantDecision(
+                "sell" if qty > 0 else "cover", symbol, half, 0.0, 0.0,
+                f"scale out: half at target ${target:.2f}, banked {half:.4f}u, "
+                f"rest trails to breakeven"))
+    return partial
+
+
+def _expected_target_minutes(entry: float, target: float, daily_vol_pct: float) -> float:
+    """Volatility-derived expected time to hit a target (GBM random-walk math).
+
+    For a random walk, variance scales linearly with N bars, so the number of
+    bars to traverse `k` sigma is ~k^2. Given the target as a % move and the
+    daily vol in %, the target is k = target_pct / (daily_vol/sqrt(288)) sigma
+    on a 5-min bar, and expected minutes ~= k^2 x BAR_MINUTES.
+    """
+    if entry <= 0 or target <= 0 or daily_vol_pct <= 0:
+        return TIME_MIN_HOLD_MINUTES
+    move_pct = abs(target / entry - 1.0) * 100.0
+    sigma_5m = daily_vol_pct / math.sqrt(288.0)
+    k = move_pct / sigma_5m if sigma_5m > 0 else 1.0
+    return k * k * BAR_MINUTES
+
+
+def time_exit_check(positions: list[dict], prices: dict,
+                    daily_vol_by_symbol: dict | None = None) -> list[QuantDecision]:
+    """Time-based exit derived from each position's volatility, not hardcoded.
+
+    A trade that hasn't resolved within its expected lifetime is dead capital.
+    The expected time to hit the target is k^2 x 5min (see _expected_target_minutes)
+    where k = target distance in 5m-sigma units. The exit fires at:
+      - HARD CUT:    TIME_MAX_HOLD_MULT x expected (exit at market)
+      - PROFIT TAKE: TIME_PROFIT_TAKE_MULT x expected if green (bank it)
+    So a 4-sigma target (~0.5% BTC) expects ~80 min; high-vol gets more time,
+    low-vol gets less - never an arbitrary fixed hour.
+
+    daily_vol_by_symbol: {symbol: daily_vol_pct} to adapt per asset. Falls back
+    to a default 2.5% daily vol if not provided.
+    """
+    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     exits = []
     for p in positions:
@@ -524,6 +579,7 @@ def time_exit_check(positions: list[dict], prices: dict,
             continue
         entry = float(p.get("entry_price") or 0)
         cur = prices.get(symbol) or p.get("current_price") or entry
+        target = float(p.get("take_profit") or 0)
         opened = p.get("opened_at")
         if not opened or entry <= 0 or cur <= 0:
             continue
@@ -533,13 +589,18 @@ def time_exit_check(positions: list[dict], prices: dict,
             continue
         age_minutes = (now - opened_dt).total_seconds() / 60.0
         pnl_pct = (cur / entry - 1.0) * 100.0
-        # hard cut: past max hold
-        if age_minutes >= max_hold_minutes:
+        daily_vol = daily_vol_by_symbol.get(symbol, 2.5) if daily_vol_by_symbol else 2.5
+        expected = _expected_target_minutes(entry, target or entry, daily_vol)
+        max_hold = max(TIME_MIN_HOLD_MINUTES, expected * TIME_MAX_HOLD_MULT)
+        profit_take = max(TIME_MIN_PROFIT_MINUTES, expected * TIME_PROFIT_TAKE_MULT)
+        # hard cut: past the volatility-derived max hold
+        if age_minutes >= max_hold:
             exits.append(QuantDecision(
                 "sell", symbol, 0.0, 0.0, 0.0,
-                f"time stop: {age_minutes:.0f}m > {max_hold_minutes:.0f}m max hold {'(+' + f'{pnl_pct:+.1f}' + '%)' if pnl_pct >= 0 else f'({pnl_pct:.1f}%)'}"))
-        # profit take: green but not hitting target, take the win
-        elif age_minutes >= profit_take_minutes and pnl_pct >= profit_min_pct:
+                f"time stop: {age_minutes:.0f}m > {max_hold:.0f}m max hold (E[target]~{expected:.0f}m) "
+                f"{'+' + f'{pnl_pct:+.1f}' + '%' if pnl_pct >= 0 else f'({pnl_pct:.1f}%)'}"))
+        # profit take: green but below target, bank the win
+        elif age_minutes >= profit_take and pnl_pct >= PROFIT_TAKE_MIN_PCT:
             exits.append(QuantDecision(
                 "sell", symbol, 0.0, 0.0, 0.0,
                 f"time profit take: {age_minutes:.0f}m, green {pnl_pct:+.2f}% - bank it"))

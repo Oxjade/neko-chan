@@ -256,24 +256,30 @@ def test_barrier_prob_is_bounded():
             assert 0.05 <= p <= 0.75
 
 
-def test_time_exit_hard_cut_after_max_hold():
+def test_time_exit_hard_cut_after_expected_lifetime():
     from datetime import datetime, timedelta, timezone
-    from quant_strategy import time_exit_check
-    old = (datetime.now(timezone.utc) - timedelta(minutes=150)).isoformat()
-    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
-            "current_price": 79500, "opened_at": old}]
-    exits = time_exit_check(pos, {"BTC": 79500}, max_hold_minutes=120)
+    from quant_strategy import time_exit_check, _expected_target_minutes
+    # target 0.5% on 2.5% daily vol: sigma_5m=0.147%, k=0.5/0.147=3.4, ~58 min expected
+    expected = _expected_target_minutes(79000, 79395, 2.5)
+    assert 20 < expected < 200
+    # position open well past 2.5x expected -> hard cut
+    old = (datetime.now(timezone.utc) - timedelta(minutes=max(30, expected * 3))).isoformat()
+    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 79000,
+            "current_price": 79200, "take_profit": 79395, "opened_at": old}]
+    exits = time_exit_check(pos, {"BTC": 79200}, daily_vol_by_symbol={"BTC": 2.5})
     assert len(exits) == 1
     assert "time stop" in exits[0].reasoning
 
 
 def test_time_exit_profit_take_banks_green():
     from datetime import datetime, timedelta, timezone
-    from quant_strategy import time_exit_check
-    old = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
-    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
-            "current_price": 80100, "opened_at": old}]
-    exits = time_exit_check(pos, {"BTC": 80100}, max_hold_minutes=120, profit_take_minutes=30)
+    from quant_strategy import time_exit_check, _expected_target_minutes
+    expected = _expected_target_minutes(79000, 79395, 2.5)
+    # green and past profit-take window (0.75x expected)
+    old = (datetime.now(timezone.utc) - timedelta(minutes=max(15, expected * 0.8))).isoformat()
+    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 79000,
+            "current_price": 79060, "take_profit": 79395, "opened_at": old}]
+    exits = time_exit_check(pos, {"BTC": 79060}, daily_vol_by_symbol={"BTC": 2.5})
     assert len(exits) == 1
     assert "profit take" in exits[0].reasoning
 
@@ -282,9 +288,17 @@ def test_time_exit_does_not_trigger_prematurely():
     from datetime import datetime, timezone
     from quant_strategy import time_exit_check
     recent = datetime.now(timezone.utc).isoformat()
-    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
-            "current_price": 79500, "opened_at": recent}]
-    assert time_exit_check(pos, {"BTC": 79500}) == []
+    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 79000,
+            "current_price": 79100, "take_profit": 79395, "opened_at": recent}]
+    assert time_exit_check(pos, {"BTC": 79100}, daily_vol_by_symbol={"BTC": 2.5}) == []
+
+
+def test_expected_time_scales_with_volatility():
+    from quant_strategy import _expected_target_minutes
+    # same 0.5% target: high-vol asset expects FEWER minutes than low-vol
+    hi = _expected_target_minutes(100, 100.5, 4.0)
+    lo = _expected_target_minutes(100, 100.5, 1.0)
+    assert hi < lo  # 4% daily vol reaches 0.5% target faster than 1% vol
 
 
 def test_build_scenarios_returns_long_and_short():
