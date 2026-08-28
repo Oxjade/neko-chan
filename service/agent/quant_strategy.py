@@ -50,29 +50,34 @@ FEAR_STOP_WIDEN = 2.0              # stop 8% -> 10% in extreme fear
 # These are the numbers that make the calibration honest, not optimistic.
 DRIFT_SHRINK = 0.15                # keep 15% of observed drift (mean-reversion)
 DRIFT_ANNUAL_CAP = 0.35            # max |annualized log drift| = 35%/yr
-# ---- volatility-based stop/target (REACHABLE, not fantasy) ----
-# The old 8% stop / 24% target is a monthly-momentum spec: on BTC that means
-# waiting for $80k -> $98k, which almost never resolves and never banks profit.
-# Instead, size stop/target off the asset's REAL realized daily volatility so a
-# trade resolves in DAYS, not months:
-#   stop   = 1.2 x daily vol   (a 1-day adverse move)
-#   target = 2.0 x daily vol   (a 2-day favorable move)  -> ~1.7:1 reward/risk
-# These are anchored to what the market actually moves, so targets get HIT.
-VOL_DAILY_STOP_MULT = 1.2
-VOL_DAILY_TARGET_MULT = 2.0
-VOL_STOP_MIN_PCT = 1.5            # never tighter than 1.5%
-VOL_STOP_MAX_PCT = 6.0            # never wider than 6%
+# ---- volatility-based stop/target (REACHABLE for a retail scalper) ----
+# Research (2026-08-28, live Hyperliquid 5m candles + official fee docs):
+#   BTC per-5m sigma ~0.12%, avg |5m move| ~0.09%, 95th pct ~0.26%
+#   Hyperliquid perp taker 0.045% -> round trip ~0.09%
+# A retail trade on a 5-min cycle must target 2-4 sigma of a 5m bar
+# (resolves in ~30-60 min) and stop at 1-2 sigma. Bigger = waits days and
+# never resolves (the old 5-24% targets were 10-40x too big).
+# stop   = 1.5 x 5m-sigma (an adverse 1.5-sigma bar)
+# target = 4.0 x 5m-sigma (a 4-sigma favorable move, ~0.5% for BTC)
+# -> ~2.7:1 reward/risk on real intraday moves, reachable in minutes-hours.
+VOL_5M_SIGMA_STOP = 1.5            # stop as multiple of 5m sigma
+VOL_5M_SIGMA_TARGET = 4.0          # target as multiple of 5m sigma
+VOL_STOP_MIN_PCT = 0.12            # never tighter than 0.12%
+VOL_STOP_MAX_PCT = 0.6             # never wider than 0.6%
+VOL_TARGET_MIN_PCT = 0.25          # target floor (fee beat: 0.09% rt + margin)
+VOL_TARGET_MAX_PCT = 1.5           # target ceiling
 # ---- time-based exit (respect the trade's shelf life) ----
 # A trade that hasn't hit its target within a reasonable window is dead
-# capital - it decays in range and never banks profit. Close it:
-#   MAX_HOLD_DAYS        = hard cap: exit at market after this many days
-#   PROFIT_TAKE_DAYS     = if a position is GREEN after this many days but
-#                          hasn't hit target, bank the profit anyway
-#   PROFIT_TAKE_MIN_PCT  = minimum gain to bank under the time rule
-MAX_HOLD_DAYS = 5
-PROFIT_TAKE_DAYS = 3
-PROFIT_TAKE_MIN_PCT = 0.5
-MAX_POSITION_PCT = 30.0            # of equity per position
+# capital - it decays in range and never banks profit. For a 5-min retail
+# scalper the shelf life is minutes-to-hours, not days:
+#   MAX_HOLD_MINUTES      = hard cap: exit at market after this long
+#   PROFIT_TAKE_MINUTES   = if a position is GREEN after this long but
+#                           hasn't hit target, bank the profit anyway
+#   PROFIT_TAKE_MIN_PCT   = minimum gain to bank under the time rule
+MAX_HOLD_MINUTES = 120
+PROFIT_TAKE_MINUTES = 45
+PROFIT_TAKE_MIN_PCT = 0.05
+MAX_POSITION_PCT = 30.0            # of equity per position (notional ceiling)
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
 RISK_PER_TRADE_PCT = 1.0           # risk 1% of equity per trade
 KELLY_FRACTION = 0.5               # half-Kelly ceiling
@@ -294,25 +299,28 @@ def barrier_win_prob(entry: float, target: float, stop: float,
 
 def build_scenarios(symbol: str, closes: list[float], current_price: float,
                     stop_pct: float | None = None, take_pct: float | None = None) -> list[TradeScenario]:
-    """Produce the LONG + SHORT scenario pair with REAL, reachable levels.
+    """Produce LONG + SHORT scenario pair with VOLATILITY-BASED levels.
 
-    If stop_pct/take_pct are not given, they are derived from the asset's
-    actual daily volatility so the target is hit-able in days, not months
-    (a +24% BTC target = waiting for $98k, which never resolves). Defaults:
-      stop   = 1.2x daily vol (bounded 1.5%..6%)
-      target = 2.0x daily vol (bounded 3%..10%)
-      -> ~1.7:1 reward/risk anchored to what the market actually moves.
+    stop/target are derived from the asset's intraday 5m volatility (real
+    data: BTC per-5m sigma ~0.12%, avg |5m move| ~0.09%). Targets are set
+    to resolve in minutes-to-hours, not days:
+      stop   = 1.5 sigma (an adverse bar)   ~0.18% for BTC
+      target = 4.0 sigma (a strong bar)     ~0.48% for BTC
+      -> ~2.7:1 reward/risk, reachable in 30-60 min
     """
     if not closes or current_price <= 0:
         return []
+    # compute 5m-scale volatility from daily closes
     drift, vol = estimate_drift_vol(closes)
-    daily_vol = (vol / math.sqrt(365.0)) * 100.0  # daily stdev in %
+    daily_vol_pct = (vol / math.sqrt(365.0)) * 100.0 if vol > 0 else 1.0
+    # 5m sigma = daily_vol / sqrt(288)   (288 five-min bars per day)
+    sigma_5m = daily_vol_pct / math.sqrt(288.0)
     if stop_pct is None or take_pct is None:
-        stop_pct = max(VOL_STOP_MIN_PCT, min(VOL_STOP_MAX_PCT, daily_vol * VOL_DAILY_STOP_MULT))
-        take_pct = max(2 * VOL_STOP_MIN_PCT, min(10.0, daily_vol * VOL_DAILY_TARGET_MULT))
-        # keep reward/risk >= 1.3:1 (never worse than the old Kelly line)
-        if take_pct / stop_pct < 1.3:
-            take_pct = stop_pct * 1.3
+        stop_pct = max(VOL_STOP_MIN_PCT, min(VOL_STOP_MAX_PCT, sigma_5m * VOL_5M_SIGMA_STOP))
+        take_pct = max(VOL_TARGET_MIN_PCT, min(VOL_TARGET_MAX_PCT, sigma_5m * VOL_5M_SIGMA_TARGET))
+        # keep reward/risk >= 1.5:1 so the trade is always worth the fees
+        if take_pct / stop_pct < 1.5:
+            take_pct = stop_pct * 1.5
     r20 = momentum20_return(closes)
     scenarios = []
     # LONG scenario
@@ -492,20 +500,17 @@ def trail_check(positions: list[dict], prices: dict) -> list[QuantDecision]:
 
 
 def time_exit_check(positions: list[dict], prices: dict,
-                    max_hold_days: float = MAX_HOLD_DAYS,
-                    profit_take_days: float = PROFIT_TAKE_DAYS,
+                    max_hold_minutes: float = MAX_HOLD_MINUTES,
+                    profit_take_minutes: float = PROFIT_TAKE_MINUTES,
                     profit_min_pct: float = PROFIT_TAKE_MIN_PCT) -> list[QuantDecision]:
     """Time-based exit: a trade that hasn't resolved within its shelf life
     is dead capital. Close it to free the margin and respect the opportunity cost.
 
-    - HARD CUT: any position open > max_hold_days closes at market (win or loss).
-    - PROFIT TAKE: a GREEN position open > profit_take_days that hasn't hit
-      target banks the profit anyway (even if below target).
-
-    Rules:
-      - AAPL opened at 314.74, target 339.92 (+7.9%). If it's green at 316.30
-        after 3 days and hasn't hit 339.92, it's a time-based profit take.
-      - A position open > 5 days closes regardless of PnL.
+    For a retail scalper on a 5-min cycle, the shelf life is minutes-to-hours:
+    - HARD CUT: any position open > max_hold_minutes closes at market.
+    - PROFIT TAKE: a GREEN position open > profit_take_minutes banks the
+      profit even if below target. A 0.1% net gain after 45 min is better
+      than waiting hours for a 0.5% target that might fail.
 
     Time is measured from the position's `opened_at` ISO timestamp.
     """
@@ -526,18 +531,18 @@ def time_exit_check(positions: list[dict], prices: dict,
             opened_dt = datetime.fromisoformat(opened.replace('Z', '+00:00'))
         except Exception:
             continue
-        age_days = (now - opened_dt).total_seconds() / 86400.0
+        age_minutes = (now - opened_dt).total_seconds() / 60.0
         pnl_pct = (cur / entry - 1.0) * 100.0
         # hard cut: past max hold
-        if age_days >= max_hold_days:
+        if age_minutes >= max_hold_minutes:
             exits.append(QuantDecision(
                 "sell", symbol, 0.0, 0.0, 0.0,
-                f"time stop: {age_days:.1f}d > {max_hold_days:.0f}d max hold {'(+' + f'{pnl_pct:+.1f}' + '%)' if pnl_pct >= 0 else f'({pnl_pct:.1f}%)'}"))
+                f"time stop: {age_minutes:.0f}m > {max_hold_minutes:.0f}m max hold {'(+' + f'{pnl_pct:+.1f}' + '%)' if pnl_pct >= 0 else f'({pnl_pct:.1f}%)'}"))
         # profit take: green but not hitting target, take the win
-        elif age_days >= profit_take_days and pnl_pct >= profit_min_pct:
+        elif age_minutes >= profit_take_minutes and pnl_pct >= profit_min_pct:
             exits.append(QuantDecision(
                 "sell", symbol, 0.0, 0.0, 0.0,
-                f"time profit take: {age_days:.1f}d, green {pnl_pct:+.1f}% - bank it"))
+                f"time profit take: {age_minutes:.0f}m, green {pnl_pct:+.2f}% - bank it"))
     return exits
 
 

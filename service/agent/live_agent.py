@@ -1017,17 +1017,22 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     llm_sym = str(llm.get("symbol", "")).upper()
                     if llm_action in ("buy", "sell") and llm_sym:
                         # risk-clamp: never exceed 1% risk; stop/target come from
-                        # the chosen scenario's REAL volatility-based levels
+                        # the chosen scenario's REAL volatility-based levels.
+                        # Correct retail sizing: risk$ = 1% of equity, and the
+                        # notional = risk$ / stop%, so qty = (eq*risk/stop)/price.
                         qty = float(llm.get("quantity", 0) or 0)
-                        if qty > 0 and llm_sym in prices:
-                            max_qty = (eq * 1.0 / 100.0) / prices[llm_sym]
-                            qty = min(qty, max_qty)
                         # find the scenario the LLM chose, for levels + tracking
                         _last_scenario = None
                         for _s in top:
                             if _s.symbol == llm_sym and _s.direction == llm_dir:
                                 _last_scenario = _s
                                 break
+                        if qty > 0 and llm_sym in prices:
+                            stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
+                                if _last_scenario is not None else 0.3
+                            risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
+                            max_qty = risk_notional / prices[llm_sym]
+                            qty = min(qty, max_qty)
                         if _last_scenario is not None:
                             stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
                             take_pct = abs(_last_scenario.target - _last_scenario.entry) / _last_scenario.entry * 100
@@ -1060,9 +1065,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         _last_scenario = None
                     else:
                         side = "buy" if best.direction == "long" else "sell"
-                        max_qty = (eq * 1.0 / 100.0) / best.entry
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
+                        # correct retail sizing: risk$ = 1% equity / stop%
+                        risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
+                        max_qty = risk_notional / best.entry
                         decision = {"action": side, "symbol": best.symbol,
                                     "quantity": max_qty,
                                     "stop_loss_pct": round(stop_pct, 2),

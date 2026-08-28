@@ -259,10 +259,10 @@ def test_barrier_prob_is_bounded():
 def test_time_exit_hard_cut_after_max_hold():
     from datetime import datetime, timedelta, timezone
     from quant_strategy import time_exit_check
-    old = (datetime.now(timezone.utc) - timedelta(days=6)).isoformat()
+    old = (datetime.now(timezone.utc) - timedelta(minutes=150)).isoformat()
     pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
             "current_price": 79500, "opened_at": old}]
-    exits = time_exit_check(pos, {"BTC": 79500}, max_hold_days=5)
+    exits = time_exit_check(pos, {"BTC": 79500}, max_hold_minutes=120)
     assert len(exits) == 1
     assert "time stop" in exits[0].reasoning
 
@@ -270,16 +270,16 @@ def test_time_exit_hard_cut_after_max_hold():
 def test_time_exit_profit_take_banks_green():
     from datetime import datetime, timedelta, timezone
     from quant_strategy import time_exit_check
-    old = (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()
-    pos = [{"symbol": "AAPL", "quantity": 18, "entry_price": 314,
-            "current_price": 316, "opened_at": old}]
-    exits = time_exit_check(pos, {"AAPL": 316}, max_hold_days=5, profit_take_days=3)
+    old = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
+    pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
+            "current_price": 80100, "opened_at": old}]
+    exits = time_exit_check(pos, {"BTC": 80100}, max_hold_minutes=120, profit_take_minutes=30)
     assert len(exits) == 1
     assert "profit take" in exits[0].reasoning
 
 
 def test_time_exit_does_not_trigger_prematurely():
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
     from quant_strategy import time_exit_check
     recent = datetime.now(timezone.utc).isoformat()
     pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 80000,
@@ -297,11 +297,11 @@ def test_build_scenarios_returns_long_and_short():
         assert s.R >= 1.3  # vol-based target keeps reward/risk >= 1.3:1
         assert 0.05 <= s.p_win <= 0.75
         assert s.ev == pytest.approx(s.p_win * s.R - (1 - s.p_win))
-        # reachable levels: stop/target must be within sane bounds, not 24% fantasy
+        # reachable levels: stop/target must be within retail scalper bounds
         stop_pct = abs(s.entry - s.stop) / s.entry * 100
         take_pct = abs(s.target - s.entry) / s.entry * 100
-        assert 1.0 <= stop_pct <= 6.5
-        assert 2.0 <= take_pct <= 11.0
+        assert 0.10 <= stop_pct <= 0.7
+        assert 0.20 <= take_pct <= 2.0
 
 
 def test_scenario_matrix_and_best_pick():
