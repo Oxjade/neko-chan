@@ -947,6 +947,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 pick = time_exits[0]
                 print(f"[quant] time exit: {pick.symbol} :: {pick.reasoning}")
                 decision = pick.to_dict()
+                decision["_forced_exit"] = True
             else:
                 # SCALE OUT: if a position has reached its target, bank half and
                 # let the rest trail (proven retail technique - lock profit early)
@@ -955,6 +956,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     pick = partial[0]
                     print(f"[quant] scale out: {pick.symbol} :: {pick.reasoning}")
                     decision = pick.to_dict()
+                    decision["_forced_exit"] = True
                 else:
                     # trailing-stop exits lock profits / cut losers
                     trail_exits = trail_check(positions, prices)
@@ -962,6 +964,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         pick = trail_exits[0]
                         print(f"[quant] trailing-stop exit: {pick.symbol} :: {pick.reasoning}")
                         decision = pick.to_dict()
+                        decision["_forced_exit"] = True
                     else:
                         # build the full scenario matrix (long + short per symbol)
                         matrix = scenario_matrix(closes_by_symbol, prices)
@@ -1111,7 +1114,8 @@ def run_cycle(token: str, dry: bool = False) -> None:
     if action in ("buy", "sell", "short", "cover"):
         has_long = any(p["symbol"] == symbol and p["quantity"] > 0 for p in positions)
         has_short = any(p["symbol"] == symbol and p["quantity"] < 0 for p in positions)
-        if not market_open(market):
+        is_forced_exit = decision.get("_forced_exit", False)
+        if not is_forced_exit and not market_open(market):
             row["action"] = "hold"; row["error"] = f"{market} market is closed now"
         elif symbol not in dict(UNIVERSE):
             row["action"] = "hold"; row["error"] = f"unsupported symbol {symbol}"
@@ -1234,6 +1238,46 @@ def main():
           f"max_trades/day={MAX_DAILY_TRADES} pos_cap={MAX_POSITION_PCT}%")
     run_cycle(token, dry=args.dry)
     if not args.once:
+        # Fast exit-check thread (60s) - runs alongside the 300s decision cycle
+        # so time exits, trailing stops, and partial profits fire within 1 min.
+        def _exit_loop():
+            while True:
+                time.sleep(60)
+                try:
+                    gw = _get_exec_gateway()
+                    pf = get_real_portfolio(gw, EXEC_BOT_ID) if gw else get_portfolio(token)
+                    if not pf.get("positions"):
+                        continue
+                    positions = pf["positions"]
+                    prices = {}
+                    for sym, market in UNIVERSE:
+                        try:
+                            prices[sym] = get_price(token, sym, market)
+                        except Exception:
+                            pass
+                    from quant_strategy import time_exit_check, trail_check, partial_profit_check
+                    for check_fn, label in [(time_exit_check, "time exit"),
+                                            (partial_profit_check, "scale out"),
+                                            (trail_check, "trailing exit")]:
+                        exits = check_fn(positions, prices)
+                        if exits:
+                            pick = exits[0]
+                            d = pick.to_dict()
+                            d["_forced_exit"] = True
+                            side = "sell" if d["action"] in ("sell", "cover") else d["action"]
+                            qty = d.get("quantity", 0) or 0
+                            if qty <= 0:
+                                qty = abs(next((p["quantity"] for p in positions if p["symbol"] == pick.symbol), 0))
+                            fill = execute_trade(token, pick.symbol,
+                                                 dict(UNIVERSE).get(pick.symbol, "crypto"),
+                                                 side, qty)
+                            if fill.get("ok"):
+                                print(f"[exit] {label}: {pick.symbol} - {pick.reasoning[:80]}")
+                            break
+                except Exception as exc:
+                    pass
+        import threading as _threading
+        _threading.Thread(target=_exit_loop, name="exit-check", daemon=True).start()
         while True:
             time.sleep(INTERVAL)
             try:
