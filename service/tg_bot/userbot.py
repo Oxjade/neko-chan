@@ -351,6 +351,8 @@ class UserBotController:
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("OpenAI", callback_data="keyp:openai"),
                  telegram.InlineKeyboardButton("OpenRouter", callback_data="keyp:openrouter")],
+                [telegram.InlineKeyboardButton("DeepSeek", callback_data="keyp:deepseek"),
+                 telegram.InlineKeyboardButton("Claude", callback_data="keyp:claude")],
                 [telegram.InlineKeyboardButton("opencode-go", callback_data="keyp:opencode-go"),
                  telegram.InlineKeyboardButton("Custom URL", callback_data="keyp:custom")],
                 [telegram.InlineKeyboardButton(CANCEL, callback_data="key:cancel")],
@@ -373,7 +375,9 @@ class UserBotController:
                     reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(CANCEL, callback_data="key:cancel")]]),
                 )
             else:
-                labels = {"openai": "sk-…", "openrouter": "sk-or-…", "opencode-go": "gateway key"}
+                labels = {"openai": "sk-…", "openrouter": "sk-or-…",
+                          "deepseek": "sk-…", "claude": "sk-ant-…",
+                          "opencode-go": "gateway key"}
                 await q.message.edit_text(
                     f"Paste your key ({labels.get(provider, 'API key')}):\n\n"
                     "It will be stored encrypted and shown masked (sk-•••4821).",
@@ -407,7 +411,11 @@ class UserBotController:
                        "network": f"⏳ Can't reach provider ({exc})."}.get(exc.kind, "❌ Key rejected.")
                 await update.message.reply_text(msg)
                 return K_KEY
-            self.registry.store_key(tg_id, provider, api_key, base, model)
+            try:
+                self.registry.store_key(tg_id, provider, api_key, base, model)
+            except ValueError as exc:
+                await update.message.reply_text(f"❌ {exc}")
+                return K_KEY
             self.registry.cancel_bot_deletion(bot_id)  # key set -> keep the bot
             context.bot_data.pop("key_provider", None)
             context.bot_data.pop("key_provider_url", None)
@@ -417,9 +425,25 @@ class UserBotController:
                     self.agent_pool.start(bot_id)
                 except Exception:
                     pass
+            # Foreign/custom provider rule notification: tell the user exactly
+            # how their key is used and the operating rule for non-preset keys.
+            rule_notice = ""
+            if provider in ("custom", "deepseek", "claude"):
+                rule_notice = (
+                    f"\n\n🧠 <b>HOW YOUR KEY IS USED</b>\n"
+                    f"Provider: <b>{provider}</b> · Model: <code>{model}</code>\n"
+                    f"• Your key is sent ONLY to {base or 'your provider'} — never "
+                    f"to us or any other service\n"
+                    f"• It powers your bot's trading decisions, stored encrypted "
+                    f"and masked\n"
+                    f"• You can revoke it anytime in Settings → Change AI Key\n"
+                    f"• If your provider uses a non-standard API shape, the bot "
+                    f"falls back to OpenAI-compatible calls"
+                )
             await update.message.reply_text(
                 f"✅ Key works ({provider}). Your bot can now trade — decisions start right away.\n\n"
-                "Every trade, stop and summary will be pushed here 🔔",
+                "Every trade, stop and summary will be pushed here 🔔" + rule_notice,
+                parse_mode="HTML",
             )
             await dash(update, context)
             return ConversationHandler.END
@@ -742,10 +766,61 @@ class UserBotController:
                     f"💸 Fund {CHAIN_LABELS[chain].replace('🔗 ', '')}",
                     callback_data=f"sb:fund:{chain}")] for chain in self.gateway.adapters]
             kb = fund_buttons + [[
+                telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys"),
+                telegram.InlineKeyboardButton("💸 Withdraw", callback_data="sb:withdraw"),
+            ], [
                 telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
                 telegram.InlineKeyboardButton(HOME, callback_data="sb:dash"),
             ]]
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(kb))
+
+        async def wallet_keys(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            if not self._exec_ready():
+                await q.message.edit_text("🗝️ Real trading not enabled — no keys to show.",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            # show each chain's private key so the owner can export/withdraw
+            lines = ["🗝️ <b>Your private keys</b>\n\n"
+                     "These keys control the bot's trading wallets. Export them to "
+                     "move funds to your own wallet — anyone with these can spend "
+                     "the funds, so keep them secret.\n"]
+            for chain in self.gateway.adapters:
+                try:
+                    self.gateway.provision_wallet(bot_id, chain)
+                    wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+                    if not wallet or not wallet.get("key_enc"):
+                        continue
+                    key = self.gateway._vault.decrypt(wallet["key_enc"])
+                    lines.append(f"\n🔗 {chain.upper()}\n<code>{key}</code>")
+                except Exception as exc:
+                    lines.append(f"\n🔗 {chain.upper()} — unavailable ({str(exc)[:40]})")
+            await q.message.edit_text("\n".join(lines), parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
+                                           [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
+        async def wallet_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            if not self._exec_ready():
+                await q.message.edit_text("💸 Real trading not enabled — nothing to withdraw.",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            # Manual withdrawal = export key, move funds on-chain yourself.
+            text = ("💸 <b>Withdraw funds</b>\n\n"
+                    "This bot is non-custodial: only you can move funds out. To "
+                    "withdraw, export the private key below and sweep the balance "
+                    "to your main wallet in any standard wallet app.\n\n"
+                    "⚠️ The trading wallet holds the funds; the bot signs trades "
+                    "but has NO withdrawal rights on Hyperliquid (API wallet).")
+            await q.message.edit_text(text, parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("🗝️ Show Private Keys", callback_data="sb:keys")],
+                                           [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
 
         async def wallet_fund(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -850,5 +925,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))
         app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))
+        app.add_handler(CallbackQueryHandler(wallet_keys, pattern=r"^sb:keys$"))
+        app.add_handler(CallbackQueryHandler(wallet_withdraw, pattern=r"^sb:withdraw$"))
         app.add_handler(CallbackQueryHandler(killswitch_screen, pattern=r"^sb:(kill|kill_yes|kill_release)$"))
         app.add_handler(CallbackQueryHandler(exec_risk, pattern=r"^sb:execrisk$"))

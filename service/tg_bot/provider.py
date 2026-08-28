@@ -24,6 +24,22 @@ def resolve_provider(provider: str, base_url: str | None, model: str | None) -> 
     return (base_url or "").rstrip("/"), model or "gpt-4o-mini"
 
 
+def _anthropic_completion(base: str, api_key: str, model: str, system: str | None,
+                          user: str, max_tokens: int, timeout: float) -> requests.Response:
+    """Anthropic uses /v1/messages + x-api-key (NOT OpenAI /chat/completions)."""
+    body = {"model": model, "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": user}]}
+    if system:
+        body["system"] = system
+    return requests.post(
+        f"{base.rstrip('/')}/messages",
+        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                 "Content-Type": "application/json"},
+        json=body,
+        timeout=timeout,
+    )
+
+
 def validate_key(provider: str, api_key: str, base_url: str | None = None,
                  model: str | None = None, timeout: float = 25.0) -> str:
     """Returns the model name on success; raises ProviderError otherwise."""
@@ -31,16 +47,20 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
     if not base:
         raise ProviderError("invalid", "custom provider requires a base URL")
     try:
-        resp = requests.post(
-            f"{base}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": resolved_model,
-                "messages": [{"role": "user", "content": "say OK"}],
-                "max_tokens": 5,
-            },
-            timeout=timeout,
-        )
+        if provider == "claude":
+            resp = _anthropic_completion(base, api_key, resolved_model, None, "say OK",
+                                         max_tokens=5, timeout=timeout)
+        else:
+            resp = requests.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": resolved_model,
+                    "messages": [{"role": "user", "content": "say OK"}],
+                    "max_tokens": 5,
+                },
+                timeout=timeout,
+            )
     except requests.Timeout:
         raise ProviderError("network", "provider timed out")
     except requests.RequestException as exc:
@@ -57,7 +77,10 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
     if resp.status_code != 200:
         raise ProviderError("unknown", f"unexpected status {resp.status_code}")
     try:
-        content = resp.json()["choices"][0]["message"]["content"]
+        if provider == "claude":
+            content = resp.json()["content"][0]["text"]
+        else:
+            content = resp.json()["choices"][0]["message"]["content"]
     except Exception:
         raise ProviderError("unknown", "malformed provider response")
     if not content:
@@ -70,6 +93,11 @@ def chat_completion(provider: str, api_key: str, system: str, user: str,
                     timeout: float = 60.0) -> str:
     """Full completion call used by per-user agent runners."""
     base, resolved_model = resolve_provider(provider, base_url, model)
+    if provider == "claude":
+        resp = _anthropic_completion(base, api_key, resolved_model, system, user,
+                                     max_tokens=2000, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()["content"][0]["text"]
     resp = requests.post(
         f"{base}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},

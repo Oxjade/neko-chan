@@ -46,6 +46,8 @@ PROVIDER_PRESETS = {
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "model": "openrouter/auto"},
     "opencode-go": {"base_url": os.getenv("TG_OPENCODE_GO_URL", "https://opencode.ai/api/v1"), "model": "opencode-go/deepseek-v4-flash"},
+    "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
+    "claude": {"base_url": "https://api.anthropic.com/v1", "model": "claude-3-5-sonnet-latest"},
 }
 
 

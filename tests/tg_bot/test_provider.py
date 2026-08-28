@@ -63,3 +63,30 @@ def test_custom_requires_url():
     with pytest.raises(ProviderError) as e:
         validate_key("custom", "sk-x", base_url=None)
     assert e.value.kind == "invalid"
+
+
+def test_deepseek_preset_resolves():
+    base, model = resolve_provider("deepseek", None, None)
+    assert base == "https://api.deepseek.com/v1"
+    assert model == "deepseek-chat"
+
+
+def test_claude_preset_resolves():
+    base, model = resolve_provider("claude", None, None)
+    assert base == "https://api.anthropic.com/v1"
+    assert model == "claude-3-5-sonnet-latest"
+
+
+def test_claude_uses_messages_api():
+    """Claude is NOT OpenAI-compatible — must call /messages with x-api-key."""
+    from provider import _anthropic_completion
+    with patch("provider.requests.post") as mock:
+        mock.return_value = FakeResp(200, b'{"content":[{"text":"OK"}]}')
+        model = validate_key("claude", "sk-ant-test")
+    assert model == "claude-3-5-sonnet-latest"
+    # the anthropic call must hit /messages with the x-api-key header
+    url = mock.call_args[0][0]
+    headers = mock.call_args[1]["headers"]
+    assert url.endswith("/messages")
+    assert headers.get("x-api-key") == "sk-ant-test"
+    assert "anthropic-version" in headers
