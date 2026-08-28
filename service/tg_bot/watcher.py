@@ -367,7 +367,8 @@ class Watcher:
                         sent.add(key)
                         sign = "📈" if pnl_usd >= 0 else "📉"
                         verb = "TAKE PROFIT" if pnl_usd >= 0 else "ALERT"
-                        text = (f"{sign} <b>{verb}: {symbol}</b>\n"
+                        cat = "🐱 neko liked the setup" if pnl_usd >= 0 else "🐱 neko saw this coming"
+                        text = (f"{sign} <b>{verb}: {symbol}</b> {cat}\n"
                                 f"• P&L: <b>${pnl_usd:+,.2f}</b> ({pnl_pct:+.2f}%)\n"
                                 f"• Entry ${entry:,.4f} → Now ${cur:,.4f}\n"
                                 f"• Qty: {abs(qty):.4f}")

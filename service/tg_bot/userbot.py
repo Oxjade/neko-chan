@@ -1016,7 +1016,45 @@ class UserBotController:
                 parse_mode="HTML",
                 reply_markup=telegram.InlineKeyboardMarkup(
                     [[telegram.InlineKeyboardButton("✅ Yes, close", callback_data=f"sb:close_yes:{symbol}")],
-                     [telegram.InlineKeyboardButton("↩️ Keep open", callback_data="sb:dash")]]))
+                     [telegram.InlineKeyboardButton("🐾 Keep open", callback_data=f"sb:keep:{symbol}")]]))
+
+        async def keep_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """User chose to keep a position open - acknowledge with live P&L %."""
+            q = update.callback_query
+            await q.answer()
+            _, _, symbol = q.data.split(":", 2)
+            pnl = pct = 0.0
+            try:
+                pf = self.platform.positions(platform_token)
+                pos = next((p for p in pf.get("positions", []) if p["symbol"] == symbol), None)
+                if pos:
+                    qty = pos["quantity"]
+                    entry = pos["entry_price"]
+                    cur = pos.get("current_price") or entry
+                    pnl = (cur - entry) * (qty if qty >= 0 else -qty)
+                    pct = (cur / entry - 1) * 100 * (1 if qty >= 0 else -1)
+            except Exception:
+                pass
+            # cat persona, honest about direction
+            if pct < 0:
+                mood = (f"📉 <b>Keeping {symbol} open.</b>\n\n"
+                        f"It's down <b>{pct:+.2f}%</b> (${pnl:+,.2f}) right now.\n"
+                        "The cat is watching it closely — the stop-loss is still "
+                        "on guard, so the damage stays capped. 🐾")
+            elif pct > 0:
+                mood = (f"📈 <b>Keeping {symbol} open.</b>\n\n"
+                        f"It's up <b>{pct:+.2f}%</b> (${pnl:+,.2f}) right now.\n"
+                        "The cat says: let the winner run, but we'll grab it if "
+                        "it slips. 🐾")
+            else:
+                mood = (f"🐾 <b>Keeping {symbol} open.</b>\n\n"
+                        "Flat right now. The cat is waiting for a move.")
+            await q.message.edit_text(
+                mood + "\n\nEvery trade gets pushed here. Tap 💼 Wallet to watch it live.",
+                parse_mode="HTML",
+                reply_markup=telegram.InlineKeyboardMarkup(
+                    [[telegram.InlineKeyboardButton("✅ Take Profit", callback_data=f"sb:close:{symbol}")],
+                     [telegram.InlineKeyboardButton("📊 Dashboard", callback_data="sb:dash")]]))
 
         async def exec_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1053,3 +1091,4 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(killswitch_screen, pattern=r"^sb:(kill|kill_yes|kill_release)$"))
         app.add_handler(CallbackQueryHandler(exec_risk, pattern=r"^sb:execrisk$"))
         app.add_handler(CallbackQueryHandler(close_position, pattern=r"^sb:(close|close_yes):\w+$"))
+        app.add_handler(CallbackQueryHandler(keep_open, pattern=r"^sb:keep:\w+$"))
