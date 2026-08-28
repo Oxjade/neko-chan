@@ -188,7 +188,8 @@ def test_cleanup_janitor_deletes_and_notifies():
         def stop(self, bid):
             stopped.append(bid)
 
-    with patch("main.time.sleep", lambda s: None):  # no real wait
+    with patch("main.time.sleep", lambda s: None), \
+         patch("main.requests.post", return_value=type("R", (), {"status_code": 200})):  # no real Telegram call
         t = start_bot_cleanup(reg, _FakeUB(), _FakePool(), deadline_hours=3, poll_seconds=1)
         t.join(timeout=2)
 

@@ -13,6 +13,8 @@ import sys
 import threading
 import time
 
+import requests
+
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 

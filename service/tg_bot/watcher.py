@@ -21,8 +21,10 @@ Design principles (quant-grade, from the skill suite + the D-audit):
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -167,12 +169,119 @@ class Watcher:
             return False
         kind, ref = bucket
         text, buttons = self.message_for(sig, kind)
+        photo_path = self._pnl_card_for(sig, kind)
         ok = self.notify.notify(self.bot_id, self.tg_id, self.bot_token, self.chat_id,
-                                kind, ref, text, buttons=buttons, dedup=True)
+                                kind, ref, text, buttons=buttons, dedup=True,
+                                photo_path=photo_path)
+        if photo_path:
+            self._cleanup_card(photo_path)
         if ok:
             log.info("[push] %s %s sig=%s", kind, sig.get("symbol"), sig.get("signal_id"))
         self.watermark = max(self.watermark, int(sig["signal_id"]))
         return ok
+
+    # ------------------------------------------------------------ PnL card
+
+    def _pnl_card_for(self, sig: dict, kind: str) -> str | None:
+        """Generate a Neko-chan PnL card PNG for a fill/close, or None on failure.
+
+        Uses the bundled card generator + a random cat template. The card shows
+        the trade's buy/sell prices and pnl% with the cat's voice captions.
+        """
+        try:
+            from cards.generator import generate_pnl_card, random_avatar
+
+            symbol = str(sig.get("symbol") or "?")
+            qty = float(sig.get("quantity") or 0)
+            entry = float(sig.get("entry_price") or 0)
+            exit_px = float(sig.get("exit_price") or 0)
+            pnl = sig.get("pnl")
+            # derive a pnl% for the card
+            if pnl is not None and entry > 0:
+                pnl_pct = float(pnl) / (abs(qty) * entry) * 100.0
+            elif exit_px and entry > 0:
+                pnl_pct = (exit_px - entry) / entry * 100.0
+            else:
+                pnl_pct = 0.0
+            chain = "CRYPTO" if str(sig.get("market")) == "crypto" else str(sig.get("market") or "SOLANA").upper()
+            out = os.path.join(tempfile.gettempdir(), f"neko_{kind}_{sig.get('signal_id')}.png")
+            generate_pnl_card(
+                avatar_path=random_avatar(),
+                pnl_pct=pnl_pct,
+                buy_price=entry,
+                sell_price=exit_px or entry,
+                token=symbol.upper(),
+                chain=chain,
+                out_path=out,
+            )
+            return out
+        except Exception as exc:  # noqa: BLE001 - a card is a nice-to-have
+            log.warning("pnl card failed for sig=%s: %s", sig.get("signal_id"), exc)
+            return None
+
+    @staticmethod
+    def _cleanup_card(path: str) -> None:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------ profit reports
+
+    def _trade_stats(self) -> tuple[int, float, float]:
+        """(trades today, win_rate%, fees$) from the platform signals table."""
+        try:
+            con = sqlite3.connect(self.db_path)
+            con.row_factory = sqlite3.Row
+            today = datetime.now(timezone.utc).date().isoformat()
+            rows = con.execute(
+                "SELECT side, pnl FROM signals WHERE agent_id = ? AND message_type = 'operation' "
+                "AND side IN ('buy','sell','short','cover') AND date(created_at) = ?",
+                (self.agent_id, today),
+            ).fetchall()
+            con.close()
+            fills = [dict(r) for r in rows if r["side"] in ("buy", "short")]
+            closes = [dict(r) for r in rows if r["side"] in ("sell", "cover")]
+            trades = len(fills)
+            wins = sum(1 for r in closes if r["pnl"] is not None and r["pnl"] > 0)
+            fees = 0.0
+            return trades, (wins / max(len(closes), 1) * 100.0 if closes else 0.0), fees
+        except Exception:
+            return 0, 0.0, 0.0
+
+    def _trade_count(self) -> int:
+        return self._trade_stats()[0]
+
+    def _win_rate(self) -> float:
+        return self._trade_stats()[1]
+
+    def _fees(self) -> float:
+        return self._trade_stats()[2]
+
+    def profit_report(self, pnl: float, trades: int, win: float, fees: float,
+                      equity: float) -> bool:
+        """Push a periodic profit summary with the cat's voice + real numbers."""
+        kind = "watcher_profit"
+        ref = time.strftime("%Y-%m-%d")
+        if pnl >= 0:
+            mood = "neko is pleased. the bag is pleased."
+        elif pnl < 0:
+            mood = "neko is unbothered. the bag feels it though."
+        win_txt = f"{win:.0f}%"
+        if pnl >= 0:
+            text = (f"📈 <b>PROFIT REPORT</b> 🐱\n"
+                    f"Net P&L: <b>${pnl:+,.2f}</b>\n"
+                    f"Trades: {trades} · win rate {win_txt}\n"
+                    f"Fees: ${fees:.2f} · Equity: ${equity:,.2f}\n"
+                    f"~ {mood}")
+        else:
+            text = (f"📉 <b>PROFIT REPORT</b> 🐱\n"
+                    f"Net P&L: <b>{pnl:,.2f}</b>\n"
+                    f"Trades: {trades} · win rate {win_txt}\n"
+                    f"Fees: ${fees:.2f} · Equity: ${equity:,.2f}\n"
+                    f"~ {mood}")
+        return self.notify.notify(self.bot_id, self.tg_id, self.bot_token, self.chat_id,
+                                  kind, ref, text, dedup=True)
 
     def poll_once(self) -> int:
         pushed = 0
@@ -185,6 +294,7 @@ class Watcher:
     def run(self):
         log.info("[watcher] started agent watcher (watermark %s)", self.watermark)
         self.last_equity_mark = self.equity() or self.start_equity
+        self._last_profit_day = None
         while not self._stop:
             try:
                 self.poll_once()
@@ -202,6 +312,20 @@ class Watcher:
                             self.last_equity_mark = eq
                     else:
                         self.last_equity_mark = eq
+                    # periodic profit report once per UTC day
+                    today = time.strftime("%Y-%m-%d", time.gmtime())
+                    if today != self._last_profit_day:
+                        self._last_profit_day = today
+                        try:
+                            self.profit_report(
+                                pnl=eq - self.start_equity,
+                                trades=self._trade_count(),
+                                win=self._win_rate(),
+                                fees=self._fees(),
+                                equity=eq,
+                            )
+                        except Exception as exc:
+                            log.warning("[watcher] profit report failed: %s", exc)
             except Exception as exc:
                 log.exception("[watcher] poll error: %s", exc)
             time.sleep(self.poll_interval)

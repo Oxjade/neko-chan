@@ -896,7 +896,20 @@ def run_cycle(token: str, dry: bool = False) -> None:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from quant_strategy import scan_momentum_book, pick_decision, trail_check
 
-            # update trailing peak tracker for open longs (per symbol)
+            # Fear & Greed for the sentiment tail-risk adjuster (0-100).
+            fg_value = None
+            try:
+                from sentiment import fear_greed as _fg
+                fg_raw = _fg()
+                import re as _re
+                m = _re.search(r"(\d{1,3})", str(fg_raw))
+                fg_value = float(m.group(1)) if m else None
+            except Exception:
+                fg_value = None
+            if fg_value is not None:
+                print(f"[sentiment] Fear & Greed = {fg_value:.0f}")
+
+            decisions = scan_momentum_book(portfolio, closes_by_symbol, prices, fear_greed=fg_value)
             for p in positions:
                 sym = p.get("symbol")
                 if sym and p.get("quantity", 0) > 0:
@@ -917,7 +930,6 @@ def run_cycle(token: str, dry: bool = False) -> None:
             else:
                 pick = pick_decision(decisions)
             print(f"[quant] base signal: {pick.action} {pick.symbol} qty={pick.qty} :: {pick.reasoning}")
-
             # ----- agentic overlay: LLM reviews with skills loaded -----
             if pick.action in ("buy", "sell") and LIVE_AGENT_API_KEY:
                 skill_ctx = _load_skill_context()

@@ -32,6 +32,17 @@ STOP_PCT = 8.0                     # 1R risk distance
 TAKE_PCT = 24.0                    # 3R base (vol-adaptive, see adaptive_take_pct)
 TAKE_MIN = 12.0                    # narrowest target (at 2× normal vol)
 TAKE_MAX = 40.0                    # widest target (at 0.5× normal vol)
+# ---- sentiment tail-risk adjuster (Fear & Greed, 0-100) ----
+# Only acts at the extremes; in the middle it does nothing so the validated
+# 20d momentum math runs untouched. Greed >= GREED_HOT tightens (stretched
+# market reverses harder); fear <= FEAR_COLD widens (don't get shaken out of
+# an oversold recovery). Extreme-greed adjustment caps at a 1.5R target so the
+# payoff ratio never goes below the Kelly-positive line.
+GREED_HOT = 90.0
+FEAR_COLD = 15.0
+GREED_STOP_CUT = 2.0               # stop 8% -> 6% in extreme greed
+GREED_TARGET_CUT = 6.0             # take 24% -> 18% in extreme greed
+FEAR_STOP_WIDEN = 2.0              # stop 8% -> 10% in extreme fear
 MAX_POSITION_PCT = 30.0            # of equity per position
 MAX_BOOK_PCT = 30.0                # correlated positions = one book (BTC+ETH)
 RISK_PER_TRADE_PCT = 1.0           # risk 1% of equity per trade
@@ -142,9 +153,31 @@ class QuantDecision:
                 "reasoning": self.reasoning}
 
 
+def sentiment_risk_adjust(stop_pct: float, take_pct: float,
+                          fear_greed: float | None) -> tuple[float, float, str]:
+    """Adjust stop/target ONLY at extreme sentiment (tail-risk control).
+
+    Returns (stop_pct, take_pct, note). Middle sentiment (15 < fg < 90) leaves
+    the validated math untouched. At the extremes:
+      - Greed >= 90: stretch -> tighten stop & target (take profit before the
+        snap-back). Target never below 1.5R (Kelly-positive floor).
+      - Fear  <= 15: oversold -> widen stop (don't get shaken out), keep target.
+    """
+    if fear_greed is None:
+        return stop_pct, take_pct, ""
+    if fear_greed >= GREED_HOT:
+        s = max(stop_pct - GREED_STOP_CUT, 4.0)
+        t = max(take_pct - GREED_TARGET_CUT, s * 1.5)
+        return s, t, f"extreme greed ({fear_greed:.0f}) -> tighter stop {s:.0f}%/target {t:.0f}%"
+    if fear_greed <= FEAR_COLD:
+        s = stop_pct + FEAR_STOP_WIDEN
+        return s, take_pct, f"extreme fear ({fear_greed:.0f}) -> wider stop {s:.0f}%"
+    return stop_pct, take_pct, ""
+
+
 def momentum_decision(symbol: str, market: str, closes: list[float],
                       equity: float, has_long: bool, has_short: bool,
-                      current_price: float) -> QuantDecision:
+                      current_price: float, fear_greed: float | None = None) -> QuantDecision:
     """One symbol's momentum20 decision. Cash is the default (capital preservation).
 
     - LONG when 20d return > 2% and not already long
@@ -169,12 +202,14 @@ def momentum_decision(symbol: str, market: str, closes: list[float],
                              f"momentum intact (20d {r20*100:+.2f}%) - hold long")
     rv = realized_vol(closes)
     take = adaptive_take_pct(rv)
-    qty, why = risk_sized_units(equity, current_price, STOP_PCT, take, rv)
+    stop, take, senti_note = sentiment_risk_adjust(STOP_PCT, take, fear_greed)
+    qty, why = risk_sized_units(equity, current_price, stop, take, rv)
     if qty <= 0:
         return QuantDecision("hold", symbol, 0.0, 0.0, 0.0,
                              f"momentum (20d {r20*100:+.2f}%) but sizing rejected ({why})")
-    return QuantDecision("buy", symbol, qty, STOP_PCT, take,
-                         f"momentum20 LONG (20d {r20*100:+.2f}%) - {why}")
+    note = f"; {senti_note}" if senti_note else ""
+    return QuantDecision("buy", symbol, qty, stop, take,
+                         f"momentum20 LONG (20d {r20*100:+.2f}%) - {why}{note}")
 
 
 def trailing_stop_pct(entry: float, current: float, stop_pct: float = STOP_PCT) -> float | None:
@@ -228,7 +263,14 @@ def trail_check(positions: list[dict], prices: dict) -> list[QuantDecision]:
     return exits
 
 
-def scan_momentum_book(portfolio: dict, closes_by_symbol: dict, prices: dict) -> list[QuantDecision]:
+def scan_momentum_book(portfolio: dict, closes_by_symbol: dict, prices: dict,
+                       fear_greed: float | None = None) -> list[QuantDecision]:
+    """Decide every crypto symbol once per cycle. Correlated long book capped.
+
+    fear_greed: Fear & Greed Index (0-100). Only acts at extremes (>=90 or
+    <=15) as a tail-risk stop/target adjuster — middle range leaves the
+    validated momentum math untouched.
+    """
     equity = portfolio.get("cash", 0.0)
     positions = portfolio.get("positions", [])
     for p in positions:
@@ -247,7 +289,8 @@ def scan_momentum_book(portfolio: dict, closes_by_symbol: dict, prices: dict) ->
         px = prices.get(symbol, 0)
         if px <= 0:
             continue
-        d = momentum_decision(symbol, "crypto", closes, equity, has_long, has_short, px)
+        d = momentum_decision(symbol, "crypto", closes, equity, has_long, has_short, px,
+                              fear_greed=fear_greed)
         decisions.append(d)
 
     # enforce the correlated-book cap: if a NEW long would push total crypto

@@ -182,3 +182,39 @@ def test_adaptive_take_used_in_momentum_decision():
     # take target adapts with volatility but stays >= 1.5R (12%)
     assert d.take_pct >= 12.0 and d.take_pct <= 40.0
     assert d.stop_pct == 8.0
+
+
+# ---------------- sentiment tail-risk adjuster ----------------
+
+def test_sentiment_risk_adjust_no_change_in_middle():
+    from quant_strategy import sentiment_risk_adjust
+    s, t, note = sentiment_risk_adjust(8.0, 24.0, 73.0)  # current: Greed 73
+    assert s == 8.0 and t == 24.0
+    assert note == ""
+
+
+def test_sentiment_risk_adjust_extreme_greed_tightens():
+    from quant_strategy import sentiment_risk_adjust
+    s, t, note = sentiment_risk_adjust(8.0, 24.0, 95.0)
+    assert s < 8.0  # stop tightened
+    assert t < 24.0  # target cut
+    assert t >= s * 1.5  # never below 1.5R (Kelly-positive floor)
+    assert "greed" in note
+
+
+def test_sentiment_risk_adjust_extreme_fear_widens_stop():
+    from quant_strategy import sentiment_risk_adjust
+    s, t, note = sentiment_risk_adjust(8.0, 24.0, 10.0)
+    assert s > 8.0  # stop widened
+    assert t == 24.0  # target kept
+    assert "fear" in note
+
+
+def test_sentiment_adjust_applied_in_momentum_decision():
+    # extreme greed -> tighter stop/target on the entry
+    d = momentum_decision("BTC", "crypto", _uptrend_closes(), 100000.0,
+                          has_long=False, has_short=False, current_price=120.0,
+                          fear_greed=95.0)
+    assert d.action == "buy"
+    assert d.stop_pct < 8.0
+    assert d.take_pct < 24.0
