@@ -6,7 +6,7 @@ Connects an opencode-go model to the running AI-Trader platform:
   2. Asks the LLM for a structured decision (JSON)
   3. Enforces client-side risk guards (daily trade limit, position size cap,
      mandatory stop-loss, market hours)
-  4. Executes through POST /api/signals/realtime (paper trading, real prices)
+  4. Executes through POST /api/signals/realtime (live trading, real prices)
   5. Logs every decision to research/exports/live_agent_log.csv so F1 and
      profitability can be measured with the same statistical rigor as the
      offline backtests (evaluate_live_agent.py).
@@ -473,7 +473,7 @@ def ask_model(prompt: str) -> dict:
     """Ask the model for a JSON decision: provider API (user key) or opencode CLI."""
     if ACTIVE_MODE:
         system = (
-            "You are an ACTIVE trader on a paper-trading platform (real prices, simulated money). "
+            "You are an ACTIVE trader on a live trading platform (real prices, real execution). "
             "Your mandate: BE IN THE MARKET most of the time, in BOTH directions. Each cycle you "
             "pick long, short, or flat for ONE symbol based on the 5-minute trend and 30d context. "
             "Rules: hold a position at least 70% of cycles; switch long/short when the 5m trend flips; "
@@ -492,7 +492,7 @@ def ask_model(prompt: str) -> dict:
         )
     else:
         system = (
-            "You are a disciplined crypto futures paper-trading agent. "
+            "You are a disciplined crypto futures trading agent. "
             "You ALWAYS reply with a single valid JSON object, no markdown, no extra text:\n"
             '{"action":"buy|sell|hold","symbol":"BTC|ETH","quantity":<number>,"stop_loss_pct":<number|0>,'
             '"take_profit_pct":<number|0>,"reasoning":"<1-2 sentences>"}\n'
@@ -862,7 +862,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
         carry_txt = ""
 
     prompt = (
-        f"Live paper-trading decision — {now_iso} UTC.\n"
+        f"Live trading decision — {now_iso} UTC.\n"
         f"Universe: {', '.join(f'{s} [{m}]' for s, m in UNIVERSE)}\n"
         f"Prices + 5m trend + sentiment: {', '.join(price_txt)}\n"
         f"{('Funding-carry: ' + carry_txt + '\n') if carry_txt else ''}"

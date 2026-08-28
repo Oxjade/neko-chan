@@ -1,39 +1,43 @@
 """All user-facing copy for master + user bots. Single source of truth."""
 
 WELCOME_NEW = (
-    "👋 Welcome to AI-Trader Bot Network!\n\n"
-    "Run your own AI trading bot on a paper platform with real prices.\n"
-    "You bring two keys — we do the rest:\n"
+    "🐾 <b>Neko-Chan</b> — your AI trading cat.\n\n"
+    "I watch real markets, decide with AI, and trade the platform with "
+    "real prices. You bring two keys — I do the rest:\n"
     "  1️⃣ A Telegram bot token (from @BotFather) → your channel\n"
-    "  2️⃣ An AI API key → your bot's brain\n\n"
-    "⚠️ Paper trading only. No real money. Not financial advice."
+    "  2️⃣ An AI API key → my brain\n\n"
+    "⚠️ Trading involves real risk and real money. Not financial advice.\n"
+    "(I'm a cat. I'm not a licensed advisor. I'm just better.)"
 )
 
 WELCOME_RETURNING = (
-    "Welcome back! You have {n} bot(s): {names}.\n"
+    "🐾 Neko-Chan missed you! You have {n} bot(s): {names}.\n"
     "Manage them below."
 )
 
 HOW_IT_WORKS = {
-    1: ("📖 How it works — 1/3\n\n"
-        "Real market prices (BTC, ETH, US stocks, Forex) · paper money ($100k).\n"
-        "Your bot reads markets, decides with AI, trades on the platform."),
-    2: ("📖 How it works — 2/3\n\n"
+    1: ("📖 How it works — 1/3 🐾\n\n"
+        "Real market prices (BTC, ETH, US stocks, Forex) · live execution.\n"
+        "I read the markets, decide with AI, and trade the platform. "
+        "Purr-fectly, most of the time."),
+    2: ("📖 How it works — 2/3 🐾\n\n"
         "What YOUR bot does:\n"
         "• Decides every 1–10 minutes (you pick)\n"
         "• Always has a stop-loss, position caps, daily trade limit\n"
-        "• Every trade is recorded and scored on the leaderboard"),
-    3: ("📖 How it works — 3/3\n\n"
-        "⚠️ Paper only. No real money. Models make mistakes.\n"
+        "• Every trade is recorded and scored on the leaderboard\n\n"
+        "I never chase my tail — or your losses."),
+    3: ("📖 How it works — 3/3 🐾\n\n"
+        "⚠️ Trading is risky. Models make mistakes — even cats.\n"
         "Your AI key pays for your own model calls.\n"
-        "You can delete your bot anytime."),
+        "You can delete your bot anytime.\n\n"
+        "Nine lives of risk management. That's the deal."),
 }
 
 WIZARD = {
     "name": "🤖 Name your bot (3–24 chars, letters/numbers/space)\nExample: BitcoinWhale",
     "token": ("1️⃣ Send your Telegram bot token — create one first:\n"
               "  → open @BotFather → /newbot → copy the token (123456789:AA...)\n\nPaste it here:"),
-    "token_ok": "✅ Found @{username}.",
+    "token_ok": "✅ Found @{username}. Good kitty.",
     "token_bad": "❌ That token didn't work. Check @BotFather — it looks like 123456789:AAExample...",
     "verify": ("2️⃣ Send this code TO your bot @{username}:\n\n"
                "  VERIFY-{code_digits}\n\n"
@@ -44,7 +48,7 @@ WIZARD = {
                "Tap \"I sent it\" ONLY after the code is sent — we'll watch for up "
                "to 60 seconds.\n\n"
                "If the code expired, tap the button below for a fresh one."),
-    "verify_ok": "✅ Ownership verified.",
+    "verify_ok": "✅ Ownership verified. That's the cat's seal of approval.",
     "verify_bad": "❌ We didn't receive the code. Send it again to your bot and retry.",
     "verify_no_chat": ("⚠️ We haven't seen anything from @{username} yet.\n\n"
                        "Most likely you never pressed Start on it — open the bot in "
@@ -63,7 +67,7 @@ WIZARD = {
                    "• Only trade with money you can afford to lose.\n\n"
                    "By continuing you confirm you have read and accept these "
                    "terms."),
-    "disclaimer_accepted": "✅ Disclaimer accepted. You may now proceed.",
+    "disclaimer_accepted": "✅ Disclaimer accepted. Pawsitive progress.",
     "ai_key_provider": "3️⃣ Your AI API key — this powers your bot's decisions.\nPick a provider:",
     "ai_key_prompt": "Paste your {label} key:",
     "ai_key_ok": "✅ Key works ({provider}). Model: {model}",
@@ -85,7 +89,7 @@ WIZARD = {
                 "  📈 US Stocks — AAPL, NVDA…\n"
                 "  💱 Forex — EURUSD, USDJPY…"),
     "leverage": ("⚖️ Leverage for Perps (1–10x)\n"
-                 "⚠️ Higher leverage = faster liquidation. Paper only, but it simulates real perp risk."),
+                 "⚠️ Higher leverage = faster liquidation. Real perp risk."),
     "start": ("Everything is set 🎉\n"
               "  Bot: {name}\n"
               "  Channel: @{username} (verified)\n"
@@ -97,7 +101,8 @@ WIZARD = {
              "Your bot is live → open @{username} and press Start.\n\n"
              "What happens next:\n"
              "  🔔 Every trade/stop will be pushed to your bot\n"
-             "  📊 Dashboard, P&L, leaderboard inside your bot"),
+             "  📊 Dashboard, P&L, leaderboard inside your bot\n"
+             "🐾 Neko-Chan is on the clock. Literally."),
     "cancel": "Wizard canceled. Nothing was saved.",
     "timeout": "⏳ Wizard timed out. Resume with /start → Add My Bot.",
 }
@@ -116,22 +121,22 @@ USERBOT = {
                   "P&L {pnl} ({pct})    rank #{rank}\n"
                   "Cash ${cash}\n"
                   "Open {open} position(s)"),
-    "welcome_push": "🔔 You'll get every trade here. Tap 📊 P&L to start.",
+    "welcome_push": "🔔 Every trade lands here. Tap 📊 P&L to start.",
     "positions_header": "Open positions ({n})",
     "close_confirm": "Close {symbol} {side} {qty} now?",
     "closed_ok": "✅ Closed {symbol} at {price} ({pnl}, fee ${fee})",
     "pause_confirm": "Pause {name}? Positions stay open, no new decisions.",
     "paused": "⏸️ Paused. No new decisions. Positions stay open.",
-    "resumed": "▶️ Bot resumed.",
+    "resumed": "▶️ Bot resumed. The cat is back on the clock.",
     "delete_confirm": "Really delete {name}? This stops it and removes your keys from our servers.",
-    "deleted": "🗑️ Deleted. Goodbye. Your agent history stays on the platform.",
+    "deleted": "🗑️ Deleted. Goodbye. Your agent history stays on the platform. Neko-Chan will remember you.",
     "settings_saved": "Saved ✓ ({value})",
     # ---- real trading (execution gateway) ----
     "wallet_header": "💼 Wallet — {name}",
     "wallet_disabled": ("💼 Wallet — {name}\n\n"
-                        "⚪ Real trading is not enabled for this bot yet.\n"
-                        "Paper trading (real prices, simulated money) is active.\n\n"
-                        "When the operator enables real execution, your on-chain "
+                        "⚪ Live execution is not enabled for this bot yet.\n"
+                        "Your trading wallet isn't connected to a live venue.\n\n"
+                        "When the operator enables live execution, your on-chain "
                         "wallet, balances, positions and the kill-switch will appear here."),
     "wallet_not_connected": ("💼 Wallet — {name}\n\n"
                              "⚪ No chain wallet is connected for this bot.\n"
@@ -150,41 +155,41 @@ USERBOT = {
     "kill_no_exec": "🛑 Kill-switch: real trading is not enabled on this bot.",
     "kill_engaged": ("🛑 KILL-SWITCH ENGAGED\n\n"
                      "{summary}\n\n"
-                     "All trading for this bot is halted."),
-    "kill_released": "✅ Kill-switch released. Trading can resume.",
+                     "All trading for this bot is halted. The cat is sitting this one out."),
+    "kill_released": "✅ Kill-switch released. Trading can resume. I'm back, sweety.",
     "exec_risk": ("🛡️ Execution risk — {name}\n\n"
                   "{lines}\n\n"
                   "These hard caps are checked BEFORE any order is signed. They "
-                  "cannot be overridden by the AI model."),
+                  "cannot be overridden by the AI model. Or the cat."),
     "exec_risk_disabled": ("🛡️ Execution risk — {name}\n\n"
                            "Real trading is not enabled. These caps apply only "
                            "when the operator activates execution."),
-    "real_badge": "🔐 REAL",
-    "paper_badge": "📝 PAPER",
+    "real_badge": "🔐 LIVE",
+    "paper_badge": "🧪 SIM",
 }
 
 NOTIF = {
-    "fill": "✅ FILL: {action} {symbol} {qty} @ ${price} ({leverage_text}stop {stop}%, target {take}%)",
-    "stop": "🛑 STOP: {symbol} closed {pnl} ({pct}% stop)",
-    "target": "🎯 TARGET: {symbol} closed +{pnl} ({pct}% target)",
-    "liq": "💥 LIQUIDATED: {symbol} {lev}x at ${price} — margin lost.",
-    "started": "▶️ Bot started ({interval}s cycle)",
-    "paused": "⏸️ Bot paused.",
-    "error_first": "⚠️ {message} — retrying. No trade this cycle.",
-    "error_batch": "⚠️ Still retrying ({n} issues).",
+    "fill": "✅ FILL {action} {symbol} {qty} @ ${price} ({leverage_text}stop {stop}%, target {take}%)",
+    "stop": "🛑 STOP: {symbol} closed {pnl} ({pct}% stop). The cat saw it coming.",
+    "target": "🎯 TARGET: {symbol} closed +{pnl} ({pct}% target). Neko-Chan called it.",
+    "liq": "💥 LIQUIDATED: {symbol} {lev}x at ${price} — margin lost. Even cats miss sometimes.",
+    "started": "▶️ Neko-Chan started ({interval}s cycle). Let's get this bag.",
+    "paused": "⏸️ Paused. Cat is napping.",
+    "error_first": "⚠️ {message} — retrying. No trade this cycle. The cat is unbothered.",
+    "error_batch": "⚠️ Still retrying ({n} issues). Neko-Chan is patient.",
     "daily": "📅 Today: {pnl} · {trades} trades · win {win}% · fees ${fees}",
     "weekly": "📈 Week: {pnl} · {trades} trades · win {win}% · rank #{rank}",
-    "milestone": "🚀 +{pct}% ({equity} equity)",
-    "milestone_down": "⚠️ -{pct}% — consider pausing",
-    "back_online": "✅ Back online.",
+    "milestone": "🚀 +{pct}% ({equity} equity). The cat smells green candles.",
+    "milestone_down": "⚠️ -{pct}% — the cat suggests pausing. She's usually right.",
+    "back_online": "✅ Back online. The cat stretched. Ready to trade.",
 }
 
 ERRORS = {
-    "unknown_market": "I only understand buttons. Tap 🏠 Home.",
-    "unauthorized": "⛔ Unauthorized.",
-    "platform_down": "⚠️ Our platform is down — try again in a few minutes.",
-    "duplicate_token": "This bot is already registered.",
-    "duplicate_key": "That key is already powering another bot.",
+    "unknown_market": "I only understand buttons. Tap 🏠 Home. (I'm a cat, not a keyboard.)",
+    "unauthorized": "⛔ Unauthorized. Neko-Chan says no.",
+    "platform_down": "⚠️ Our platform is down. The cat is kneading the server. Try again soon.",
+    "duplicate_token": "This bot is already registered. One cat per household, please.",
+    "duplicate_key": "That key is already powering another bot. Each cat needs their own.",
     "name_taken": "That name is taken — try {suggestion}.",
 }
 

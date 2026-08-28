@@ -83,7 +83,7 @@ def test_render_wallet_when_exec_disabled():
     c = UserBotController(Registry(":memory:", KeyVault()), platform=object(),
                           gateway=FakeGateway(ready=False))
     text = c._render_wallet(1, "Whale", 0)
-    assert "Real trading is not enabled" in text
+    assert "Live execution is not enabled" in text
 
 
 def test_render_wallet_shows_chain_state(controller):

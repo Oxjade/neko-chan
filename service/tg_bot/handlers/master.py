@@ -17,18 +17,18 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         promoted = registry.promote_first_user_to_admin(user.id)
         bots = registry.bots_for(user.id)
         if promoted:
-            text = (f"👑 Welcome, {user.first_name or user.username or 'owner'}! You are now the owner of Neko.\n\n"
-                    "Send /addbot to connect your own trading bot, or browse below.")
+            text = (f"👑 Welcome, {user.first_name or user.username or 'owner'}! You're now the owner of Neko.\n\n"
+                    "Send /addbot to connect your own trading bot, or browse below. 🐾")
         elif bots:
             names = ", ".join(f"{b['bot_name']} {'🟢' if b['is_running'] else '⏸️'}" for b in bots)
-            text = f"👋 Welcome back to Neko! You have: {names}"
+            text = f"🐾 Neko-Chan missed you! You have: {names}"
         else:
-            text = ("👋 Welcome to Neko — the AI trader bot network.\n\n"
-                    "Run your own AI trading bot on a paper platform with real prices.\n"
-                    "You bring two keys — we do the rest:\n"
+            text = ("🐾 Welcome to Neko — the AI trader bot network.\n\n"
+                    "Run your own AI trading bot on a platform with real prices.\n"
+                    "You bring two keys — I do the rest:\n"
                     "  1️⃣ A Telegram bot token (from @BotFather) → your channel\n"
-                    "  2️⃣ An AI API key → your bot's brain\n\n"
-                    "⚠️ Paper trading only. No real money. Not financial advice.")
+                    "  2️⃣ An AI API key → my brain\n\n"
+                    "⚠️ Trading involves real risk. Not financial advice.")
         kb = [[telegram.InlineKeyboardButton("➕ Add My Bot", callback_data="nav:add"),
                telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="nav:lb")],
               [telegram.InlineKeyboardButton("🤖 My Bots", callback_data="nav:mybots"),
@@ -163,7 +163,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             "❓ Help\n\n"
             "• Get a bot token: open @BotFather → /newbot → copy the token\n"
             "• AI key rejected: check the key starts with the right prefix (sk-…)\n"
-            "• Paper trading: real prices, simulated money — no real risk\n"
+            "• Trading is live: real prices, real execution — understand the risk\n"
             "• Lost your bot in BotFather: re-create it, then re-verify the token here\n\n"
             "Contact: @support",
             reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]),

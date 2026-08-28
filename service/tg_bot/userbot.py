@@ -294,12 +294,12 @@ class UserBotController:
                 await dash(update, context)
                 return
             text = (
-                f"👋 Welcome to {bot['bot_name']} — your AI trading bot.\n\n"
+                f"🐾 Welcome to {bot['bot_name']} — your AI trading cat.\n\n"
                 "I watch live markets (BTC, ETH, US stocks, Forex) and trade on the "
-                "AI-Trader paper platform with real prices. Every trade gets pushed here.\n\n"
-                "To start trading I need one thing from you: your AI API key — it "
+                "platform with real prices. Every trade gets pushed here.\n\n"
+                "To start trading I need one thing: your AI API key — it "
                 "powers my decisions and you pay for your own model calls.\n\n"
-                "⚠️ Paper trading only. No real money."
+                "⚠️ Trading involves real risk. (I'm a cat, not an advisor.)"
             )
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("🔑 Set AI Key", callback_data="key:start")],
@@ -744,11 +744,11 @@ class UserBotController:
             await q.answer()
             text = (
                 "❓ Help\n\n"
-                "• Paper trading = real prices, simulated money ($100k). No real risk.\n"
-                "• Your bot decides every {interval}s and always uses stop-losses.\n"
+                "• AI-powered trading with real market prices.\n"
+                "• Your cat decides every {interval}s and always uses stop-losses.\n"
                 "• Your AI key pays for your own model calls.\n"
                 "• Every trade is pushed here as a notification.\n\n"
-                "Owners: use the master bot (Neko) to manage your network entry."
+                "Owners: use the master bot (Neko) to manage your network entry. 🐾"
             ).format(interval=self.registry.get_bot(bot_id)["interval_sec"])
             await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
