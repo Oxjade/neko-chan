@@ -833,9 +833,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 f"{sym} [{market}]: ${px:,.4f} (24h {c24:+.2f}%, 7d {c7:+.2f}%, 30d {c30:+.2f}%, "
                 f"30d range ${lo30:,.2f}-${hi30:,.2f})"
             )
-            time.sleep(1.2)  # respect platform rate limit (1/sec per agent)
         except Exception as e:
             price_txt.append(f"{sym}: unavailable ({e})")
+        # ALWAYS respect the platform rate limit (1/sec per agent), even when a
+        # price fetch just failed with 429 - otherwise the error cascades and
+        # every symbol in the cycle fails (the 2026-08-28 stall).
+        time.sleep(1.2)
         m5 = fetch_5m_context(sym, market, 1)
         price_txt[-1] = f"{price_txt[-1]} | {m5}"
         try:
