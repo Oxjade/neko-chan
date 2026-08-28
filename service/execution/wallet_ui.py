@@ -16,7 +16,7 @@ def render_wallet_panel(bots: list[dict], wallets: dict, chain_state: dict) -> s
     """bots: [{id, bot_name, paused}], wallets: {chain: wallet-row},
     chain_state: {chain: {balances, positions}}. Pure text (HTML)."""
     line = "─" * 28
-    parts = ["<b>💼 Wallet — Neko Real Trading</b>", f"<code>{line}</code>"]
+    parts = ["<b>💼 Wallet — Neko Live Trading</b>", f"<code>{line}</code>"]
     for chain, label in CHAIN_LABELS.items():
         w = wallets.get(chain)
         if chain not in LIVE_CHAINS:

@@ -163,7 +163,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             "❓ Help\n\n"
             "• Get a bot token: open @BotFather → /newbot → copy the token\n"
             "• AI key rejected: check the key starts with the right prefix (sk-…)\n"
-            "• Trading is live: real prices, real execution — understand the risk\n"
+            "• Trading is live: live prices, live execution — understand the risk\n"
             "• Lost your bot in BotFather: re-create it, then re-verify the token here\n\n"
             "Contact: @support",
             reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]),
@@ -219,7 +219,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             return
         gw = getattr(userbot_controller, "gateway", None)
         if not gw or not getattr(gw, "ready", False):
-            await q.message.edit_text("🛑 Kill-switch: real execution is not configured.")
+            await q.message.edit_text("🛑 Kill-switch: execution is not configured.")
             return
         results = []
         for b in registry.all_bots():

@@ -131,7 +131,7 @@ USERBOT = {
     "delete_confirm": "Really delete {name}? This stops it and removes your keys from our servers.",
     "deleted": "🗑️ Deleted. Goodbye. Your agent history stays on the platform. Neko-Chan will remember you.",
     "settings_saved": "Saved ✓ ({value})",
-    # ---- real trading (execution gateway) ----
+    # ---- on-chain execution (gateway) ----
     "wallet_header": "💼 Wallet — {name}",
     "wallet_disabled": ("💼 Wallet — {name}\n\n"
                         "⚪ Live execution is not enabled for this bot yet.\n"
@@ -171,7 +171,7 @@ USERBOT = {
                    "every chain for this bot, immediately.\n\n"
                    "⚠️ It cannot be undone automatically. Trading stays halted "
                    "until you release it."),
-    "kill_no_exec": "🛑 Kill-switch: real trading is not enabled on this bot.",
+    "kill_no_exec": "🛑 Kill-switch: execution isn't configured for this bot.",
     "kill_engaged": ("🛑 KILL-SWITCH ENGAGED\n\n"
                      "{summary}\n\n"
                      "All trading for this bot is halted. The cat is sitting this one out."),
@@ -181,9 +181,9 @@ USERBOT = {
                   "These hard caps are checked BEFORE any order is signed. They "
                   "cannot be overridden by the AI model. Or the cat."),
     "exec_risk_disabled": ("🛡️ Execution risk — {name}\n\n"
-                           "Real trading is not enabled. These caps apply only "
-                           "when the operator activates execution."),
-    "real_badge": "🔐 LIVE",
+                           "Execution isn't configured yet. These caps apply "
+                           "when the operator activates on-chain execution."),
+    "live_badge": "🔐 LIVE",
     "paper_badge": "🧪 SIM",
     # Release status: Sui (Bluefin perps) is live; every other chain/instrument
     # carries this until it is validated and released slowly.

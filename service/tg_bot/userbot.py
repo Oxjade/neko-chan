@@ -155,11 +155,11 @@ class UserBotController:
         self.platform = platform
         self.vault = vault
         self.agent_pool = agent_pool
-        self.gateway = gateway  # ExecGateway (real execution) or None
+        self.gateway = gateway  # ExecGateway (on-chain execution) or None
         self._apps: dict[int, Application] = {}
         self._lock = threading.Lock()
 
-    # ---------------- real trading helpers ----------------
+    # ---------------- on-chain execution helpers ----------------
 
     def _exec_ready(self) -> bool:
         return bool(self.gateway and getattr(self.gateway, "ready", False))
@@ -518,7 +518,7 @@ class UserBotController:
                     pass
             b = self.registry.get_bot(bot_id)
             text = render_dashboard_text(b, pf, lb_row)
-            badge = USERBOT["real_badge"] if self._exec_ready() else USERBOT["paper_badge"]
+            badge = USERBOT["live_badge"] if self._exec_ready() else USERBOT["paper_badge"]
             text = f"{badge} · {text}"
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
@@ -754,7 +754,7 @@ class UserBotController:
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Risk:      {b['risk_profile']}\n"
                     f"Leverage:  {float(b.get('leverage') or 1):g}x\n"
-                    f"Mode:      {USERBOT['real_badge'] if self._exec_ready() else USERBOT['paper_badge']} trading\n"
+                    f"Mode:      {USERBOT['live_badge'] if self._exec_ready() else USERBOT['paper_badge']} trading\n"
                     f"Trader:    {ttype_label}\n"
                     f"AI key:    {'set ✓' if self.registry.get_active_key(tg_id) else 'not set'}")
             kb = [
@@ -828,7 +828,7 @@ class UserBotController:
             q = update.callback_query
             await q.answer()
             if not self._exec_ready():
-                await q.message.edit_text("🗝️ Real trading not enabled — no keys to show.",
+                await q.message.edit_text("🗝️ Execution isn't configured yet — no keys to show.",
                                           reply_markup=telegram.InlineKeyboardMarkup(
                                               [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
@@ -856,7 +856,7 @@ class UserBotController:
             q = update.callback_query
             await q.answer()
             if not self._exec_ready():
-                await q.message.edit_text("💸 Real trading not enabled — nothing to withdraw.",
+                await q.message.edit_text("💸 Execution isn't configured yet — nothing to withdraw.",
                                           reply_markup=telegram.InlineKeyboardMarkup(
                                               [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
