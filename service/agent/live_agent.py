@@ -548,6 +548,30 @@ def equity(portfolio: dict, prices: dict) -> float:
     return cash
 
 
+# ---------------------------------------------------------------- prediction tracking
+
+PRED_LOG = Path(__file__).resolve().parents[2] / "research" / "exports" / "predictions.csv"
+
+
+def _log_prediction(decision: dict, p_win: float, R: float, ev: float,
+                    drift_annual: float, vol_annual: float,
+                    entry: float = 0.0, stop: float = 0.0, target: float = 0.0) -> None:
+    """Log one trade's predicted probability + levels at entry for calibration."""
+    try:
+        PRED_LOG.parent.mkdir(parents=True, exist_ok=True)
+        fresh = not PRED_LOG.exists()
+        ts = datetime.now(timezone.utc).isoformat()
+        with open(PRED_LOG, "a", encoding="utf-8") as f:
+            if fresh:
+                f.write("ts,symbol,direction,entry,stop,target,p_win,R,ev,drift,vol,status\n")
+            f.write(f"{ts},{decision.get('symbol')},"
+                    f"{'long' if decision.get('action') in ('buy',) else 'short'},"
+                    f"{entry},{stop},{target},"
+                    f"{p_win:.4f},{R:.4f},{ev:.4f},{drift_annual:.4f},{vol_annual:.4f},open\n")
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------- real execution (gateway)
 
 
@@ -892,6 +916,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
         # The LLM (with skills loaded) reads the full matrix + market context,
         # does the math compilation, and picks the highest-conviction scenario.
         # Risk guards clamp the chosen trade AFTER the LLM decides.
+        _last_scenario = None
         try:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from quant_strategy import (
@@ -932,6 +957,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     decision = {"action": "hold", "symbol": "", "quantity": 0,
                                 "stop_loss_pct": 0, "take_profit_pct": 0,
                                 "reasoning": "scenario matrix: no positive-EV trade right now - cash"}
+                    _last_scenario = None
                 elif LIVE_AGENT_API_KEY:
                     # LLM compiles the matrix and picks the best trade
                     skill_ctx = _load_skill_context()
@@ -992,6 +1018,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             "take_profit_pct": 24.0,
                             "reasoning": f"[LLM scenario pick] {llm.get('reasoning','')[:240]}",
                         }
+                        # find the scenario the LLM chose, for prediction tracking
+                        _last_scenario = None
+                        for _s in top:
+                            if _s.symbol == llm_sym and _s.direction == llm_dir:
+                                _last_scenario = _s
+                                break
                         print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
                               f"qty={qty:.4f} :: {llm.get('reasoning','')[:80]}")
                     else:
@@ -999,6 +1031,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
                                     "stop_loss_pct": 0, "take_profit_pct": 0,
                                     "reasoning": f"[LLM] {llm.get('reasoning','')[:200]}"}
+                        _last_scenario = None
                 else:
                     # no LLM key -> fall back to the math's best scenario
                     best = pick_best_scenario(matrix, has_long, has_short)
@@ -1006,6 +1039,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
                                     "stop_loss_pct": 0, "take_profit_pct": 0,
                                     "reasoning": "best scenario has non-positive EV - cash"}
+                        _last_scenario = None
                     else:
                         side = "buy" if best.direction == "long" else "sell"
                         max_qty = (eq * 1.0 / 100.0) / best.entry
@@ -1015,6 +1049,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                     "take_profit_pct": 24.0,
                                     "reasoning": f"[quant] best scenario {best.direction} "
                                                  f"{best.symbol} EV={best.ev:+.2f}R"}
+                        _last_scenario = best
         except Exception as exc:
             print(f"[quant] engine failed, holding: {exc}")
             decision = {"action": "hold", "symbol": "", "quantity": 0,
@@ -1113,6 +1148,13 @@ def run_cycle(token: str, dry: bool = False) -> None:
             print(f"[trade][real] {row['action']} {qty} {symbol} [{market}] "
                   f"-> {'OK' if fill.get('ok') else fill.get('error')} "
                   f"order={fill.get('order_id', '')}")
+            if fill.get("ok") and _last_scenario is not None:
+                _log_prediction(decision, _last_scenario.p_win, _last_scenario.R,
+                                _last_scenario.ev, _last_scenario.drift_annual,
+                                _last_scenario.vol_annual,
+                                entry=_last_scenario.entry,
+                                stop=_last_scenario.stop,
+                                target=_last_scenario.target)
         else:
             fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
                      leverage=LIVE_AGENT_LEVERAGE if market == "crypto" and LIVE_AGENT_LEVERAGE > 1 else None)
@@ -1123,6 +1165,13 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 notify_error(fill.get("error", ""))
             print(f"[trade] {row['action']} {qty} {symbol} [{market}] @ {fill.get('price', 'n/a')} "
                   f"-> {'OK' if fill['ok'] else fill['error']}")
+            if fill.get("ok") and _last_scenario is not None:
+                _log_prediction(decision, _last_scenario.p_win, _last_scenario.R,
+                                _last_scenario.ev, _last_scenario.drift_annual,
+                                _last_scenario.vol_annual,
+                                entry=_last_scenario.entry,
+                                stop=_last_scenario.stop,
+                                target=_last_scenario.target)
             # D2 fix: LOG IMMEDIATELY after the DB fill is acknowledged so a
             # later exception can never make an executed trade invisible in the
             # decision log (this was the 2026-08-26 22:42 EURUSD gap).
