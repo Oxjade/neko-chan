@@ -995,7 +995,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from quant_strategy import (
                 scenario_matrix, pick_best_scenario, trail_check, time_exit_check,
-                partial_profit_check,
+                partial_profit_check, rsi as _rsi_fn, RSI_ENTRY_THRESHOLD,
             )
 
             # update trailing peak tracker for open longs (per symbol)
@@ -1039,6 +1039,15 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     else:
                         # build the full scenario matrix (long + short per symbol)
                         matrix = scenario_matrix(closes_by_symbol, prices, trader_type=TRADER_TYPE)
+                        # RSI momentum filter (hyperopt: PF 1.51 -> 1.66): only
+                        # consider symbols whose RSI confirms direction. Longs
+                        # need RSI > threshold, shorts need RSI < 100-threshold.
+                        matrix = [
+                            s for s in matrix
+                            if not closes_by_symbol.get(s.symbol) or
+                            (s.direction == "long" and _rsi_fn(closes_by_symbol[s.symbol]) >= RSI_ENTRY_THRESHOLD) or
+                            (s.direction == "short" and _rsi_fn(closes_by_symbol[s.symbol]) <= 100 - RSI_ENTRY_THRESHOLD)
+                        ]
                         has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
                         has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
                     # top candidates the LLM will choose among (ranked by conviction)

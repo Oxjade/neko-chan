@@ -262,11 +262,12 @@ def test_time_exit_hard_cut_after_expected_lifetime():
     # target 0.5% on 2.5% daily vol: sigma_5m=0.147%, k=0.5/0.147=3.4, ~58 min expected
     expected = _expected_target_minutes(79000, 79395, 2.5)
     assert 20 < expected < 200
-    # position open well past 2.5x expected -> hard cut
+    # position open well past 2.5x expected, RED (below entry) -> decay doesn't
+    # fire (needs to be above the decayed target), so hard cut must trigger
     old = (datetime.now(timezone.utc) - timedelta(minutes=max(30, expected * 3))).isoformat()
     pos = [{"symbol": "BTC", "quantity": 0.1, "entry_price": 79000,
-            "current_price": 79200, "take_profit": 79395, "opened_at": old}]
-    exits = time_exit_check(pos, {"BTC": 79200}, daily_vol_by_symbol={"BTC": 2.5})
+            "current_price": 78900, "take_profit": 79395, "opened_at": old}]
+    exits = time_exit_check(pos, {"BTC": 78900}, daily_vol_by_symbol={"BTC": 2.5})
     assert len(exits) == 1
     assert "time stop" in exits[0].reasoning
 
