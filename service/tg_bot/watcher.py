@@ -291,13 +291,81 @@ class Watcher:
         self._save_watermark(self.watermark)
         return pushed
 
+    # ------------------------------------------------------------ live position alerts
+
+    # P&L alert thresholds (% move from entry). At each level a notification
+    # fires ONCE per position per level (dedup), showing USD + % and offering a
+    # take-profit button. Negative levels warn, positive levels celebrate.
+    PNL_ALERT_LEVELS = (-3.0, -1.0, 1.0, 2.0, 3.0, 5.0)
+
+    def _positions(self) -> list[dict]:
+        try:
+            token = self.registry.bot_token(self.bot_id)
+            if not token:
+                return []
+            r = requests.get(f"{self.platform}/api/positions",
+                             headers={"Authorization": f"Bearer {token}"}, timeout=10)
+            if r.status_code != 200:
+                return []
+            return r.json().get("positions", [])
+        except Exception:
+            return []
+
+    def _check_positions(self) -> None:
+        """Push live per-position P&L alerts + take-profit prompt.
+
+        For each open position, when its P&L crosses one of the alert levels
+        (e.g. +1%, +2%, +3%, -1%, -3%), notify the user with:
+          - USD profit/loss
+          - % move
+          - a 'Take Profit' button (offered on positive alerts)
+        Each (symbol, level) alerts once. Exits/closes are handled by the
+        signals watcher (K_CLOSE) - this only surfaces live moves.
+        """
+        try:
+            for p in self._positions():
+                symbol = str(p.get("symbol") or "")
+                qty = float(p.get("quantity") or 0)
+                entry = float(p.get("entry_price") or 0)
+                cur = float(p.get("current_price") or entry)
+                if symbol and entry > 0 and cur > 0:
+                    pnl_pct = (cur / entry - 1.0) * 100.0 * (1 if qty >= 0 else -1)
+                    pnl_usd = (cur - entry) * (qty if qty >= 0 else -qty)
+                    sent = self._sent_position_alerts.setdefault(symbol, set())
+                    for level in self.PNL_ALERT_LEVELS:
+                        crossed = (pnl_pct >= level if level > 0 else pnl_pct <= level)
+                        key = f"{level:+}"
+                        if crossed and key not in sent:
+                            sent.add(key)
+                            sign = "📈" if pnl_usd >= 0 else "📉"
+                            verb = "TAKE PROFIT" if pnl_usd >= 0 else "ALERT"
+                            text = (f"{sign} <b>{verb}: {symbol}</b>\n"
+                                    f"• P&L: <b>${pnl_usd:+,.2f}</b> ({pnl_pct:+.2f}%)\n"
+                                    f"• Entry ${entry:,.4f} → Now ${cur:,.4f}\n"
+                                    f"• Qty: {abs(qty):.4f}")
+                            buttons = None
+                            if pnl_usd >= 0:
+                                buttons = [[
+                                    ("✅ Take Profit", f"sb:close:{symbol}"),
+                                    ("📊 Dashboard", "sb:dash"),
+                                ]]
+                            self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
+                                               self.chat_id, "watcher_pnl",
+                                               f"{symbol}:{key}", text,
+                                               buttons=buttons, dedup=True)
+                            log.info("[push] pnl alert %s %s (%.2f%%)", symbol, key, pnl_pct)
+        except Exception as exc:
+            log.warning("[watcher] position check error: %s", exc)
+
     def run(self):
         log.info("[watcher] started agent watcher (watermark %s)", self.watermark)
         self.last_equity_mark = self.equity() or self.start_equity
         self._last_profit_day = None
+        self._sent_position_alerts: dict[str, set[str]] = {}  # symbol -> alert levels sent
         while not self._stop:
             try:
                 self.poll_once()
+                self._check_positions()
                 eq = self.equity()
                 if eq is not None:
                     pct = (eq / self.last_equity_mark - 1) * 100

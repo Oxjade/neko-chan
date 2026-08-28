@@ -966,6 +966,58 @@ class UserBotController:
                                           [[telegram.InlineKeyboardButton("🛑 Engage Kill-Switch", callback_data="sb:kill_yes")],
                                            [telegram.InlineKeyboardButton("↩️ Cancel", callback_data="sb:dash")]]))
 
+        async def close_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Take-profit / manual close of one position (from a P&L alert button)."""
+            q = update.callback_query
+            await q.answer()
+            _, _, symbol = q.data.split(":", 2)
+            if q.data == f"sb:close_yes:{symbol}":
+                try:
+                    pf = self.platform.positions(platform_token)
+                    pos = next((p for p in pf.get("positions", []) if p["symbol"] == symbol), None)
+                    if not pos:
+                        await q.message.edit_text(f"ℹ️ No open {symbol} position.")
+                        return
+                    action = "sell" if pos["quantity"] > 0 else "cover"
+                    r = self.platform.trade(platform_token, pos["market"], symbol, action,
+                                            abs(pos["quantity"]))
+                    pnl = (pos.get("current_price") or pos["entry_price"]) - pos["entry_price"]
+                    pnl = pnl * pos["quantity"] if pos["quantity"] >= 0 else pnl * -pos["quantity"]
+                    await q.message.edit_text(
+                        f"✅ <b>{'TAKE PROFIT' if pnl >= 0 else 'Closed'}: {symbol}</b>\n"
+                        f"• Realized P&L: <b>${pnl:+,.2f}</b>\n"
+                        f"• Exit: ${pos.get('current_price') or pos['entry_price']:,.4f}",
+                        parse_mode="HTML",
+                        reply_markup=telegram.InlineKeyboardMarkup(
+                            [[telegram.InlineKeyboardButton("📊 Dashboard", callback_data="sb:dash")]]))
+                except Exception as exc:
+                    await q.message.edit_text(f"⚠️ Couldn't close {symbol}: {str(exc)[:120]}",
+                                              reply_markup=telegram.InlineKeyboardMarkup(
+                                                  [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            # confirmation
+            try:
+                pf = self.platform.positions(platform_token)
+                pos = next((p for p in pf.get("positions", []) if p["symbol"] == symbol), None)
+                if not pos:
+                    await q.message.edit_text(f"ℹ️ No open {symbol} position.")
+                    return
+                qty = pos["quantity"]
+                entry = pos["entry_price"]
+                cur = pos.get("current_price") or entry
+                pnl = (cur - entry) * (qty if qty >= 0 else -qty)
+                pct = (cur / entry - 1) * 100 * (1 if qty >= 0 else -1)
+            except Exception:
+                pnl = pct = 0.0
+            await q.message.edit_text(
+                f"💰 <b>Close {symbol}?</b>\n\n"
+                f"Current P&L: <b>${pnl:+,.2f}</b> ({pct:+.2f}%)\n\n"
+                f"Take the profit / cut the loss now?",
+                parse_mode="HTML",
+                reply_markup=telegram.InlineKeyboardMarkup(
+                    [[telegram.InlineKeyboardButton("✅ Yes, close", callback_data=f"sb:close_yes:{symbol}")],
+                     [telegram.InlineKeyboardButton("↩️ Keep open", callback_data="sb:dash")]]))
+
         async def exec_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
@@ -1000,3 +1052,4 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(wallet_withdraw, pattern=r"^sb:withdraw$"))
         app.add_handler(CallbackQueryHandler(killswitch_screen, pattern=r"^sb:(kill|kill_yes|kill_release)$"))
         app.add_handler(CallbackQueryHandler(exec_risk, pattern=r"^sb:execrisk$"))
+        app.add_handler(CallbackQueryHandler(close_position, pattern=r"^sb:(close|close_yes):\w+$"))
