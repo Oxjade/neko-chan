@@ -715,44 +715,38 @@ class UserBotController:
         async def pnl_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
+            b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            account = {"balances": {}, "positions": []}
             try:
-                pf = self.platform.positions(platform_token)
-                lb_row = self.platform.agent_row(platform_token, bot["agent_name"]) if bot.get("agent_id") else None
+                account = self._exec_account(bot_id, chain)
             except Exception:
-                await q.message.edit_text("⚠️ Platform offline.", reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
-                return
-            cash = pf.get("cash", 0)
-            pos = pf.get("positions", [])
-            pnl = sum((p.get("current_price") or p["entry_price"] - p["entry_price"]) * p["quantity"] if p["quantity"] >= 0
-                      else (p["entry_price"] - (p.get("current_price") or p["entry_price"])) * abs(p["quantity"]) for p in pos)
-            profit = cash + pnl - 100000
-            ret = lb_row.get("total_profit_percent", profit / 1000) if lb_row else profit / 1000
-            dd = lb_row.get("max_drawdown", 0) if lb_row else 0
-            hist = (lb_row or {}).get("history") or []
-            eq = []
-            if hist:
-                try:
-                    eq = [100000 + float(h.get("profit", 0)) for h in hist]
-                except Exception:
-                    eq = []
-            line = "─" * 30
-            def money(v, sign=True):
-                return f"${v:+,.2f}" if sign else f"${v:,.2f}"
+                pass
+            bal = account.get("balances") or {}
+            usdc = float(bal.get("USDC", 0))
+            positions = account.get("positions") or []
+            open_pnl = sum(float(p.get("pnl") or p.get("unrealized_pnl") or 0) for p in positions)
+            total_pnl = float(bal.get("realized_pnl", 0)) + open_pnl
+            trade_count = len(positions)
+            line = "─" * 28
             text = (
-                f"<b>📊 P&amp;L DETAIL - {bot['bot_name']}</b>\n"
+                f"<b>📊 P&amp;L - {b['bot_name']}</b>\n"
                 f"<code>{line}</code>\n"
-                f"<b>💰 ACCOUNT</b>\n"
-                f"  Equity      <code>{money(profit + 100000, sign=False)}</code>\n"
-                f"  Total P&amp;L  <code>{money(profit)}</code>  ({ret:+.2f}%)\n"
-                f"  Max DD      <code>{dd * 100:.2f}%</code>\n"
-                f"  Cash free   <code>{money(cash, sign=False)}</code>\n"
-                f"  Open PnL    <code>{money(pnl)}</code>\n\n"
-                f"<b>📈 EQUITY CURVE</b>\n"
-                f"  <code>{_sparkline(eq or [100000])}</code>\n\n"
-                f"<b>📡 POSITION COUNT</b>  {len(pos)} open · "
-                f"{lb_row.get('trade_count', 0) if lb_row else 0} closed\n"
-                f"<code>{line}</code>"
+                f"<b>💰 CHAIN BALANCE</b>\n"
+                f"  USDC    <code>${usdc:,.2f}</code>\n"
+                f"  Total   {_money(total_pnl)}\n\n"
+                f"<b>📡 POSITIONS</b>  {trade_count} open"
             )
+            if positions:
+                lines = []
+                for p in positions[:5]:
+                    sym = str(p.get("symbol") or p.get("coin") or "?")
+                    side = str(p.get("side") or "long")
+                    qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
+                    pp = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
+                    lines.append(f"  {sym} {side.upper()} {qty:g}  {_money(pp)}")
+                text += "\n" + "\n".join(lines[:5])
+            text += f"\n<code>{line}</code>"
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
                  [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
@@ -760,12 +754,25 @@ class UserBotController:
         async def positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
+            b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            account = {"balances": {}, "positions": []}
             try:
-                pf = self.platform.positions(platform_token)
+                account = self._exec_account(bot_id, chain)
             except Exception:
-                await q.message.edit_text("⚠️ Platform offline.")
-                return
-            await q.message.edit_text(render_positions_text(pf), reply_markup=telegram.InlineKeyboardMarkup(
+                pass
+            positions = account.get("positions") or []
+            lines = [f"💰 Active Positions - {b['bot_name']}\n"]
+            if not positions:
+                lines.append("No open positions.")
+            for p in positions[:6]:
+                sym = str(p.get("symbol") or p.get("coin") or "?")
+                side = str(p.get("side") or "long")
+                qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
+                entry = float(p.get("entry") or p.get("entry_px") or 0)
+                pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
+                lines.append(f"  {sym}  {side.upper()} {qty:g}  entry {entry:,.2f}  {_money(pnl)}")
+            await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pos")],
                  [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
