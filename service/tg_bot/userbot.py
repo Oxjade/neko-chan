@@ -678,7 +678,11 @@ class UserBotController:
             except Exception:
                 account = {"balances": {}, "positions": []}
             text = render_production_dashboard(b, account, chain)
+            start_label = "⏸️ Pause" if b.get("is_running") else "▶️ Start"
+            start_cb = "sb:pause" if b.get("is_running") else "sb:start_agent"
             kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
+                 telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
                 [telegram.InlineKeyboardButton("📤 Send", callback_data="sb:send"),
                  telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
@@ -693,6 +697,52 @@ class UserBotController:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
             elif update.callback_query:
                 await update.callback_query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+
+        async def start_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            if not self.registry.get_active_key(tg_id):
+                await q.message.edit_text("🔑 Set an AI key first in Settings.",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            self.registry.update_bot(bot_id, paused=0, is_running=1)
+            if self.agent_pool:
+                self.agent_pool.start(bot_id)
+            await q.message.edit_text("▶️ Agent started. Neko-Chan is scanning markets.",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek"),
+                                            telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
+        async def peek(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            # Read the latest agent decision from the CSV log
+            lines = ["👀 Agent Status\n"]
+            b = self.registry.get_bot(bot_id)
+            if not b.get("is_running"):
+                lines.append("Agent is not running. Tap ▶️ Start to begin.")
+            else:
+                lines.append("Agent is running. Checking latest activity...")
+                try:
+                    import csv
+                    from pathlib import Path
+                    log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
+                    if log_path.exists():
+                        with open(log_path, newline="", encoding="utf-8") as f:
+                            reader = list(csv.DictReader(f))
+                            if reader:
+                                last = reader[-1]
+                                lines.append(f"Last decision: {last.get('action','?')} {last.get('symbol','')} "
+                                             f"qty={last.get('qty','')} price={last.get('price','')}")
+                                lines.append(f"Reason: {last.get('reasoning','')[:100]}")
+                            else:
+                                lines.append("No decisions yet. Agent is analyzing.")
+                except Exception:
+                    lines.append("Could not read agent log.")
+            await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
+                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
 
         async def _exec_account(self, bot_id: int, chain: str) -> dict:
             """Real on-chain account state for a bot+chain (RPC, not mock)."""
@@ -1155,26 +1205,19 @@ class UserBotController:
         async def send_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            text = ("📤 <b>Send from your trading wallet</b>\n\n"
-                    "Your wallet is non-custodial - you control the funds.\n\n"
-                    "Send the <b>destination wallet address</b> you want to "
-                    "transfer to (on the same chain as your trading wallet):")
-            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+            text = "📤 Provide the address you're sending to:"
+            await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("❌ Cancel", callback_data="send:cancel")]]))
             return S_ADDR
 
         async def send_addr(update: Update, context: ContextTypes.DEFAULT_TYPE):
             addr = (update.message.text or "").strip()
             if len(addr) < 20:
-                await update.message.reply_text("❌ That doesn't look like a wallet address. Paste the full address:")
+                await update.message.reply_text("❌ Invalid address. Paste the full address:")
                 return S_ADDR
             context.bot_data["send_dest"] = addr
-            await update.message.reply_text(
-                f"📍 Destination:\n<code>{addr}</code>\n\n"
-                "How much do you want to send? (amount in USDC)",
-                parse_mode="HTML",
-                reply_markup=telegram.ReplyKeyboardRemove(),
-            )
+            await update.message.reply_text("Amount to send (USDC):",
+                                            reply_markup=telegram.ReplyKeyboardRemove())
             return S_AMOUNT
 
         async def send_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1182,21 +1225,15 @@ class UserBotController:
             try:
                 amount = float(raw)
             except ValueError:
-                await update.message.reply_text("❌ That's not a number. Enter the amount in USDC:")
+                await update.message.reply_text("❌ Invalid amount. Enter a number:")
                 return S_AMOUNT
             if amount <= 0:
-                await update.message.reply_text("❌ Amount must be positive. Enter the amount in USDC:")
+                await update.message.reply_text("❌ Amount must be positive:")
                 return S_AMOUNT
             dest = context.bot_data.get("send_dest", "")
             context.bot_data.pop("send_dest", None)
-            text = (f"📤 <b>Send confirmation</b>\n\n"
-                    f"Amount: <b>${amount:,.4f} USDC</b>\n"
-                    f"To: <code>{dest}</code>\n\n"
-                    f"⚠️ Please double-check the address. On-chain transfers are "
-                    f"final and cannot be reversed.\n\n"
-                    f"To execute, export your private key and sweep the balance "
-                    f"to this address in your wallet app - the bot has no "
-                    f"withdrawal rights on the venues.")
+            text = (f"📤 Send <b>${amount:,.4f} USDC</b> to\n<code>{dest}</code>\n\n"
+                    f"⚠️ Double-check the address - transfers are final.")
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
@@ -1546,6 +1583,8 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(onboarding_chain_confirm, pattern=r"^ob:chain_confirm:"))
         app.add_handler(CallbackQueryHandler(onboarding_key_saved, pattern=r"^ob:key_saved$"))
         app.add_handler(CallbackQueryHandler(dash, pattern=r"^sb:dash$"))
+        app.add_handler(CallbackQueryHandler(start_agent, pattern=r"^sb:start_agent$"))
+        app.add_handler(CallbackQueryHandler(peek, pattern=r"^sb:peek$"))
         app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))
         app.add_handler(CallbackQueryHandler(live_markets, pattern=r"^sb:live$"))
