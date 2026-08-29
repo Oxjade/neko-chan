@@ -1155,9 +1155,21 @@ class UserBotController:
             watched = set(_parse_watchlist(b.get("watchlist")))
             watched.add(asset)
             self.registry.update_bot(bot_id, watchlist=",".join(sorted(watched)))
+            # Restart the agent so it immediately picks up the new watchlist
+            # (WATCHED is read at agent startup). If it's not running, leave it.
+            if self.agent_pool:
+                try:
+                    self.agent_pool.stop(bot_id)
+                except Exception:
+                    pass
+                if b.get("is_running"):
+                    try:
+                        self.agent_pool.start(bot_id)
+                    except Exception:
+                        pass
             await update.message.reply_text(
                 f"✅ <b>{asset}</b> added to your watchlist.\n"
-                f"Neko-Chan will focus on {asset} for reasoning and trades.",
+                f"Neko-Chan is now focused on <b>{asset}</b> for reasoning and trades.",
                 parse_mode="HTML")
 
         def _parse_watchlist(raw):
