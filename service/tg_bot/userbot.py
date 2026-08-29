@@ -6,6 +6,7 @@ settings, inbox. All data comes from the AI-Trader platform in real time.
 """
 
 import json
+import os
 import sys
 import threading
 from datetime import datetime, timezone
@@ -1131,9 +1132,9 @@ class UserBotController:
 
         async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raw = (update.message.text or "").strip()
-            # "watch <ASSET>" - case-insensitive, any spacing
+            # "watch <ASSET>" or "watch <ASSET> now" - case-insensitive, any spacing
             import re as _re
-            m = _re.match(r"(?i)^\s*watch\s+([A-Z0-9]+)\s*$", raw)
+            m = _re.match(r"(?i)^\s*watch\s+([a-z0-9]+)(?:\s+now)?\s*$", raw)
             if not m:
                 await update.message.reply_text("Type <b>watch &lt;ASSET&gt;</b>, e.g. <b>watch DEEP</b>.",
                                                 parse_mode="HTML")
@@ -1142,7 +1143,7 @@ class UserBotController:
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             # Check the asset is available on the chain's venue (Bluefin for Sui).
-            supported = self._chain_supported_assets(chain)
+            supported = _chain_supported_assets(chain)
             if supported and asset not in supported:
                 await update.message.reply_text(
                     f"❌ <b>{asset}</b> isn't on {_chain_label(chain)}.\n"
@@ -1166,11 +1167,10 @@ class UserBotController:
             except Exception:
                 return []
 
-        def _chain_supported_assets(self, chain: str) -> list[str]:
+        def _chain_supported_assets(chain: str) -> list[str]:
             try:
                 self._exec_path()
                 if self.gateway and chain in self.gateway.adapters:
-                    from wallet_ui import CHAIN_LABELS  # noqa
                     bluefin = getattr(self.gateway.adapters[chain], "bluefin", None)
                     if bluefin is not None:
                         return sorted(bluefin.markets() or [])
