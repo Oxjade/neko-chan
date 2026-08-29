@@ -363,11 +363,17 @@ class BluefinAdapter:
 
 def build_bluefin(ledger: ExecLedger, keypair_hex: str, testnet: bool = True,
                   api_base: str | None = None) -> BluefinAdapter:
-    """Factory: derive adapter from a raw Sui seed hex (32 bytes)."""
-    hexed = keypair_hex[2:] if keypair_hex.startswith("0x") else keypair_hex
-    seed = bytes.fromhex(hexed)
-    if len(seed) != 32:
-        raise ValueError(f"bluefin keypair_hex must be 32 bytes, got {len(seed)}")
-    from sui_adapter import _ed25519_pubkey
-    addr = "0x" + hashlib.blake2b(b"\x00" + _ed25519_pubkey(seed), digest_size=32).hexdigest()
+    """Factory: derive adapter from a Sui seed (raw hex or bech32 keystring)."""
+    if keypair_hex.startswith("suiprivkey"):
+        from pysui.sui.sui_crypto import SuiKeyPair
+        kp = SuiKeyPair.from_bech32(keypair_hex)
+        seed = bytes(kp.private_key.key_bytes)
+        addr = "0x" + hashlib.blake2b(b"\x00" + bytes(kp.public_key.key_bytes), digest_size=32).hexdigest()
+    else:
+        hexed = keypair_hex[2:] if keypair_hex.startswith("0x") else keypair_hex
+        seed = bytes.fromhex(hexed)
+        if len(seed) != 32:
+            raise ValueError(f"bluefin keypair_hex must be 32 bytes, got {len(seed)}")
+        from sui_adapter import _ed25519_pubkey
+        addr = "0x" + hashlib.blake2b(b"\x00" + _ed25519_pubkey(seed), digest_size=32).hexdigest()
     return BluefinAdapter(ledger, seed, addr, testnet=testnet, api_base=api_base)

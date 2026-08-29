@@ -40,7 +40,9 @@ def generate_key_material(chain: str) -> tuple[str, str]:
         # Sui address = blake2b-256(0x00 || pubkey); 0x00 is the ED25519
         # scheme flag PREPENDED (the flag is a prefix, not a suffix).
         addr = "0x" + hashlib.blake2b(b"\x00" + pub_key, digest_size=32).hexdigest()
-        return addr, bytes(kp.private_key.key_bytes).hex()
+        # Wallets import Sui keys as the bech32 'suiprivkey1...' keystring,
+        # NOT raw hex. Return the importable format for display + backup.
+        return addr, kp.to_bech32()
     raise ValueError(f"unsupported chain for key generation: {chain}")
 
 

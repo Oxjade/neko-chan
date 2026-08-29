@@ -378,15 +378,25 @@ class SUIAdapter:
         self.address = ""
         self._sign_error = ""
         try:
-            hexed = keypair_hex[2:] if keypair_hex.startswith("0x") else keypair_hex
-            self._seed = bytes.fromhex(hexed)
-            if len(self._seed) != 32:
-                raise ValueError(f"keypair_hex must decode to 32 bytes, got {len(self._seed)}")
-            try:
+            # Accept both raw hex seed (32 bytes) and the bech32 'suiprivkey1...'
+            # keystring that wallets use. The onboarding generates bech32.
+            if keypair_hex.startswith("suiprivkey"):
                 from pysui.sui.sui_crypto import SuiKeyPair
-                self._kp = SuiKeyPair.from_b64(base64.b64encode(b"\x00" + self._seed).decode())
+                self._kp = SuiKeyPair.from_bech32(keypair_hex)
+                self._seed = bytes(self._kp.private_key.key_bytes)
+            else:
+                hexed = keypair_hex[2:] if keypair_hex.startswith("0x") else keypair_hex
+                self._seed = bytes.fromhex(hexed)
+                if len(self._seed) != 32:
+                    raise ValueError(f"keypair_hex must decode to 32 bytes, got {len(self._seed)}")
+                try:
+                    from pysui.sui.sui_crypto import SuiKeyPair
+                    self._kp = SuiKeyPair.from_b64(base64.b64encode(b"\x00" + self._seed).decode())
+                except ImportError:
+                    self._kp = None
+            if self._kp is not None:
                 self._pub = bytes(self._kp.public_key.key_bytes)
-            except ImportError:
+            else:
                 self._pub = _ed25519_pubkey(self._seed)
             if len(self._pub) != 32:
                 raise ValueError(f"unexpected public key length {len(self._pub)}")
