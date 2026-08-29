@@ -773,38 +773,56 @@ class UserBotController:
         async def peek(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            lines = ["👀 Agent Status\n"]
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             watched = _parse_watchlist(b.get("watchlist"))
-            if watched:
-                lines.append(f"Your picks: {', '.join(watched)}")
             default = {
                 "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
                 "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])
             active = (watched or default)[:5]
-            lines.append(f"Analyzing: {', '.join(active)} on {_chain_label(chain)}\n")
+            active_upper = {s.upper() for s in active}
+
+            lines = ["👀 <b>Agent Status</b>\n"]
+            if watched:
+                lines.append(f"🎯 <b>Your picks</b>: {', '.join(watched)}")
+            lines.append(f"⛓ <b>Chain</b>: {_chain_label(chain)} · "
+                         f"<b>Analyzing</b>: {', '.join(active)}\n")
             if not b.get("is_running"):
-                lines.append("Agent is not running. Tap ▶️ Start to begin.")
+                lines.append("⏸️ Agent is not running. Tap ▶️ Start to begin.")
             else:
+                # Find the LATEST decision for an asset in the current universe.
                 try:
                     import csv
                     from pathlib import Path
                     log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
+                    matched = None
                     if log_path.exists():
                         with open(log_path, newline="", encoding="utf-8") as f:
-                            reader = list(csv.DictReader(f))
-                            if reader:
-                                last = reader[-1]
-                                lines.append(f"Last decision: {last.get('action','?')} {last.get('symbol','')} "
-                                             f"qty={last.get('qty','')} price={last.get('price','')}")
-                                lines.append(f"Reason: {last.get('reasoning','')[:120]}")
-                            else:
-                                lines.append("No decisions yet. Agent is analyzing.")
+                            for row in csv.DictReader(f):
+                                sym = (row.get("symbol") or "").upper()
+                                if sym in active_upper:
+                                    matched = row
+                    if matched:
+                        action = matched.get("action", "?").upper()
+                        sym = matched.get("symbol", "?")
+                        qty = matched.get("qty", "")
+                        price = matched.get("price", "")
+                        reasoning = (matched.get("reasoning") or "").strip()
+                        lines.append(f"📊 <b>Latest on {sym}</b>\n"
+                                     f"  Action: {action} · qty {qty} · price ${price}")
+                        if reasoning:
+                            lines.append(f"  Why: {reasoning[:160]}")
+                    else:
+                        lines.append("No decisions yet for the current watchlist. "
+                                     "Agent is analyzing these assets...")
                 except Exception:
                     lines.append("Could not read agent log.")
+            await q.message.edit_text("\n".join(lines), parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
+                                           [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
             await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
                  [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
