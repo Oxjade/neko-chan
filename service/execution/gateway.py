@@ -315,7 +315,13 @@ class ExecGateway:
     def provision_wallet(self, bot_id: int, chain: str) -> int | None:
         """Ensure a wallet row exists for (bot_id, chain) in the exec ledger.
         
+        If a per-user wallet was already generated via onboarding, that wallet
+        is preserved - the operator config only fills in when no wallet exists.
         Returns wallet_id or None if chain is not configured."""
+        # Check if the user already generated a wallet (from onboarding).
+        existing = self.ledger.wallet_by_bot_chain(bot_id, chain)
+        if existing and existing.get("key_enc"):
+            return existing["id"]
         c = self._cfg.get(chain)
         if not c or not c.get("key_enc"):
             return None

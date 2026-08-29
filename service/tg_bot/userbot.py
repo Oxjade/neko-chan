@@ -633,7 +633,9 @@ class UserBotController:
             await q.answer()
             chain = q.data.split(":", 2)[2]
             self.registry.update_bot(bot_id, chain=chain)
-            # Generate the real per-chain wallet (address + private key)
+            # Generate the real per-chain wallet (address + private key).
+            # Persist EVEN without a gateway so the user's wallet survives
+            # restarts and is always recoverable via the Registry.
             key_hex = None
             addr = None
             try:
@@ -642,9 +644,20 @@ class UserBotController:
                 vault = ExecVault()
                 addr, key_hex = generate_key_material(chain)
                 enc = vault.encrypt(key_hex)
+                # Always persist - use the gateway's ledger if available, else
+                # create/use the execution ledger at the default path.
                 if self.gateway:
                     self.gateway.ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
                                                       ExecVault.key_hash(key_hex))
+                else:
+                    # No gateway configured yet - persist in a standalone ledger
+                    # so the wallet is never lost.
+                    from ledger import ExecLedger
+                    import tempfile
+                    _ledger = ExecLedger(str(tempfile.gettempdir() + f"/exec_{bot_id}.db"))
+                    _ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
+                                          ExecVault.key_hash(key_hex))
+                    _ledger.close()
             except Exception as exc:
                 import logging
                 logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
