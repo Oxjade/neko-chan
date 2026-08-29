@@ -37,8 +37,9 @@ def generate_key_material(chain: str) -> tuple[str, str]:
 
         _, kp = create_new_keypair()
         pub_key = bytes(kp.public_key.key_bytes)
-        # Sui address = blake2b-256(pubkey || scheme_flag 0x00 for ED25519)
-        addr = "0x" + hashlib.blake2b(pub_key + bytes([0]), digest_size=32).hexdigest()
+        # Sui address = blake2b-256(0x00 || pubkey); 0x00 is the ED25519
+        # scheme flag PREPENDED (the flag is a prefix, not a suffix).
+        addr = "0x" + hashlib.blake2b(b"\x00" + pub_key, digest_size=32).hexdigest()
         return addr, bytes(kp.private_key.key_bytes).hex()
     raise ValueError(f"unsupported chain for key generation: {chain}")
 
