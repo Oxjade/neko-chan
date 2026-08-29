@@ -82,7 +82,7 @@ def render_dashboard_text(bot: dict, portfolio: dict, lb_row: dict | None = None
 
     pos_lines = []
     if not open_pos:
-        pos_lines.append("  (no open positions — waiting for a setup)")
+        pos_lines.append("  (no open positions - waiting for a setup)")
     for p in open_pos[:3]:
         cur = p.get("current_price") or p["entry_price"]
         q = p["quantity"]
@@ -105,14 +105,14 @@ def render_dashboard_text(bot: dict, portfolio: dict, lb_row: dict | None = None
     win_rate = lb_row.get("win_rate", 0) if lb_row else 0
 
     return (
-        f"<b>🤖 {bot['bot_name']} — LIVE TELEMETRY</b>\n"
+        f"<b>🤖 {bot['bot_name']} - LIVE TELEMETRY</b>\n"
         f"<code>{line}</code>\n"
         f"{status} · heartbeat {ago} · rank #{rank}\n\n"
         f"<b>💰 EQUITY &amp; P&amp;L</b>\n"
         f"  Equity        <code>{money(profit + 100000, sign=False)}</code>\n"
         f"  Total P&amp;L    <code>{money(profit)}</code>  ({ret:+.2f}%)\n"
-        f"  Today         <code>{money(today) if today is not None else '—'}</code>\n"
-        f"  7d            <code>{money(week) if week is not None else '—'}</code>\n"
+        f"  Today         <code>{money(today) if today is not None else '-'}</code>\n"
+        f"  7d            <code>{money(week) if week is not None else '-'}</code>\n"
         f"  Max drawdown  <code>{dd * 100:.2f}%</code>\n"
         f"  Cash free     <code>{money(cash, sign=False)}</code>\n\n"
         f"<b>📈 PERFORMANCE</b>\n"
@@ -294,10 +294,10 @@ class UserBotController:
                 await dash(update, context)
                 return
             text = (
-                f"🐾 Welcome to {bot['bot_name']} — your AI trading cat.\n\n"
+                f"🐾 Welcome to {bot['bot_name']} - your AI trading cat.\n\n"
                 "I watch live markets (BTC, ETH, US stocks, Forex) and trade on the "
                 "platform with real prices. Every trade gets pushed here.\n\n"
-                "To start trading I need one thing: your AI API key — it "
+                "To start trading I need one thing: your AI API key - it "
                 "powers my decisions and you pay for your own model calls.\n\n"
                 "⚠️ Trading involves real risk. (I'm a cat, not an advisor.)"
             )
@@ -407,7 +407,7 @@ class UserBotController:
                 model = validate_key(provider, api_key, base, model)
             except ProviderError as exc:
                 msg = {"invalid": "❌ Provider rejected this key. Double-check it.",
-                       "rate_limited": "⏳ Provider is rate-limited — wait a minute and retry.",
+                       "rate_limited": "⏳ Provider needs credits or is rate-limited - wait and retry.",
                        "network": f"⏳ Can't reach provider ({exc})."}.get(exc.kind, "❌ Key rejected.")
                 await update.message.reply_text(msg)
                 return K_KEY
@@ -432,7 +432,7 @@ class UserBotController:
                 rule_notice = (
                     f"\n\n🧠 <b>HOW YOUR KEY IS USED</b>\n"
                     f"Provider: <b>{provider}</b> · Model: <code>{model}</code>\n"
-                    f"• Your key is sent ONLY to {base or 'your provider'} — never "
+                    f"• Your key is sent ONLY to {base or 'your provider'} - never "
                     f"to us or any other service\n"
                     f"• It powers your bot's trading decisions, stored encrypted "
                     f"and masked\n"
@@ -441,7 +441,7 @@ class UserBotController:
                     f"falls back to OpenAI-compatible calls"
                 )
             await update.message.reply_text(
-                f"✅ Key works ({provider}). Your bot can now trade — decisions start right away.\n\n"
+                f"✅ Key works ({provider}). Your bot can now trade - decisions start right away.\n\n"
                 "Every trade, stop and summary will be pushed here 🔔" + rule_notice,
                 parse_mode="HTML",
             )
@@ -466,14 +466,14 @@ class UserBotController:
                     self.registry.schedule_bot_deletion(
                         bot_id, (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat())
                     deadline = (
-                        "\n\n🕒 Your bot is unconfigured — it will be removed from the "
+                        "\n\n🕒 Your bot is unconfigured - it will be removed from the "
                         "network in 3 hours unless you add your AI key.\n"
                         "To keep it, just tap \"Set AI Key\" and complete setup."
                     )
                 except Exception:
                     deadline = ""
             if declined:
-                text = ("✅ Understood — nothing was saved.\n\n"
+                text = ("✅ Understood - nothing was saved.\n\n"
                         "Your bot stays OFF. No AI key was stored, no agent was "
                         "started, and nothing was charged." + deadline)
             else:
@@ -564,7 +564,7 @@ class UserBotController:
             def money(v, sign=True):
                 return f"${v:+,.2f}" if sign else f"${v:,.2f}"
             text = (
-                f"<b>📊 P&amp;L DETAIL — {bot['bot_name']}</b>\n"
+                f"<b>📊 P&amp;L DETAIL - {bot['bot_name']}</b>\n"
                 f"<code>{line}</code>\n"
                 f"<b>💰 ACCOUNT</b>\n"
                 f"  Equity      <code>{money(profit + 100000, sign=False)}</code>\n"
@@ -627,9 +627,8 @@ class UserBotController:
                 "AAPL · NVDA · SPY\n",
                 "\n",
                 f"{USERBOT['release_live']}\n",
-                "\nNeko-Chan is working on Solana xStocks integration. "
-                "When the code is live, you'll be able to trade tokenized "
-                "US stocks (AAPL, NVDA, SPY) 24/7 with leverage.",
+                "\nTokenized US stocks (AAPL, NVDA, SPY) will trade 24/7 with "
+                "leverage on Solana once released.",
             ]
             await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
@@ -644,7 +643,7 @@ class UserBotController:
                 sigs = []
             lines = ["📡 Recent decisions\n"]
             if not sigs:
-                lines.append("No trades yet — your bot will push every fill here.")
+                lines.append("No trades yet - your bot will push every fill here.")
             for s in sigs[:10]:
                 side = str(s.get("side") or s.get("action") or "?").upper()
                 sym = s.get("symbol", "?")
@@ -750,7 +749,7 @@ class UserBotController:
             current_ttype = b.get("trader_type") or "scalp"
             icons = {"scalp": "⚡", "intraday": "⏱", "swing": "📈", "auto": "🤖"}
             ttype_label = f"{icons.get(current_ttype, '❓')} {current_ttype.upper()}"
-            text = (f"⚙️ Settings — {b['bot_name']}\n\n"
+            text = (f"⚙️ Settings - {b['bot_name']}\n\n"
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Risk:      {b['risk_profile']}\n"
                     f"Leverage:  {float(b.get('leverage') or 1):g}x\n"
@@ -828,14 +827,14 @@ class UserBotController:
             q = update.callback_query
             await q.answer()
             if not self._exec_ready():
-                await q.message.edit_text("🗝️ Execution isn't configured yet — no keys to show.",
+                await q.message.edit_text("🗝️ Execution isn't configured yet - no keys to show.",
                                           reply_markup=telegram.InlineKeyboardMarkup(
                                               [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
             # show each chain's private key so the owner can export/withdraw
             lines = ["🗝️ <b>Your private keys</b>\n\n"
                      "These keys control the bot's trading wallets. Export them to "
-                     "move funds to your own wallet — anyone with these can spend "
+                     "move funds to your own wallet - anyone with these can spend "
                      "the funds, so keep them secret.\n"]
             for chain in self.gateway.adapters:
                 try:
@@ -846,7 +845,7 @@ class UserBotController:
                     key = self.gateway._vault.decrypt(wallet["key_enc"])
                     lines.append(f"\n🔗 {chain.upper()}\n<code>{key}</code>")
                 except Exception as exc:
-                    lines.append(f"\n🔗 {chain.upper()} — unavailable ({str(exc)[:40]})")
+                    lines.append(f"\n🔗 {chain.upper()} - unavailable ({str(exc)[:40]})")
             await q.message.edit_text("\n".join(lines), parse_mode="HTML",
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
@@ -856,7 +855,7 @@ class UserBotController:
             q = update.callback_query
             await q.answer()
             if not self._exec_ready():
-                await q.message.edit_text("💸 Execution isn't configured yet — nothing to withdraw.",
+                await q.message.edit_text("💸 Execution isn't configured yet - nothing to withdraw.",
                                           reply_markup=telegram.InlineKeyboardMarkup(
                                               [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
@@ -980,7 +979,7 @@ class UserBotController:
                     res = self.gateway.engage_killswitch(bot_id, "user requested via Telegram")
                 except Exception as exc:
                     res = {"ok": False, "error": str(exc)[:200]}
-                summary = f"Fully flattened: {'YES' if res.get('fully_flattened') else 'NO — see errors below'}"
+                summary = f"Fully flattened: {'YES' if res.get('fully_flattened') else 'NO - see errors below'}"
                 errors = []
                 for chain, r in (res.get("results") or {}).items():
                     if isinstance(r, dict) and not r.get("ok"):
@@ -1086,7 +1085,7 @@ class UserBotController:
             if pct < 0:
                 mood = (f"📉 <b>Keeping {symbol} open.</b>\n\n"
                         f"It's down <b>{pct:+.2f}%</b> (${pnl:+,.2f}) right now.\n"
-                        "The cat is watching it closely — the stop-loss is still "
+                        "The cat is watching it closely - the stop-loss is still "
                         "on guard, so the damage stays capped. 🐾")
             elif pct > 0:
                 mood = (f"📈 <b>Keeping {symbol} open.</b>\n\n"
