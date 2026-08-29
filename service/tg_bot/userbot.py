@@ -26,6 +26,8 @@ CANCEL = "❌ Cancel"
 
 # key onboarding states
 K_PROVIDER, K_KEY = range(2)
+# send-funds states
+S_ADDR, S_AMOUNT = range(2)
 
 
 def _chain_label(chain: str) -> str:
@@ -1117,26 +1119,98 @@ class UserBotController:
                                           reply_markup=telegram.InlineKeyboardMarkup(
                                               [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
+            # QR code for the receive address
+            photo_path = None
+            try:
+                import qrcode
+                img = qrcode.make(addr)
+                import tempfile as _tf
+                photo_path = os.path.join(_tf.gettempdir(), f"neko_qr_{bot_id}.png")
+                img.save(photo_path)
+            except Exception:
+                photo_path = None
             text = (f"📥 <b>Receive on {_chain_label(chain)}</b>\n\n"
                     f"Send USDC (or {chain} native) to this address:\n\n"
                     f"<code>{addr}</code>\n\n"
                     f"Only send {_chain_label(chain)} assets here. The bot activates "
                     f"once a deposit is detected.")
-            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton("🔍 Check Deposits", callback_data="sb:check_deposits")],
-                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("🔍 Check Deposits", callback_data="sb:check_deposits")],
+                [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
+            ])
+            if photo_path:
+                try:
+                    with open(photo_path, "rb") as f:
+                        await q.message.reply_photo(photo=f, caption=text, parse_mode="HTML", reply_markup=kb)
+                    import os as _os
+                    try:
+                        _os.remove(photo_path)
+                    except OSError:
+                        pass
+                    return
+                except Exception:
+                    pass
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
-        async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        async def send_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            text = ("📤 <b>Send / Withdraw</b>\n\n"
-                    "Your trading wallet is non-custodial - only you can move funds out.\n\n"
-                    "To send, export your private key and sweep the balance to your "
-                    "main wallet in any standard wallet app.\n\n"
-                    "🗝️ Tap \"Private Keys\" to see your keys.")
+            text = ("📤 <b>Send from your trading wallet</b>\n\n"
+                    "Your wallet is non-custodial - you control the funds.\n\n"
+                    "Send the <b>destination wallet address</b> you want to "
+                    "transfer to (on the same chain as your trading wallet):")
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
-                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                [[telegram.InlineKeyboardButton("❌ Cancel", callback_data="send:cancel")]]))
+            return S_ADDR
+
+        async def send_addr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            addr = (update.message.text or "").strip()
+            if len(addr) < 20:
+                await update.message.reply_text("❌ That doesn't look like a wallet address. Paste the full address:")
+                return S_ADDR
+            context.bot_data["send_dest"] = addr
+            await update.message.reply_text(
+                f"📍 Destination:\n<code>{addr}</code>\n\n"
+                "How much do you want to send? (amount in USDC)",
+                parse_mode="HTML",
+                reply_markup=telegram.ReplyKeyboardRemove(),
+            )
+            return S_AMOUNT
+
+        async def send_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            raw = (update.message.text or "").strip().replace(",", "")
+            try:
+                amount = float(raw)
+            except ValueError:
+                await update.message.reply_text("❌ That's not a number. Enter the amount in USDC:")
+                return S_AMOUNT
+            if amount <= 0:
+                await update.message.reply_text("❌ Amount must be positive. Enter the amount in USDC:")
+                return S_AMOUNT
+            dest = context.bot_data.get("send_dest", "")
+            context.bot_data.pop("send_dest", None)
+            text = (f"📤 <b>Send confirmation</b>\n\n"
+                    f"Amount: <b>${amount:,.4f} USDC</b>\n"
+                    f"To: <code>{dest}</code>\n\n"
+                    f"⚠️ Please double-check the address. On-chain transfers are "
+                    f"final and cannot be reversed.\n\n"
+                    f"To execute, export your private key and sweep the balance "
+                    f"to this address in your wallet app - the bot has no "
+                    f"withdrawal rights on the venues.")
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
+                [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
+            ])
+            await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+            return ConversationHandler.END
+
+        async def send_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            await q.message.edit_text("❌ Send canceled.",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+            return ConversationHandler.END
 
         async def chain_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1484,7 +1558,19 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))
         app.add_handler(CallbackQueryHandler(receive, pattern=r"^sb:receive$"))
-        app.add_handler(CallbackQueryHandler(send, pattern=r"^sb:send$"))
+        send_conv = ConversationHandler(
+            entry_points=[CallbackQueryHandler(send_start, pattern=r"^sb:send$")],
+            states={
+                S_ADDR: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_addr)],
+                S_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_amount)],
+            },
+            fallbacks=[CallbackQueryHandler(send_cancel, pattern=r"^send:cancel$")],
+            name="userbot_send",
+            allow_reentry=True,
+        )
+
+        app.add_handler(CallbackQueryHandler(receive, pattern=r"^sb:receive$"))
+        app.add_handler(send_conv)
         app.add_handler(CallbackQueryHandler(chain_switch, pattern=r"^sb:chain"))
         app.add_handler(CallbackQueryHandler(watchlist, pattern=r"^sb:watchlist$"))
         app.add_handler(CallbackQueryHandler(support, pattern=r"^sb:support$"))

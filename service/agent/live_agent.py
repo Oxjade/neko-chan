@@ -806,15 +806,27 @@ def humanize_error(raw: str, max_len: int = 300) -> str:
     return f"⚠️ {raw}"
 
 
+# Dedup: only surface each error kind once per window so the user isn't spammed
+# every cycle with the same AI-key/rate-limit/LLM error.
+_last_notified: dict[str, float] = {}
+NOTIFY_DEDUP_SECONDS = int(os.getenv("LIVE_AGENT_NOTIFY_DEDUP", "3600"))
+
+
 def notify_error(message: str, kind: str = "error") -> None:
     """Push one human-friendly message to the user's bot chat (best-effort).
 
     kind: 'error' | 'rate_limit' | 'llm' | 'venue' - picks the right copy so
     the user knows exactly what's happening (AI key rate-limited vs venue
-    down vs a trade rejected).
+    down vs a trade rejected). Each (kind, message) is sent AT MOST once per
+    NOTIFY_DEDUP_SECONDS so a persistent rate-limit doesn't spam the chat.
     """
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         return
+    now = time.time()
+    key = f"{kind}:{humanize_error(message)[:60]}"
+    if now - _last_notified.get(key, 0.0) < NOTIFY_DEDUP_SECONDS:
+        return
+    _last_notified[key] = now
     text = humanize_error(message)
     if kind == "rate_limit":
         text = ("⏳ <b>Your AI key hit a rate limit</b>\n\n"
