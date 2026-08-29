@@ -963,6 +963,7 @@ def market_open(market: str) -> bool:
 
 
 def run_cycle(token: str, dry: bool = False) -> None:
+    global _last_llm_at
     now_iso = datetime.now(timezone.utc).isoformat()
     gw = _get_exec_gateway()
     if gw:
