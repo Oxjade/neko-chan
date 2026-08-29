@@ -30,6 +30,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -806,10 +807,41 @@ def humanize_error(raw: str, max_len: int = 300) -> str:
     return f"⚠️ {raw}"
 
 
-# Dedup: only surface each error kind once per window so the user isn't spammed
-# every cycle with the same AI-key/rate-limit/LLM error.
+# Dedup: only surface each error kind once per window. Stored in a shared
+# file (not in-memory) so even multiple concurrent agent processes cannot send
+# the same message twice - each process checks+claims the lock file atomically.
 _last_notified: dict[str, float] = {}
+_NOTIFY_LOCK = threading.Lock()
+_NOTIFY_LOCK_FILE = Path(__file__).resolve().parents[1] / "agent" / ".notify_dedup.json"
 NOTIFY_DEDUP_SECONDS = int(os.getenv("LIVE_AGENT_NOTIFY_DEDUP", "3600"))
+
+
+def _notify_claim(key: str) -> bool:
+    """Atomically claim a notification key. Returns True only if no OTHER
+    process (or this one) has claimed it within NOTIFY_DEDUP_SECONDS."""
+    now = time.time()
+    with _NOTIFY_LOCK:
+        if now - _last_notified.get(key, 0.0) < NOTIFY_DEDUP_SECONDS:
+            return False
+        try:
+            stamps: dict = {}
+            if _NOTIFY_LOCK_FILE.exists():
+                try:
+                    stamps = json.loads(_NOTIFY_LOCK_FILE.read_text(encoding="utf-8"))
+                except Exception:
+                    stamps = {}
+            # Prune stale keys so the file stays small.
+            stamps = {k: v for k, v in stamps.items() if now - v < NOTIFY_DEDUP_SECONDS * 2}
+            if now - stamps.get(key, 0.0) < NOTIFY_DEDUP_SECONDS:
+                return False
+            stamps[key] = now
+            _NOTIFY_LOCK_FILE.write_text(json.dumps(stamps), encoding="utf-8")
+            _last_notified[key] = now
+            return True
+        except Exception:
+            # If the file can't be written, fall back to in-memory only.
+            _last_notified[key] = now
+            return True
 
 
 def notify_error(message: str, kind: str = "error") -> None:
@@ -818,15 +850,14 @@ def notify_error(message: str, kind: str = "error") -> None:
     kind: 'error' | 'rate_limit' | 'llm' | 'venue' - picks the right copy so
     the user knows exactly what's happening (AI key rate-limited vs venue
     down vs a trade rejected). Each (kind, message) is sent AT MOST once per
-    NOTIFY_DEDUP_SECONDS so a persistent rate-limit doesn't spam the chat.
+    NOTIFY_DEDUP_SECONDS via a shared lock file, so no message is ever
+    duplicated - even by concurrent agent processes.
     """
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         return
-    now = time.time()
     key = f"{kind}:{humanize_error(message)[:60]}"
-    if now - _last_notified.get(key, 0.0) < NOTIFY_DEDUP_SECONDS:
+    if not _notify_claim(key):
         return
-    _last_notified[key] = now
     text = humanize_error(message)
     if kind == "rate_limit":
         text = ("⏳ <b>Your AI key hit a rate limit</b>\n\n"
