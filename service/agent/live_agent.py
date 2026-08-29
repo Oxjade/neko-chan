@@ -664,30 +664,42 @@ def _get_exec_gateway():
 
 
 def _expand_universe_from_gateway(gw) -> None:
-    """When the active perp venue is Sui/Bluefin, add every token Bluefin
-    offers (long + short) to the trading universe so the agent can trade them.
-    Best-effort: any failure leaves the configured universe untouched."""
+    """When the active perp venue is Sui/Bluefin, watch that chain's top 5
+    assets (long + short) so the agent analyzes tokens actually available on
+    the user's chosen chain. Best-effort: any failure leaves the configured
+    universe untouched."""
     try:
-        if "sui" not in gw.adapters:
+        chain = os.getenv("LIVE_AGENT_CHAIN", "sui").strip().lower()
+        if "sui" not in gw.adapters and chain == "sui":
+            # gateway not ready; fall back to the default Bluefin top-5
             return
-        bluefin = getattr(gw.adapters["sui"], "bluefin", None)
-        if bluefin is None:
-            return
-        # Only override when the user has not pinned an explicit perp universe.
+        bluefin = getattr(gw.adapters.get("sui"), "bluefin", None)
+        listed = []
+        if bluefin is not None:
+            listed = bluefin.markets() or []
+        if not listed:
+            # static fallback for the chain's known perp markets
+            listed = {
+                "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
+            }.get(chain, ["BTC", "ETH"])
+        # only override when the user has not pinned an explicit perp universe
         pinned = [s for s, m in UNIVERSE if m == "crypto"]
         if pinned:
             return
-        listed = bluefin.markets()
+        top5 = listed[:5]
         current = {s.upper() for s, _ in UNIVERSE}
         added = 0
-        for sym in listed:
+        for sym in top5:
+            sym = sym.upper()
             if sym not in current:
                 UNIVERSE.append((sym, "crypto"))
                 current.add(sym)
                 added += 1
         if added:
-            print(f"[exec] universe expanded with {added} Bluefin perp markets "
-                  f"({len(UNIVERSE)} total)")
+            print(f"[exec] chain {chain}: watching top {len(top5)} perp assets "
+                  f"({', '.join(top5)})")
     except Exception as exc:
         print(f"[exec] universe expansion skipped: {exc}")
 
@@ -1443,12 +1455,41 @@ def run_cycle(token: str, dry: bool = False) -> None:
     log_decision(row)
 
 
+def _scope_universe_to_chain() -> None:
+    """At startup, if the user chose a specific chain (LIVE_AGENT_CHAIN) and no
+    explicit perp universe is pinned, restrict trading to that chain's top-5
+    perp assets. Runs before the gateway so paper mode still analyzes the
+    right chain's tokens."""
+    try:
+        chain = os.getenv("LIVE_AGENT_CHAIN", "").strip().lower()
+        if not chain:
+            return
+        pinned = [s for s, m in UNIVERSE if m == "crypto"]
+        if pinned:
+            return
+        top5 = {
+            "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+            "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+            "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
+        }.get(chain, ["BTC", "ETH"])[:5]
+        current = {s.upper() for s, _ in UNIVERSE}
+        for sym in top5:
+            sym = sym.upper()
+            if sym not in current:
+                UNIVERSE.append((sym, "crypto"))
+                current.add(sym)
+        print(f"[agent] chain={chain}: watching top {len(top5)} perp assets ({', '.join(top5)})")
+    except Exception as exc:
+        print(f"[agent] chain scope skipped: {exc}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="single decision cycle")
     ap.add_argument("--dry", action="store_true", help="log decision without executing")
     args = ap.parse_args()
 
+    _scope_universe_to_chain()
     token = _get_token()
     universe_txt = ", ".join(f"{s}[{m}]" for s, m in UNIVERSE)
     print(f"[agent] strategy={STRATEGY} model={MODEL} universe={universe_txt} interval={INTERVAL}s "
