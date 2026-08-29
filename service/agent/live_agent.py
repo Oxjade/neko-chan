@@ -42,6 +42,11 @@ LOG_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_
 TOKEN_FILE = Path(__file__).resolve().parents[2] / "service" / "agent" / ".agent_token"
 
 MODEL = os.getenv("LIVE_AGENT_MODEL", "opencode-go/deepseek-v4-flash")
+# Minimum seconds between AI-key calls. The AI key is paid/rate-limited, so
+# the agent only asks the model every LLM_COOLDOWN_SECONDS; in between it picks
+# the best scenario deterministically (quant math). Default 900s = 15 min.
+LLM_COOLDOWN_SECONDS = int(os.getenv("LIVE_AGENT_LLM_COOLDOWN", "900"))
+_last_llm_at: float = 0.0
 # universe as symbol:market pairs, e.g. "BTC:crypto,ETH:crypto,AAPL:us-stock,EURUSD:forex"
 UNIVERSE = [
     (s.strip().split(":")[0], (s.strip().split(":")[1] if ":" in s else "crypto"))
@@ -1096,8 +1101,34 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 "stop_loss_pct": 0, "take_profit_pct": 0,
                                 "reasoning": "scenario matrix: no positive-EV trade right now - cash"}
                     _last_scenario = None
+                elif LIVE_AGENT_API_KEY and time.time() - _last_llm_at < LLM_COOLDOWN_SECONDS:
+                    # AI-key cooldown: the model was asked recently, so pick the
+                    # best scenario deterministically instead of burning another
+                    # paid/rate-limited call. The math pick is the same engine the
+                    # model is given; this just skips the model's vote for a while.
+                    best = pick_best_scenario(matrix, has_long, has_short)
+                    if best is None:
+                        decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                    "stop_loss_pct": 0, "take_profit_pct": 0,
+                                    "reasoning": "AI-key cooldown - no strong scenario, cash"}
+                        _last_scenario = None
+                    else:
+                        side = "buy" if best.direction == "long" else "sell"
+                        stop_pct = abs(best.entry - best.stop) / best.entry * 100
+                        take_pct = abs(best.target - best.entry) / best.entry * 100
+                        risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
+                        cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
+                        max_qty = min(risk_notional, cap_notional) / best.entry
+                        decision = {"action": side, "symbol": best.symbol,
+                                    "quantity": max_qty,
+                                    "stop_loss_pct": round(stop_pct, 2),
+                                    "take_profit_pct": round(take_pct, 2),
+                                    "reasoning": f"[quant/cooldown] best scenario {best.direction} "
+                                                 f"{best.symbol} EV={best.ev:+.2f}R"}
+                        _last_scenario = best
                 elif LIVE_AGENT_API_KEY:
                     # LLM compiles the matrix and picks the best trade
+                    _last_llm_at = time.time()
                     skill_ctx = _load_skill_context()
                     matrix_txt = "\n".join(s.to_prompt() for s in top)
                     system = (

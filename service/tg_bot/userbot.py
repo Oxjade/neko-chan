@@ -681,10 +681,11 @@ class UserBotController:
                  telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
                  telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")],
-                [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
+                [telegram.InlineKeyboardButton("📬 Notifications", callback_data="sb:inbox"),
                  telegram.InlineKeyboardButton("🛑 Kill-Switch", callback_data="sb:kill")],
-                [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:dash"),
-                 telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help")],
+                [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
+                 telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:dash")],
+                [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help")],
             ])
             if update.message:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
@@ -993,14 +994,21 @@ class UserBotController:
         async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            events = self.registry.recent_events(tg_id, 10)
-            lines = ["📬 Inbox\n"]
+            events = self.registry.recent_events(tg_id, 15)
+            lines = ["📬 Notifications\n"]
             if not events:
-                lines.append("No notifications yet. Every fill, stop and summary will land here.")
+                lines.append("No notifications yet. Every fill, stop and summary lands here.")
             for e in events:
-                lines.append(f"{e['sent_at'][:16]} · {e['kind']}")
+                payload = e.get("payload") or {}
+                txt = (payload.get("text") or "") if isinstance(payload, dict) else ""
+                if txt:
+                    first = txt.split("\n")[0]
+                    lines.append(f"{e['sent_at'][11:19]} · {first[:90]}")
+                else:
+                    lines.append(f"{e['sent_at'][11:19]} · {e['kind']}")
             await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:inbox")],
+                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def help_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query

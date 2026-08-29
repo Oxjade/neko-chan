@@ -1,6 +1,13 @@
-"""Push notifications with dedup and batching (event ledger in registry)."""
+"""Push notifications with dedup and batching (event ledger in registry).
+
+Notifications are stored in the registry (the dashboard's Notifications button
+reads them) AND pushed to the chat with a TTL: the chat message self-destructs
+after MSG_TTL_SECONDS so the chat stays clean while the record survives in the
+inbox.
+"""
 
 import os
+import threading
 import time
 import tempfile
 
@@ -8,6 +15,28 @@ import requests
 
 from store import utcnow
 from messages import NOTIF
+
+# Chat messages self-destruct after this many seconds (default 3 minutes).
+# The notification REMAINS stored in the registry inbox regardless.
+MSG_TTL_SECONDS = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
+
+
+def _schedule_delete(bot_token: str, chat_id: int, message_id: int,
+                     ttl: int = MSG_TTL_SECONDS) -> None:
+    """Delete a sent message after ttl seconds, in a background thread."""
+
+    def _delete():
+        time.sleep(ttl)
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{bot_token}/deleteMessage",
+                json={"chat_id": chat_id, "message_id": message_id},
+                timeout=10,
+            )
+        except requests.RequestException:
+            pass
+
+    threading.Thread(target=_delete, daemon=True).start()
 
 
 def _normalize_buttons(buttons):
@@ -44,7 +73,12 @@ class Notifier:
             payload["reply_markup"] = markup
         try:
             r = requests.post(url, json=payload, timeout=20)
-            return r.status_code == 200
+            if r.status_code == 200:
+                mid = r.json().get("result", {}).get("message_id")
+                if mid:
+                    _schedule_delete(bot_token, chat_id, mid)
+                return True
+            return False
         except requests.RequestException:
             return False
 
@@ -60,7 +94,12 @@ class Notifier:
                 if markup:
                     data["reply_markup"] = markup
                 r = requests.post(url, data=data, files=files, timeout=30)
-                return r.status_code == 200
+                if r.status_code == 200:
+                    mid = r.json().get("result", {}).get("message_id")
+                    if mid:
+                        _schedule_delete(bot_token, chat_id, mid)
+                    return True
+                return False
         except requests.RequestException:
             return False
 
