@@ -15,13 +15,16 @@ import requests
 from tg_config import PROVIDER_PRESETS
 
 # OpenRouter free models, tried in order when the preset model needs credits.
-# Kept intentionally small (fast validation); each is 200/0.7 rate-limited
-# per day on free tier, so one will usually accept the key.
+# Free-tier daily caps mean several will be 429 (rate-limited) at any given
+# time; validation skips a 429/402/403 candidate and tries the next, so the
+# FIRST working free model gets picked. Order = observed availability 2026-08.
 OPENROUTER_FREE_MODELS = [
+    "minimax/minimax-m3:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "google/gemma-4-31b-it:free",
-    "minimax/minimax-m3:free",
     "z-ai/glm-5.2:free",
+    "cohere/north-mini-code:free",
+    "google/gemma-4-26b-a4b-it:free",
 ]
 
 
@@ -114,10 +117,12 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
                 continue
             raise ProviderError("network", f"provider call failed: {type(exc).__name__}")
 
-        # OpenRouter free tier: a paid-model routing (402) or per-day free cap
-        # (429) is NOT a bad key - try the next free model.
-        if resp.status_code in (402, 400, 403) and provider == "openrouter" and cand != resolved_model:
-            continue
+        # OpenRouter free tier: a paid-model routing (402), per-day free cap
+        # (429), or a forbidden model (403) on a free candidate is NOT a bad
+        # key - try the next free model instead of giving up.
+        if provider == "openrouter" and len(candidates) > 1:
+            if resp.status_code in (402, 400, 403, 429) and cand != resolved_model:
+                continue
         if resp.status_code in (401, 403):
             raise ProviderError("invalid", "provider rejected the key (401/403)")
         if resp.status_code == 402:
