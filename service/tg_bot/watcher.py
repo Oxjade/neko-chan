@@ -2,9 +2,9 @@
 
 The Telegram bot network has all the notification UI (fills, stops, targets,
 liquidations, daily/weekly summaries, inline buttons, dedup ledger) but NO
-caller — the notifier was dead code. This watcher plugs it in: it watches the
+caller - the notifier was dead code. This watcher plugs it in: it watches the
 platform SQLite `signals` table as the source of truth (log files are derived
-— the 2026-08-27 D2 defect proved they can miss fills), classifies each new
+- the 2026-08-27 D2 defect proved they can miss fills), classifies each new
 operation event, and pushes a single, meaningful, deduplicated message per
 state transition. Never spams: one push per signal, per event kind.
 
@@ -38,7 +38,7 @@ import requests
 BASE_URL = None  # set from env below
 POLL_INTERVAL_S = 5.0
 # watermark persisted as a synthetic event in the registry ledger:
-# kind=WATERMARK, ref_id=str(last_signal_id) — survives restarts, no new table.
+# kind=WATERMARK, ref_id=str(last_signal_id) - survives restarts, no new table.
 WATERMARK = "watcher_watermark"
 
 # kinds a watcher can emit (prefix registry keys so they don't collide with
@@ -403,8 +403,8 @@ class Watcher:
                         if self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
                                               self.chat_id, kind, f"eq:{str(eq)[:12]}",
                                               f"🚀 Equity {eq:,.2f} ({pct:+.1f}%)" if pct > 0
-                                              else f"⚠️ Equity {eq:,.2f} ({pct:+.1f}%) — consider pausing",
-                                              buttons=[["⏸️ Pause", "sb:pause"]] if pct < 0 else None,
+                                              else f"⚠️ Equity {eq:,.2f} ({pct:+.1f}%) - consider pausing",
+                                              buttons=[[("⏸️ Pause", "sb:pause")]] if pct < 0 else None,
                                               dedup=True):
                             self.last_equity_mark = eq
                     else:

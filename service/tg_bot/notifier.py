@@ -10,6 +10,27 @@ from store import utcnow
 from messages import NOTIF
 
 
+def _normalize_buttons(buttons):
+    """Accept either [("Label", "cb"), ...] or ["Label", "cb"] rows.
+
+    Returns inline_keyboard payload for Telegram. Handles a flat pair row like
+    ["Label", "callback"] and a tuple row like [("Label", "callback")]."""
+    rows = []
+    for row in buttons or []:
+        items = []
+        for cell in row:
+            if isinstance(cell, (tuple, list)) and len(cell) == 2:
+                label, cb = cell
+            elif isinstance(cell, str):
+                label, cb = cell, ""
+            else:
+                continue
+            items.append({"text": label, "callback_data": f"sb:{cb}" if cb and not cb.startswith("sb:") else cb})
+        if items:
+            rows.append(items)
+    return {"inline_keyboard": rows} if rows else None
+
+
 class Notifier:
     def __init__(self, registry):
         self.registry = registry
@@ -18,11 +39,9 @@ class Notifier:
               buttons: list[list[str]] | None = None) -> bool:
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {"chat_id": chat_id, "text": text}
-        if buttons:
-            payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": b, "callback_data": f"sb:{cb}"} for b, cb in row]
-                                    for row in buttons]
-            }
+        markup = _normalize_buttons(buttons)
+        if markup:
+            payload["reply_markup"] = markup
         try:
             r = requests.post(url, json=payload, timeout=20)
             return r.status_code == 200
@@ -37,11 +56,9 @@ class Notifier:
             with open(photo_path, "rb") as f:
                 files = {"photo": f}
                 data = {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"}
-                if buttons:
-                    data["reply_markup"] = {
-                        "inline_keyboard": [[{"text": b, "callback_data": f"sb:{cb}"}
-                                             for b, cb in row] for row in buttons]
-                    }
+                markup = _normalize_buttons(buttons)
+                if markup:
+                    data["reply_markup"] = markup
                 r = requests.post(url, data=data, files=files, timeout=30)
                 return r.status_code == 200
         except requests.RequestException:

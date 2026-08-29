@@ -335,9 +335,14 @@ class UserBotController:
         tg_id = bot["tg_id"]
 
         async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """First-ever /start: welcome + key onboarding gate."""
+            """First-ever /start: welcome + key onboarding gate + setup wizard."""
             key = self.registry.get_active_key(tg_id)
+            b = self.registry.get_bot(bot_id)
             if key:
+                if not (b or {}).get("onboarding_complete"):
+                    # Key set but setup unfinished -> resume the onboarding wizard.
+                    await onboarding_intro(update, context)
+                    return
                 await dash(update, context)
                 return
             text = (
@@ -572,7 +577,7 @@ class UserBotController:
                 "swing": ONBOARD["trader_swing"],
                 "auto": ONBOARD["trader_auto"],
             }
-            ttype = q.data.split(":", 2)[1] if ":" in q.data else ""
+            ttype = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if ttype in texts:
                 self.registry.update_bot(bot_id, trader_type=ttype)
                 kb = telegram.InlineKeyboardMarkup([
@@ -597,7 +602,7 @@ class UserBotController:
                 "solana": ONBOARD["chain_solana"],
                 "hyperliquid": ONBOARD["chain_hyperliquid"],
             }
-            chain = q.data.split(":", 2)[1] if ":" in q.data else ""
+            chain = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if chain in texts:
                 await q.message.edit_text(texts[chain], parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup([
                     [telegram.InlineKeyboardButton("✅ Trade on this chain", callback_data=f"ob:chain_confirm:{chain}")],
@@ -648,6 +653,7 @@ class UserBotController:
             q = update.callback_query
             await q.answer()
             context.bot_data.pop("pending_key", None)
+            self.registry.update_bot(bot_id, onboarding_complete=1)
             await q.message.edit_text(ONBOARD["wallet_saved"], parse_mode="HTML")
             await dash(update, context)
 
@@ -1089,7 +1095,7 @@ class UserBotController:
         async def chain_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            target = q.data.split(":", 2)[1] if ":" in q.data else ""
+            target = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if target in ("sui", "solana", "hyperliquid"):
                 self.registry.update_bot(bot_id, chain=target)
                 await q.message.edit_text(f"✅ Trading chain set to {_chain_label(target)}.")
