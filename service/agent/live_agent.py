@@ -1463,33 +1463,38 @@ def run_cycle(token: str, dry: bool = False) -> None:
 
 
 def _scope_universe_to_chain() -> None:
-    """At startup, if the user chose a specific chain (LIVE_AGENT_CHAIN) and no
-    explicit perp universe is pinned, restrict trading to that chain's top-5
-    perp assets. Runs before the gateway so paper mode still analyzes the
-    right chain's tokens. Also prepends any 'watch <ASSET>' symbols so the
-    user's picks always get priority."""
+    """At startup, if the user chose a specific chain (LIVE_AGENT_CHAIN), the
+    trading universe is REPLACED with that chain's crypto perp assets only
+    (plus any 'watch <ASSET>' picks). Forex/stocks/spot are never analyzed
+    when a perp chain is selected - the agent only works on that chain's
+    tokens. Runs before the gateway so paper mode analyzes the right chain."""
     try:
         chain = os.getenv("LIVE_AGENT_CHAIN", "").strip().lower()
-        pinned = [s for s, m in UNIVERSE if m == "crypto"]
-        # Watched assets always join the universe first (highest priority).
-        for sym in WATCHED:
-            if sym and (sym, "crypto") not in UNIVERSE:
-                UNIVERSE.insert(0, (sym, "crypto"))
-        if not chain or pinned:
+        if not chain:
             return
-        top5 = {
+        # Watched assets always get priority (prepended).
+        watched_crypto = [(s, "crypto") for s in WATCHED if s]
+        # Only honor an explicit pinned crypto universe if the user set
+        # LIVE_AGENT_SYMBOLS to crypto symbols AND no chain is chosen... but a
+        # chain IS chosen here, so always scope to the chain's perps.
+        perp_assets = {
             "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
             "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
             "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
-        }.get(chain, ["BTC", "ETH"])[:5]
-        current = {s.upper() for s, _ in UNIVERSE}
-        for sym in top5:
+        }.get(chain, ["BTC", "ETH"])
+        # Replace the universe: chain perps + user watch picks. Nothing else.
+        # When a perp chain is chosen, forex/stocks/spot are NOT analyzed.
+        seen = set()
+        new_universe = []
+        for sym, mkt in watched_crypto + [(s, "crypto") for s in perp_assets]:
             sym = sym.upper()
-            if sym not in current:
-                UNIVERSE.append((sym, "crypto"))
-                current.add(sym)
-        print(f"[agent] chain={chain}: watching top {len(top5)} perp assets ({', '.join(top5)})"
-              + (f" + user picks {', '.join(WATCHED)}" if WATCHED else ""))
+            key = (sym, mkt)
+            if key not in seen:
+                seen.add(key)
+                new_universe.append(key)
+        UNIVERSE[:] = new_universe
+        print(f"[agent] chain={chain}: scoped to {', '.join(s for s, _ in new_universe)}"
+              + (f" (watch: {', '.join(WATCHED)})" if WATCHED else ""))
     except Exception as exc:
         print(f"[agent] chain scope skipped: {exc}")
 
