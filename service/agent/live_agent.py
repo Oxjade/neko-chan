@@ -270,7 +270,7 @@ def market_stats(symbol: str, market: str) -> dict:
     - trend_ratio: |1h net change|/100 as a decimal bias (sign = direction)
     - regime: documented classifier (bull | bear | sideways) from 4h lookback:
         forward-implied 20-bar move > +0.2% bullish, < -0.2% bearish else sideways
-      (vol classifier omitted here — keep the gate deterministic and cheap).
+      (vol classifier omitted here - keep the gate deterministic and cheap).
     """
     try:
         if market == "crypto":
@@ -773,18 +773,18 @@ def humanize_error(raw: str, max_len: int = 300) -> str:
     """Small local copy of the bot's error mapper (kept import-free)."""
     raw = (raw or "").strip()
     if not raw:
-        return "Unknown error — no trade was placed."
+        return "Unknown error - no trade was placed."
     lowered = raw.lower()
     for needle, friendly in (
         ("Short position entry price is missing",
-         "Couldn't open the short — the platform needs an entry price for shorts. "
+         "Couldn't open the short - the platform needs an entry price for shorts. "
          "The bot will keep trying with a valid price."),
         ("stop_loss_pct/take_profit_pct can only be set when opening (buy/short)",
-         "Closing trades can't carry a stop/target — the close was sent safely without one."),
-        ("market is currently closed", "That market is closed right now — the bot will retry when it reopens."),
+         "Closing trades can't carry a stop/target - the close was sent safely without one."),
+        ("market is currently closed", "That market is closed right now - the bot will retry when it reopens."),
         ("US market is closed", "US stocks only trade Mon–Fri 9:30–16:00 ET."),
         ("daily trade limit reached", "Today's trade limit is hit. Your bot resumes tomorrow."),
-        ("position size cap exceeded", "The position was too large for your risk settings — the bot stayed flat."),
+        ("position size cap exceeded", "The position was too large for your risk settings - the bot stayed flat."),
         ("rate limit", "The trading venue is rate-limiting. The bot will retry shortly."),
         ("timeout", "The trading venue timed out. The bot will retry."),
     ):
@@ -808,13 +808,13 @@ def notify_error(message: str, kind: str = "error") -> None:
     if kind == "rate_limit":
         text = ("⏳ <b>Your AI key hit a rate limit</b>\n\n"
                 "The model provider is limiting requests (free-tier daily cap "
-                "or too many calls). Your bot is holding — it will keep running "
+                "or too many calls). Your bot is holding - it will keep running "
                 "on the quantitative engine until the limit resets.\n\n"
                 "• Free tier: daily cap resets at midnight UTC\n"
                 "• Add credits / switch models to lift the cap")
     elif kind == "llm":
         text = (f"🧠 <b>AI model hiccup</b>\n\n{humanize_error(message)}\n\n"
-                "Your bot stays safe — it falls back to the quant engine and "
+                "Your bot stays safe - it falls back to the quant engine and "
                 "keeps trading. No fake trades.")
     try:
         import requests as _r
@@ -974,7 +974,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
     # can weigh opening a carry short on highly-funded symbols. Only the symbol
     # with the largest |net carry| that is ALSO genuinely high (> carry_min_apy)
     # is surfaced, to avoid noise; below the floor we suppress it (a low carry
-    # short in a bull just bleeds to price — the live-test lesson).
+    # short in a bull just bleeds to price - the live-test lesson).
     carry_txt = ""
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -994,7 +994,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
         carry_txt = ""
 
     prompt = (
-        f"Live trading decision — {now_iso} UTC.\n"
+        f"Live trading decision - {now_iso} UTC.\n"
         f"Universe: {', '.join(f'{s} [{m}]' for s, m in UNIVERSE)}\n"
         f"Prices + 5m trend + sentiment: {', '.join(price_txt)}\n"
         f"{('Funding-carry: ' + carry_txt + '\n') if carry_txt else ''}"
@@ -1019,7 +1019,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
 
     if STRATEGY == "momentum20":
         # AGENTIC SCENARIO DECISION: the quant engine builds a LONG/SHORT
-        # scenario matrix for every symbol — each with a real probability of
+        # scenario matrix for every symbol - each with a real probability of
         # success (barrier-crossing GBM), reward/risk ratio, and expected value.
         # The LLM (with skills loaded) reads the full matrix + market context,
         # does the math compilation, and picks the highest-conviction scenario.
@@ -1109,9 +1109,9 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         "barrier is hit before the stop-loss, from a geometric Brownian "
                         "motion model), a reward/risk ratio R, and expected value EV "
                         "per unit risk. Your job: DO THE MATH and pick the single "
-                        "best trade from the matrix — the one with the highest "
+                        "best trade from the matrix - the one with the highest "
                         "conviction (P(win) * EV) that is also actionable given the "
-                        "positions you already hold. This is not a vibe — use the "
+                        "positions you already hold. This is not a vibe - use the "
                         "numbers.\n\n"
                         "THE STRATEGY SKILLS ARE LOADED BELOW. Follow them exactly; "
                         "do not invent rules that contradict them.\n\n"
@@ -1125,10 +1125,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         "IMPORTANT: stop and take are already set per scenario. "
                         "quantity = dollars-at-risk / entry price, "
                         "where dollars-at-risk is ~1% of equity. The system will "
-                        "clamp your size afterward — stay conservative."
+                        "clamp your size afterward - stay conservative."
                     )
                     user = (
-                        f"Scenario decision — {now_iso} UTC.\n"
+                        f"Scenario decision - {now_iso} UTC.\n"
                         f"SCENARIO MATRIX (ranked by conviction):\n{matrix_txt}\n\n"
                         f"MARKET: {', '.join(price_txt)}\n"
                         f"FUNDING: {carry_txt if carry_txt else 'none above floor'}\n"
@@ -1418,10 +1418,14 @@ def main():
                                 notify_error(f"{label} for {pick.symbol} failed: {fill.get('error','')}", kind="error")
                             break
                 except Exception as exc:
-                    # FAULT TOLERANCE: never crash the exit thread, but do surface
-                    # recurring failures instead of silently swallowing them.
+                    # FAULT TOLERANCE: never crash the exit thread. Transient
+                    # errors (price fetch, RPC hiccup) are logged, NOT pushed
+                    # to the user - they are internal noise. Only a genuinely
+                    # failed exit (position stuck) is user-facing, and that is
+                    # notified above where the fill is attempted.
                     print(f"[exit] loop error: {exc}")
-                    notify_error(f"exit monitor hiccup: {exc}", kind="error")
+                    import logging as _logging
+                    _logging.getLogger("agent").warning("exit-check transient error: %s", exc)
         import threading as _threading
         _threading.Thread(target=_exit_loop, name="exit-check", daemon=True).start()
         while True:
