@@ -1142,12 +1142,14 @@ class UserBotController:
             asset = m.group(1).upper()
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
-            # Check the asset is available on the chain's venue (Bluefin for Sui).
+            # Check the asset is a known token on the chain (not just the venue's
+            # perp markets - e.g. IKA is a native Sui token even though Bluefin
+            # doesn't list an IKA perp market).
             supported = _chain_supported_assets(chain)
-            if supported and asset not in supported:
+            if supported is not None and asset not in supported:
                 await update.message.reply_text(
-                    f"❌ <b>{asset}</b> isn't on {_chain_label(chain)}.\n"
-                    f"Available: {', '.join(sorted(supported))}",
+                    f"❌ <b>{asset}</b> isn't a known token on {_chain_label(chain)}.\n"
+                    f"Known: {', '.join(sorted(supported))}",
                     parse_mode="HTML")
                 return
             watched = set(_parse_watchlist(b.get("watchlist")))
@@ -1167,20 +1169,24 @@ class UserBotController:
             except Exception:
                 return []
 
-        def _chain_supported_assets(chain: str) -> list[str]:
-            try:
-                self._exec_path()
-                if self.gateway and chain in self.gateway.adapters:
-                    bluefin = getattr(self.gateway.adapters[chain], "bluefin", None)
-                    if bluefin is not None:
-                        return sorted(bluefin.markets() or [])
-                return sorted({
-                    "sui": ["BTC", "ETH", "SOL", "SUI", "ARB", "DOGE", "LINK", "SEI", "OP", "BNB", "AVAX", "LTC", "MATIC"],
-                    "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
-                    "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE", "SEI", "NEAR", "ATOM"],
-                }.get(chain, ["BTC", "ETH"]))
-            except Exception:
-                return ["BTC", "ETH", "SOL", "SUI", "ARB"]
+        def _chain_supported_assets(chain: str) -> list[str] | None:
+            """Return the full list of known tokens on this chain, or None if
+            the chain is not recognized (meaning any asset is allowed)."""
+            known = {
+                # Sui native tokens (from Suiscan / DeFi ecosystem)
+                "sui": ["SUI", "BTC", "ETH", "SOL", "ARB", "DOGE", "LINK", "SEI", "OP",
+                        "BNB", "AVAX", "LTC", "MATIC", "DEEP", "IKA", "NS", "SEND",
+                        "BLUE", "CETUS", "SCA", "AFSUI", "HASUI", "FUD", "SPAM",
+                        "TURBOS", "NS", "WAL", "PEPE", "SHIB", "APT", "ATOM", "AAVE",
+                        "UNI", "MOVE", "USDC", "USDT", "WETH", "WBTC"],
+                # Solana tokens (from Jupiter / Solana ecosystem)
+                "solana": ["SOL", "BTC", "ETH", "SUI", "DOGE", "BONK", "WIF", "JUP",
+                           "PYTH", "JTO", "RENDER"],
+                # Hyperliquid native tokens
+                "hyperliquid": ["HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
+                                "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"],
+            }
+            return known.get(chain)  # None if chain not in dict -> no restriction
 
         async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
