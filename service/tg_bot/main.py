@@ -18,7 +18,8 @@ import requests
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 
-from telegram.ext import Application
+from telegram import Update
+from telegram.ext import Application, ContextTypes
 
 import tg_config as cfg
 from key_vault import KeyVault
@@ -49,6 +50,12 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     token = cfg.require_master_token()
     app = Application.builder().token(token).build()
 
+    async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        log.error("Unhandled error: %s", context.error, exc_info=context.error)
+        if update and isinstance(update, Update) and update.effective_message:
+            await update.effective_message.reply_text("⚠️ Internal error. The cat tripped.")
+
+    app.add_error_handler(_error_handler)
     app.add_handler(simple_flow_handlers(registry, vault, platform, userbot, agent_pool))
     register_master_handlers(app, registry, platform, userbot)
     return app

@@ -704,6 +704,8 @@ class UserBotController:
             await dash(update, context)
 
         async def dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if update.callback_query:
+                await update.callback_query.answer()
             self.registry.update_bot(bot_id, last_heartbeat=utcnow())
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
