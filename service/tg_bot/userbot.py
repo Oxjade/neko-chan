@@ -247,6 +247,30 @@ class UserBotController:
                 continue
         return wallets, chain_state
 
+    def _exec_ledger(self):
+        """Open the canonical execution ledger (same path the gateway uses),
+        so user wallets persist and are readable even before chain keys are
+        configured. Returns an ExecLedger instance."""
+        self._exec_path()
+        from ledger import ExecLedger
+        path = os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db")
+        return ExecLedger(path)
+
+    def _user_wallet(self, bot_id: int, chain: str) -> dict | None:
+        """The user's own generated wallet (from onboarding) for a chain,
+        regardless of gateway readiness."""
+        try:
+            ledger = self._exec_ledger()
+            wallet = ledger.wallet_by_bot_chain(bot_id, chain)
+            if hasattr(ledger, "close"):
+                try:
+                    ledger.close()
+                except Exception:
+                    pass
+            return wallet
+        except Exception:
+            return None
+
     def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
         self._exec_path()
         from wallet_ui import render_wallet_panel
@@ -644,20 +668,18 @@ class UserBotController:
                 vault = ExecVault()
                 addr, key_hex = generate_key_material(chain)
                 enc = vault.encrypt(key_hex)
-                # Always persist - use the gateway's ledger if available, else
-                # create/use the execution ledger at the default path.
-                if self.gateway:
-                    self.gateway.ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
-                                                      ExecVault.key_hash(key_hex))
-                else:
-                    # No gateway configured yet - persist in a standalone ledger
-                    # so the wallet is never lost.
-                    from ledger import ExecLedger
-                    import tempfile
-                    _ledger = ExecLedger(str(tempfile.gettempdir() + f"/exec_{bot_id}.db"))
-                    _ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
-                                          ExecVault.key_hash(key_hex))
+                # Always persist to the canonical exec ledger (same path the
+                # gateway uses) so the user's wallet survives restarts and is
+                # readable via _user_wallet even before chain keys are set.
+                from ledger import ExecLedger
+                _path = os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db")
+                _ledger = ExecLedger(_path)
+                _ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
+                                      ExecVault.key_hash(key_hex))
+                try:
                     _ledger.close()
+                except Exception:
+                    pass
             except Exception as exc:
                 import logging
                 logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
@@ -758,19 +780,26 @@ class UserBotController:
                  [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
 
         async def _exec_account(self, bot_id: int, chain: str) -> dict:
-            """Real on-chain account state for a bot+chain (RPC, not mock)."""
+            """Real on-chain account state for a bot+chain (RPC, not mock).
+            Falls back to the user's generated wallet (address) even when the
+            gateway has no chain keys, so Receive always shows the wallet."""
+            # User's own wallet (from onboarding) - always readable.
+            wallet = self._user_wallet(bot_id, chain)
             if not self._exec_ready():
+                if wallet:
+                    return {"balances": {}, "positions": [],
+                            "wallet_address": wallet.get("address") or ""}
                 return {"balances": {}, "positions": []}
             self._exec_path()
             try:
                 self.gateway.provision_wallet(bot_id, chain)
             except Exception:
                 pass
-            wallet = None
-            try:
-                wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
-            except Exception:
-                pass
+            if wallet is None:
+                try:
+                    wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+                except Exception:
+                    pass
             if not wallet:
                 return {"balances": {}, "positions": []}
             try:
@@ -1248,8 +1277,8 @@ class UserBotController:
             text = (f"📤 Send <b>${amount:,.4f} USDC</b> to\n<code>{dest}</code>\n\n"
                     f"⚠️ Double-check the address - transfers are final.")
             kb = telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
-                [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
+                [telegram.InlineKeyboardButton("✅ Confirm", callback_data="send:confirm"),
+                 telegram.InlineKeyboardButton("❌ Cancel", callback_data="send:cancel")],
             ])
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
             return ConversationHandler.END
@@ -1257,9 +1286,22 @@ class UserBotController:
         async def send_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            await q.message.edit_text("❌ Send canceled.",
+            await q.message.edit_text("❌ Canceled.",
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+            return ConversationHandler.END
+
+        async def send_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            text = ("📤 <b>Send</b>\n\n"
+                    "To execute this transfer, use your private key to sweep "
+                    "the funds in your wallet app. The bot has no withdrawal "
+                    "rights on the venues.")
+            await q.message.edit_text(text, parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
+                                           [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
             return ConversationHandler.END
 
         async def chain_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1620,6 +1662,8 @@ class UserBotController:
             name="userbot_send",
             allow_reentry=True,
         )
+
+        app.add_handler(CallbackQueryHandler(send_confirm, pattern=r"^send:confirm$"))
 
         app.add_handler(CallbackQueryHandler(receive, pattern=r"^sb:receive$"))
         app.add_handler(send_conv)
