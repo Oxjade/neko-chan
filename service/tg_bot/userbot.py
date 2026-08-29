@@ -16,7 +16,7 @@ from telegram.ext import (Application, ContextTypes, CommandHandler,
                           CallbackQueryHandler, ConversationHandler,
                           MessageHandler, filters)
 
-from messages import USERBOT, WIZARD, NOTIF, mask_key, humanize_error
+from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
 from store import utcnow
 from provider import validate_key, ProviderError
 
@@ -26,6 +26,53 @@ CANCEL = "❌ Cancel"
 
 # key onboarding states
 K_PROVIDER, K_KEY = range(2)
+
+
+def _chain_label(chain: str) -> str:
+    return {"sui": "Sui (Bluefin)", "solana": "Solana (Jupiter)", "hyperliquid": "Hyperliquid"}.get(
+        chain, chain.title())
+
+
+def _money(v: float, sign: bool = True) -> str:
+    return f"${v:+,.2f}" if sign else f"${v:,.2f}"
+
+
+def _mask_addr(addr: str) -> str:
+    return f"{addr[:6]}…{addr[-4:]}" if len(addr) > 12 else addr
+
+
+def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
+    """Simple production dashboard: real chain balance + positions + chain."""
+    line = "─" * 26
+    bal = account.get("balances") or {}
+    usdc = float(bal.get("USDC", 0))
+    native = float(bal.get("native", 0))
+    positions = account.get("positions") or []
+    realized = float(bal.get("realized_pnl", 0))
+    equity = usdc + realized
+    pos_lines = []
+    if not positions:
+        pos_lines.append("  no open positions")
+    for p in positions[:3]:
+        sym = str(p.get("symbol") or p.get("coin") or "?")
+        side = str(p.get("side") or (p.get("szi", 0) > 0 and "long") or "short")
+        qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
+        pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
+        pos_lines.append(f"  {sym}  {side.upper()} {qty:g}  {_money(pnl)}")
+    status = "🟢 RUNNING" if bot.get("is_running") else "⏸️ PAUSED"
+    addr = str(bot.get("wallet_address") or "") or ""
+    return (
+        f"<b>🐾 {bot['bot_name']}</b>\n"
+        f"<code>{line}</code>\n"
+        f"{status} · {_chain_label(chain)}\n"
+        f"{('address <code>' + _mask_addr(addr) + '</code>') if addr else ''}\n\n"
+        f"<b>💰 BALANCE</b>\n"
+        f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
+        f"{f'  native {native:,.4f}' if native else ''}\n"
+        f"{f'  realized {_money(realized)}' if realized else ''}\n\n"
+        f"<b>📡 POSITIONS ({len(positions)})</b>\n" + "\n".join(pos_lines) + "\n"
+        f"<code>{line}</code>"
+    )
 
 
 def _ago(iso: str | None) -> str:
@@ -441,11 +488,11 @@ class UserBotController:
                     f"falls back to OpenAI-compatible calls"
                 )
             await update.message.reply_text(
-                f"✅ Key works ({provider}). Your bot can now trade - decisions start right away.\n\n"
-                "Every trade, stop and summary will be pushed here 🔔" + rule_notice,
+                f"✅ Key works ({provider}) · model <code>{model}</code>\n\n"
+                "Let's set up how Neko-Chan trades for you." + rule_notice,
                 parse_mode="HTML",
             )
-            await dash(update, context)
+            await onboarding_intro(update, context)
             return ConversationHandler.END
 
         async def key_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -499,43 +546,165 @@ class UserBotController:
             allow_reentry=True,
         )
 
+        # ------------------------------------------------------------------
+        # Onboarding: how Neko trades -> trader type -> chain -> wallet backup
+        # ------------------------------------------------------------------
+        async def onboarding_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            b = self.registry.get_bot(bot_id)
+            interval = b.get("interval_sec", 120) if b else 120
+            text = ONBOARD["intro"].format(interval=interval)
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("Continue →", callback_data="ob:trader")],
+            ])
+            msg = update.message or update.callback_query.message
+            if update.callback_query:
+                await update.callback_query.answer()
+                await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            else:
+                await msg.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+        async def onboarding_trader(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            texts = {
+                "scalp": ONBOARD["trader_scalp"],
+                "intraday": ONBOARD["trader_intraday"],
+                "swing": ONBOARD["trader_swing"],
+                "auto": ONBOARD["trader_auto"],
+            }
+            ttype = q.data.split(":", 2)[1] if ":" in q.data else ""
+            if ttype in texts:
+                self.registry.update_bot(bot_id, trader_type=ttype)
+                kb = telegram.InlineKeyboardMarkup([
+                    [telegram.InlineKeyboardButton("Continue →", callback_data="ob:chain")],
+                    [telegram.InlineKeyboardButton(BACK, callback_data="ob:trader")],
+                ])
+                await q.message.edit_text(texts[ttype], parse_mode="HTML", reply_markup=kb)
+                return
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("⚡ Scalp", callback_data="ob:trader:scalp")],
+                [telegram.InlineKeyboardButton("⏱ Intraday", callback_data="ob:trader:intraday")],
+                [telegram.InlineKeyboardButton("📈 Swing", callback_data="ob:trader:swing")],
+                [telegram.InlineKeyboardButton("🤖 Auto", callback_data="ob:trader:auto")],
+            ])
+            await q.message.edit_text(ONBOARD["trader"], parse_mode="HTML", reply_markup=kb)
+
+        async def onboarding_chain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            texts = {
+                "sui": ONBOARD["chain_sui"],
+                "solana": ONBOARD["chain_solana"],
+                "hyperliquid": ONBOARD["chain_hyperliquid"],
+            }
+            chain = q.data.split(":", 2)[1] if ":" in q.data else ""
+            if chain in texts:
+                await q.message.edit_text(texts[chain], parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup([
+                    [telegram.InlineKeyboardButton("✅ Trade on this chain", callback_data=f"ob:chain_confirm:{chain}")],
+                    [telegram.InlineKeyboardButton(BACK, callback_data="ob:chain")],
+                ]))
+                return
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("⛓ Sui", callback_data="ob:chain:sui")],
+                [telegram.InlineKeyboardButton("⛓ Solana", callback_data="ob:chain:solana")],
+                [telegram.InlineKeyboardButton("⛓ Hyperliquid", callback_data="ob:chain:hyperliquid")],
+                [telegram.InlineKeyboardButton(BACK, callback_data="ob:trader")],
+            ])
+            await q.message.edit_text(ONBOARD["chain"], parse_mode="HTML", reply_markup=kb)
+
+        async def onboarding_chain_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            chain = q.data.split(":", 2)[2]
+            self.registry.update_bot(bot_id, chain=chain)
+            # Generate the real per-chain wallet (address + private key)
+            key_hex = None
+            addr = None
+            try:
+                self._exec_path()
+                from exec_vault import ExecVault, generate_key_material
+                vault = ExecVault()
+                addr, key_hex = generate_key_material(chain)
+                enc = vault.encrypt(key_hex)
+                if self.gateway:
+                    self.gateway.ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
+                                                      ExecVault.key_hash(key_hex))
+            except Exception as exc:
+                import logging
+                logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
+            if not (addr and key_hex):
+                await q.message.edit_text("⚠️ Couldn't generate a wallet for this chain yet. Try again.",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            context.bot_data["pending_key"] = key_hex
+            text = ONBOARD["wallet_created"].format(chain=_chain_label(chain), address=addr, private_key=key_hex)
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("🗝️ I've saved my key", callback_data="ob:key_saved")],
+            ])
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+        async def onboarding_key_saved(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            context.bot_data.pop("pending_key", None)
+            await q.message.edit_text(ONBOARD["wallet_saved"], parse_mode="HTML")
+            await dash(update, context)
+
         async def dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             self.registry.update_bot(bot_id, last_heartbeat=utcnow())
-            try:
-                pf = self.platform.positions(platform_token)
-            except Exception:
-                await (update.message or update.callback_query.message).reply_text(
-                    "⚠️ Platform offline, retrying…",
-                    reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("↻ Retry", callback_data="sb:dash")]]))
-                return
-            lb_row = None
-            if bot.get("agent_id"):
-                try:
-                    row = self.platform.agent_row(platform_token, bot["agent_name"])
-                    if row:
-                        lb_row = row
-                except Exception:
-                    pass
             b = self.registry.get_bot(bot_id)
-            text = render_dashboard_text(b, pf, lb_row)
-            badge = USERBOT["live_badge"] if self._exec_ready() else USERBOT["paper_badge"]
-            text = f"{badge} · {text}"
+            chain = b.get("chain") or "sui"
+            account = {"balances": {}, "positions": []}
+            try:
+                account = self._exec_account(bot_id, chain)
+            except Exception:
+                account = {"balances": {}, "positions": []}
+            text = render_production_dashboard(b, account, chain)
             kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("📤 Send", callback_data="sb:send"),
+                 telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
-                 telegram.InlineKeyboardButton("💰 Positions", callback_data="sb:pos")],
-                [telegram.InlineKeyboardButton("🏦 Live Markets", callback_data="sb:live"),
-                 telegram.InlineKeyboardButton("📡 Trades", callback_data="sb:trades")],
-                [telegram.InlineKeyboardButton("💼 Wallet", callback_data="sb:wallet"),
-                 telegram.InlineKeyboardButton("📈 Stocks", callback_data="sb:stocks")],
+                 telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")],
                 [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
-                 telegram.InlineKeyboardButton("📬 Inbox", callback_data="sb:inbox")],
-                [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help"),
                  telegram.InlineKeyboardButton("🛑 Kill-Switch", callback_data="sb:kill")],
+                [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:dash"),
+                 telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help")],
             ])
             if update.message:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
             elif update.callback_query:
                 await update.callback_query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+
+        async def _exec_account(self, bot_id: int, chain: str) -> dict:
+            """Real on-chain account state for a bot+chain (RPC, not mock)."""
+            if not self._exec_ready():
+                return {"balances": {}, "positions": []}
+            self._exec_path()
+            try:
+                self.gateway.provision_wallet(bot_id, chain)
+            except Exception:
+                pass
+            wallet = None
+            try:
+                wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+            except Exception:
+                pass
+            if not wallet:
+                return {"balances": {}, "positions": []}
+            try:
+                self.gateway.sync(bot_id, chain)
+            except Exception:
+                pass
+            try:
+                state = self.gateway.ledger.load_chain_state(wallet["id"]) or {}
+            except Exception:
+                state = {}
+            return {
+                "balances": state.get("balances") or {},
+                "positions": state.get("positions") or [],
+                "wallet_address": wallet.get("address") or "",
+            }
 
         async def pnl_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -749,14 +918,16 @@ class UserBotController:
             current_ttype = b.get("trader_type") or "scalp"
             icons = {"scalp": "⚡", "intraday": "⏱", "swing": "📈", "auto": "🤖"}
             ttype_label = f"{icons.get(current_ttype, '❓')} {current_ttype.upper()}"
+            current_chain = b.get("chain") or "sui"
             text = (f"⚙️ Settings - {b['bot_name']}\n\n"
+                    f"Chain:     {_chain_label(current_chain)}\n"
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Risk:      {b['risk_profile']}\n"
                     f"Leverage:  {float(b.get('leverage') or 1):g}x\n"
-                    f"Mode:      {USERBOT['live_badge'] if self._exec_ready() else USERBOT['paper_badge']} trading\n"
                     f"Trader:    {ttype_label}\n"
                     f"AI key:    {'set ✓' if self.registry.get_active_key(tg_id) else 'not set'}")
             kb = [
+                [telegram.InlineKeyboardButton(f"⛓ Chain: {_chain_label(current_chain)}", callback_data="sb:chain")],
                 [telegram.InlineKeyboardButton(f"⏱ Interval: {b['interval_sec']}s", callback_data="sb:set_interval:120"),
                  telegram.InlineKeyboardButton("60s", callback_data="sb:set_interval:60"),
                  telegram.InlineKeyboardButton("5m", callback_data="sb:set_interval:300")],
@@ -767,11 +938,35 @@ class UserBotController:
                 [telegram.InlineKeyboardButton(f"⚖️ Lev: {float(b.get('leverage') or 1):g}x", callback_data="sb:set_leverage:5"),
                  telegram.InlineKeyboardButton("2x", callback_data="sb:set_leverage:2"),
                  telegram.InlineKeyboardButton("10x", callback_data="sb:set_leverage:10")],
+                [telegram.InlineKeyboardButton("📋 Watchlist", callback_data="sb:watchlist")],
                 [telegram.InlineKeyboardButton("🛡️ Execution Risk", callback_data="sb:execrisk")],
                 [telegram.InlineKeyboardButton("🔑 Change AI Key", callback_data="key:start")],
+                [telegram.InlineKeyboardButton("🆘 Contact Support", callback_data="sb:support")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
             ]
             await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(kb))
+
+        async def watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            text = ("📋 <b>Watchlist</b>\n\n"
+                    "The markets Neko-Chan scans for setups:\n\n"
+                    "crypto: BTC, ETH, SOL, SUI, HYPE, SEI, NEAR, ATOM\n"
+                    "stocks: AAPL, NVDA, SPY (coming soon)\n\n"
+                    "Configure which markets your bot watches by setting "
+                    "LIVE_AGENT_SYMBOLS when the agent runs.")
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
+
+        async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            text = ("🆘 <b>Contact Support</b>\n\n"
+                    "Need help? Reach the Neko-Chan team:\n\n"
+                    "• Telegram: @support\n"
+                    "• Describe what happened and include your bot name.")
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
 
         async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -788,40 +983,127 @@ class UserBotController:
         async def help_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
+            b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            ttype = b.get("trader_type") or "scalp"
             text = (
-                "❓ Help\n\n"
-                "• AI-powered trading with real market prices.\n"
-                "• Your cat decides every {interval}s and always uses stop-losses.\n"
-                "• Your AI key pays for your own model calls.\n"
-                "• Every trade is pushed here as a notification.\n\n"
-                "Owners: use the master bot (Neko) to manage your network entry. 🐾"
-            ).format(interval=self.registry.get_bot(bot_id)["interval_sec"])
-            await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                "❓ <b>Help - how Neko-Chan works</b>\n\n"
+                f"🤖 <b>Your bot</b>: {b['bot_name']}\n"
+                f"⛓ <b>Chain</b>: {_chain_label(chain)} · trader: {ttype}\n\n"
+                "🧠 <b>How decisions are made</b>\n"
+                "Every few minutes I scan the markets in my watchlist, build "
+                "long and short scenarios with real probabilities, then pick "
+                "the strongest setup - or stay flat. My AI reads the same "
+                "numbers; it never invents trades.\n\n"
+                "🛡️ <b>Risk controls (always on)</b>\n"
+                "• Every trade has a stop-loss and take-profit\n"
+                "• Position size is capped to your risk profile\n"
+                "• Daily trade limit + daily loss halt\n"
+                "• Kill-switch flattens everything instantly\n\n"
+                "💼 <b>Your wallet</b>\n"
+                "Non-custodial: you hold the private key. Deposit USDC to your "
+                "address, Neko-Chan trades it. Withdraw by sweeping the key.\n\n"
+                "📊 <b>Screens</b>\n"
+                "• Send / Receive - move funds\n"
+                "• P&L - your performance\n"
+                "• Active Positions - open trades\n"
+                "• Settings - chain, trader type, leverage, watchlist, AI key\n\n"
+                "⚠️ <b>Risk</b>\n"
+                "Trading involves real risk and real money. Models make mistakes "
+                "- even cats. Never risk what you can't afford to lose.\n\n"
+                "Support: @support"
+            )
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings")],
+                [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                 telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
+            ])
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
         async def wallet_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
             b = self.registry.get_bot(bot_id)
-            text = self._render_wallet(bot_id, b["bot_name"], b.get("paused", 0))
-            fund_buttons = []
-            if self._exec_ready():
-                self._exec_path()
-                from wallet_ui import CHAIN_LABELS
-                fund_buttons = [[telegram.InlineKeyboardButton(
-                    f"💸 Fund {CHAIN_LABELS[chain].replace('🔗 ', '')}",
-                    callback_data=f"sb:fund:{chain}")] for chain in self.gateway.adapters]
-            kb = fund_buttons + [[
-                telegram.InlineKeyboardButton("🔍 Check Deposits", callback_data="sb:check_deposits"),
-                telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent"),
-            ], [
-                telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys"),
-                telegram.InlineKeyboardButton("💸 Withdraw", callback_data="sb:withdraw"),
-            ], [
-                telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
-                telegram.InlineKeyboardButton(HOME, callback_data="sb:dash"),
-            ]]
-            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(kb))
+            chain = b.get("chain") or "sui"
+            try:
+                account = self._exec_account(bot_id, chain)
+            except Exception:
+                account = {"balances": {}, "positions": []}
+            addr = account.get("wallet_address") or ""
+            bal = account.get("balances") or {}
+            usdc = float(bal.get("USDC", 0))
+            native = float(bal.get("native", 0))
+            lines = [
+                f"<b>💼 Wallet - {b['bot_name']}</b>",
+                f"<code>{'─' * 26}</code>",
+                f"{_chain_label(chain)}",
+                f"address <code>{_mask_addr(addr) if addr else 'not generated'}</code>",
+                f"USDC <code>${usdc:,.2f}</code> · native {native:,.4f}",
+            ]
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive"),
+                 telegram.InlineKeyboardButton("📤 Send", callback_data="sb:send")],
+                [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
+                [telegram.InlineKeyboardButton("⛓ Switch Chain", callback_data="sb:chain")],
+                [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                 telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
+            ])
+            await q.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+
+        async def receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            try:
+                account = self._exec_account(bot_id, chain)
+            except Exception:
+                account = {"balances": {}, "positions": []}
+            addr = account.get("wallet_address") or ""
+            if not addr:
+                await q.message.edit_text("💼 No wallet yet - generate one via onboarding.",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            text = (f"📥 <b>Receive on {_chain_label(chain)}</b>\n\n"
+                    f"Send USDC (or {chain} native) to this address:\n\n"
+                    f"<code>{addr}</code>\n\n"
+                    f"Only send {_chain_label(chain)} assets here. The bot activates "
+                    f"once a deposit is detected.")
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton("🔍 Check Deposits", callback_data="sb:check_deposits")],
+                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+
+        async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            text = ("📤 <b>Send / Withdraw</b>\n\n"
+                    "Your trading wallet is non-custodial - only you can move funds out.\n\n"
+                    "To send, export your private key and sweep the balance to your "
+                    "main wallet in any standard wallet app.\n\n"
+                    "🗝️ Tap \"Private Keys\" to see your keys.")
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
+                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+
+        async def chain_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            target = q.data.split(":", 2)[1] if ":" in q.data else ""
+            if target in ("sui", "solana", "hyperliquid"):
+                self.registry.update_bot(bot_id, chain=target)
+                await q.message.edit_text(f"✅ Trading chain set to {_chain_label(target)}.")
+                await dash(update, context)
+                return
+            text = ("⛓ <b>Switch trading chain</b>\n\n"
+                    "Your orders will execute on this chain.")
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("⛓ Sui (Bluefin)", callback_data="sb:chain:sui")],
+                [telegram.InlineKeyboardButton("⛓ Solana (Jupiter)", callback_data="sb:chain:solana")],
+                [telegram.InlineKeyboardButton("⛓ Hyperliquid", callback_data="sb:chain:hyperliquid")],
+                [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")],
+            ])
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
         async def wallet_keys(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1118,6 +1400,12 @@ class UserBotController:
         app.add_handler(CommandHandler("start", welcome))
         app.add_handler(CallbackQueryHandler(key_help, pattern=r"^key:help$"))
         app.add_handler(key_conv)
+        # onboarding: how Neko trades -> trader type -> chain -> wallet backup
+        app.add_handler(CallbackQueryHandler(onboarding_intro, pattern=r"^ob:intro$"))
+        app.add_handler(CallbackQueryHandler(onboarding_trader, pattern=r"^ob:trader"))
+        app.add_handler(CallbackQueryHandler(onboarding_chain, pattern=r"^ob:chain"))
+        app.add_handler(CallbackQueryHandler(onboarding_chain_confirm, pattern=r"^ob:chain_confirm:"))
+        app.add_handler(CallbackQueryHandler(onboarding_key_saved, pattern=r"^ob:key_saved$"))
         app.add_handler(CallbackQueryHandler(dash, pattern=r"^sb:dash$"))
         app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))
@@ -1130,6 +1418,11 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(inbox, pattern=r"^sb:inbox$"))
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))
+        app.add_handler(CallbackQueryHandler(receive, pattern=r"^sb:receive$"))
+        app.add_handler(CallbackQueryHandler(send, pattern=r"^sb:send$"))
+        app.add_handler(CallbackQueryHandler(chain_switch, pattern=r"^sb:chain"))
+        app.add_handler(CallbackQueryHandler(watchlist, pattern=r"^sb:watchlist$"))
+        app.add_handler(CallbackQueryHandler(support, pattern=r"^sb:support$"))
         app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))
         app.add_handler(CallbackQueryHandler(check_deposits, pattern=r"^sb:check_deposits$"))
         app.add_handler(CallbackQueryHandler(enable_agent, pattern=r"^sb:enable_agent(_yes)?$"))
