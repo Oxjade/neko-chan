@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS bots (
     network TEXT DEFAULT 'testnet',
     watchlist TEXT DEFAULT '',
     onboarding_complete INTEGER DEFAULT 0,
+    wallet_addr TEXT DEFAULT '',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -97,6 +98,7 @@ class Registry:
                 "ALTER TABLE bots ADD COLUMN network TEXT DEFAULT 'testnet'",
                 "ALTER TABLE bots ADD COLUMN watchlist TEXT DEFAULT ''",
                 "ALTER TABLE bots ADD COLUMN onboarding_complete INTEGER DEFAULT 0",
+                "ALTER TABLE bots ADD COLUMN wallet_addr TEXT DEFAULT ''",
             ):
                 try:
                     self._conn.execute(stmt)
@@ -245,7 +247,8 @@ class Registry:
     def update_bot(self, bot_id: int, **fields) -> None:
         allowed = {"bot_name", "symbols", "leverage", "interval_sec", "risk_profile",
                    "is_running", "paused", "pid", "last_heartbeat", "last_error",
-                   "trader_type", "chain", "onboarding_complete", "network", "watchlist"}
+                   "trader_type", "chain", "onboarding_complete", "network", "watchlist",
+                   "wallet_addr"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return

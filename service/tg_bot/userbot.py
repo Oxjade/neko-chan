@@ -40,6 +40,12 @@ def _money(v: float, sign: bool = True) -> str:
     return f"${v:+,.2f}" if sign else f"${v:,.2f}"
 
 
+def _esc(v) -> str:
+    """Escape untrusted strings for Telegram parse_mode=HTML (bot names,
+    symbols, reasoning - anything that can contain < > & breaks rendering)."""
+    return str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _mask_addr(addr: str) -> str:
     return f"{addr[:6]}…{addr[-4:]}" if len(addr) > 12 else addr
 
@@ -61,17 +67,17 @@ def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
         side = str(p.get("side") or (p.get("szi", 0) > 0 and "long") or "short")
         qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
         pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
-        pos_lines.append(f"  {sym}  {side.upper()} {qty:g}  {_money(pnl)}")
+        pos_lines.append(f"  {_esc(sym)}  {side.upper()} {qty:g}  {_money(pnl)}")
     status = "🟢 RUNNING" if bot.get("is_running") else "⏸️ PAUSED"
     return (
-        f"<b>🐾 {bot['bot_name']}</b>\n"
+        f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
         f"<code>{line}</code>\n"
         f"{status} · {_chain_label(chain)}\n\n"
         f"<b>💰 BALANCE</b>\n"
         f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
         f"{f'  native {native:,.4f}' if native else ''}\n"
         f"{f'  realized {_money(realized)}' if realized else ''}\n\n"
-        f"{('<b>🔗 ADDRESS</b>\n  <code>' + addr + '</code>') if addr else ''}\n"
+        f"{('<b>🔗 ADDRESS</b>\n  <code>' + _esc(addr) + '</code>') if addr else ''}\n"
         f"<b>📡 POSITIONS ({len(positions)})</b>\n" + "\n".join(pos_lines) + "\n"
         f"<code>{line}</code>"
     )
@@ -258,7 +264,8 @@ class UserBotController:
 
     def _user_wallet(self, bot_id: int, chain: str) -> dict | None:
         """The user's own generated wallet (from onboarding) for a chain,
-        regardless of gateway readiness."""
+        regardless of gateway readiness. Falls back to the registry-stored
+        address so the screen always shows the user's wallet."""
         try:
             ledger = self._exec_ledger()
             wallet = ledger.wallet_by_bot_chain(bot_id, chain)
@@ -267,28 +274,113 @@ class UserBotController:
                     ledger.close()
                 except Exception:
                     pass
-            return wallet
+            if wallet:
+                return wallet
         except Exception:
-            return None
+            pass
+        try:
+            b = self.registry.get_bot(bot_id)
+            addr = (b or {}).get("wallet_addr") or ""
+            if addr:
+                return {"id": None, "bot_id": bot_id, "chain": chain,
+                        "address": addr, "key_enc": None, "key_hash": None,
+                        "pubkey": addr, "status": "created"}
+        except Exception:
+            pass
+        return None
 
     def _generate_user_wallet(self, bot_id: int, chain: str) -> dict | None:
         """Generate + store a fresh per-chain wallet for the user. Returns the
-        wallet row (with decrypted key in 'private_key') or None on failure."""
+        wallet row (with decrypted key in 'private_key') or None on failure.
+        Reuses an existing wallet for (bot_id, chain) if one is already stored
+        in the exec ledger - never silently overwrites a funded address."""
         try:
             self._exec_path()
             from exec_vault import ExecVault, generate_key_material
+            from ledger import ExecLedger
+            ledger = ExecLedger(os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
+            existing = ledger.wallet_by_bot_chain(bot_id, chain)
+            if existing and existing.get("key_enc"):
+                vault = ExecVault()
+                try:
+                    key = vault.decrypt(existing["key_enc"])
+                    addr = existing["address"]
+                except Exception:
+                    key, addr = None, existing.get("address")
+                if key or addr:
+                    try:
+                        ledger.close()
+                    except Exception:
+                        pass
+                    if key:
+                        return {"address": addr, "private_key": key}
+                    return {"address": addr, "private_key": "", "existing": True}
             vault = ExecVault()
             addr, key_hex = generate_key_material(chain)
             enc = vault.encrypt(key_hex)
-            from ledger import ExecLedger
-            ledger = ExecLedger(os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
             ledger.upsert_wallet(bot_id, chain, addr, addr, enc, ExecVault.key_hash(key_hex))
-            ledger.close()
+            try:
+                ledger.close()
+            except Exception:
+                pass
+            # Persist the address on the registry bots row so Receive / wallet
+            # screens can always show the user's wallet - even if the exec
+            # ledger is ever reset or the path differs between processes.
+            try:
+                self.registry.update_bot(bot_id, wallet_addr=addr)
+            except Exception:
+                pass
             return {"address": addr, "private_key": key_hex}
         except Exception as exc:
             import logging
             logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
             return None
+
+    def _rpc_balances(self, bot_id: int, chain: str, address: str) -> dict:
+        """Read on-chain balances via public RPC using ONLY the wallet address
+        (no private key needed). Keeps Receiver / dashboard accurate even when
+        the execution gateway has no operator keys configured yet.
+
+        Sui: suix_getBalance for native SUI + USDC on the bot's network.
+        Solana: getBalance (SOL) + token account (USDC). Hyperliquid: n/a via
+        public RPC without keys -> returns {}.
+        """
+        if not address:
+            return {}
+        try:
+            b = self.registry.get_bot(bot_id) or {}
+            network = (b.get("network") or "testnet").strip().lower()
+            testnet = network != "mainnet"
+            import requests
+            if chain == "sui":
+                rpc = ("https://fullnode.testnet.sui.io:443" if testnet
+                       else "https://fullnode.mainnet.sui.io:443")
+                usdc_type = "0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN"
+                out = {"USDC": 0.0, "native": 0.0}
+                for key, coin in (("native", "0x2::sui::SUI"), ("USDC", usdc_type)):
+                    try:
+                        r = requests.post(rpc, json={
+                            "jsonrpc": "2.0", "id": 1, "method": "suix_getBalance",
+                            "params": [address, coin]}, timeout=8)
+                        dec = 9 if key == "native" else 6
+                        out[key] = float(int(r.json().get("result", {}).get("totalBalance", 0) or 0)) / (10 ** dec)
+                    except Exception:
+                        pass
+                return out
+            if chain == "solana":
+                rpc = "https://api.devnet.solana.com" if testnet else "https://api.mainnet-beta.solana.com"
+                out = {"USDC": 0.0, "native": 0.0}
+                try:
+                    r = requests.post(rpc, json={
+                        "jsonrpc": "2.0", "id": 1, "method": "getBalance",
+                        "params": [address]}, timeout=8)
+                    out["native"] = float(r.json().get("result", {}).get("value", 0) or 0) / 1e9
+                except Exception:
+                    pass
+                return out
+        except Exception:
+            return {}
+        return {}
 
     def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
         self._exec_path()
@@ -603,7 +695,11 @@ class UserBotController:
             b = self.registry.get_bot(bot_id)
             interval = b.get("interval_sec", 120) if b else 120
             text = ONBOARD["intro"].format(interval=interval)
+            text += ("\n\n📣 <b>First thing:</b> follow our channel "
+                     "https://t.me/Nekobotnews - it helps you use Neko-Chan "
+                     "properly (updates, tips, announcements).")
             kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("📣 Follow @Nekobotnews", url="https://t.me/Nekobotnews")],
                 [telegram.InlineKeyboardButton("Continue →", callback_data="ob:trader")],
             ])
             msg = update.message or update.callback_query.message
@@ -622,9 +718,13 @@ class UserBotController:
                 "swing": ONBOARD["trader_swing"],
                 "auto": ONBOARD["trader_auto"],
             }
+            # Scalp principles: tight stops, quick 1-2% targets, but leverage is
+            # kept moderate (3x) so a sudden wick doesn't wipe the position.
+            leverage_for = {"scalp": 3.0, "intraday": 2.0, "swing": 2.0, "auto": 2.0}
             ttype = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if ttype in texts:
-                self.registry.update_bot(bot_id, trader_type=ttype)
+                self.registry.update_bot(bot_id, trader_type=ttype,
+                                         leverage=leverage_for.get(ttype, 2.0))
                 kb = telegram.InlineKeyboardMarkup([
                     [telegram.InlineKeyboardButton("Continue →", callback_data="ob:chain")],
                     [telegram.InlineKeyboardButton(BACK, callback_data="ob:trader")],
@@ -684,21 +784,25 @@ class UserBotController:
             try:
                 self._exec_path()
                 from exec_vault import ExecVault, generate_key_material
-                vault = ExecVault()
-                addr, key_hex = generate_key_material(chain)
-                enc = vault.encrypt(key_hex)
-                # Always persist to the canonical exec ledger (same path the
-                # gateway uses) so the user's wallet survives restarts and is
-                # readable via _user_wallet even before chain keys are set.
                 from ledger import ExecLedger
                 _path = os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db")
                 _ledger = ExecLedger(_path)
-                _ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
-                                      ExecVault.key_hash(key_hex))
+                existing = _ledger.wallet_by_bot_chain(bot_id, chain)
+                if existing and existing.get("key_enc"):
+                    addr = existing["address"]
+                    key_hex = vault.decrypt(existing["key_enc"]) if existing.get("key_enc") else key_hex
+                else:
+                    addr, key_hex = generate_key_material(chain)
+                    enc = vault.encrypt(key_hex)
+                    _ledger.upsert_wallet(bot_id, chain, addr, addr, enc,
+                                          ExecVault.key_hash(key_hex))
                 try:
                     _ledger.close()
                 except Exception:
                     pass
+                # Keep the registry bots row in sync so the user's address
+                # survives even if the exec ledger path ever differs.
+                self.registry.update_bot(bot_id, wallet_addr=addr)
             except Exception as exc:
                 import logging
                 logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
@@ -809,8 +913,8 @@ class UserBotController:
                         sym = matched.get("symbol", "?")
                         qty = matched.get("qty", "")
                         price = matched.get("price", "")
-                        reasoning = (matched.get("reasoning") or "").strip()
-                        lines.append(f"📊 <b>Latest on {sym}</b>\n"
+                        reasoning = (_esc(matched.get("reasoning") or "")).strip()
+                        lines.append(f"📊 <b>Latest on {_esc(sym)}</b>\n"
                                      f"  Action: {action} · qty {qty} · price ${price}")
                         if reasoning:
                             lines.append(f"  Why: {reasoning[:160]}")
@@ -823,9 +927,6 @@ class UserBotController:
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
                                            [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
-            await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
-                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
 
         async def _exec_account(self, bot_id: int, chain: str) -> dict:
             """Real on-chain account state for a bot+chain (RPC, not mock).
@@ -835,7 +936,9 @@ class UserBotController:
             wallet = self._user_wallet(bot_id, chain)
             if not self._exec_ready():
                 if wallet:
-                    return {"balances": {}, "positions": [],
+                    return {"balances": self._rpc_balances(bot_id, chain,
+                                                           wallet.get("address") or ""),
+                            "positions": [],
                             "wallet_address": wallet.get("address") or ""}
                 return {"balances": {}, "positions": []}
             self._exec_path()
@@ -1076,12 +1179,20 @@ class UserBotController:
                 return
             if q.data.startswith("sb:set_trader_type"):
                 ttype = q.data.rsplit(":", 1)[1]
-                self.registry.update_bot(bot_id, trader_type=ttype)
-                await q.message.edit_text(f"✅ Trader type set to: <b>{ttype.upper()}</b>\n\n"
-                                          f"Restart your bot for this to take effect (it uses the new "
-                                          f"horizon filter on the next cycle).",
-                                          parse_mode="HTML",
-                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
+                # Scalp principles baked in: tight stops + moderate 3x leverage
+                # (a leverage spike + tight stop = liquidation). Suggest the
+                # matching default but let the user override afterwards.
+                leverage_for = {"scalp": 3.0, "intraday": 2.0, "swing": 2.0, "auto": 2.0}
+                self.registry.update_bot(bot_id, trader_type=ttype,
+                                         leverage=leverage_for.get(ttype, 2.0))
+                await q.message.edit_text(
+                    f"✅ Trader type set to: <b>{ttype.upper()}</b>\n\n"
+                    f"⚖️ Suggested leverage for {ttype.upper()}: "
+                    f"<b>{leverage_for.get(ttype, 2.0):g}x</b> (adopted - you can change "
+                    f"it from the Leverage button below).\n\n"
+                    f"Restart your bot for this to take effect on the next cycle.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
                 return
             if q.data.startswith("sb:set_leverage"):
                 lev = float(q.data.rsplit(":", 1)[1])
@@ -1141,7 +1252,7 @@ class UserBotController:
             active = watched or default
             text = (f"📋 <b>Watchlist</b> - {_chain_label(chain)}\n\n"
                     f"Assets Neko-Chan is analyzing:\n"
-                    + "\n".join(f"  • {s}" for s in active)
+                    + "\n".join(f"  • {_esc(s)}" for s in active)
                     + "\n\nType <b>watch &lt;ASSET&gt;</b> (e.g. <b>watch DEEP</b>) "
                       "to add a specific asset to your watchlist. Neko-Chan will "
                       "check it's available on this chain and focus on it.")
@@ -1357,7 +1468,7 @@ class UserBotController:
                 photo_path = None
             text = (f"📥 <b>Receive on {_chain_label(chain)}</b>\n\n"
                     f"Scan the QR or send USDC (or {chain} native) to this address:\n\n"
-                    f"<code>{addr}</code>\n\n"
+                    f"<code>{_esc(addr)}</code>\n\n"
                     f"Only send {_chain_label(chain)} assets here. The bot activates "
                     f"once a deposit is detected.")
             kb = telegram.InlineKeyboardMarkup([
@@ -1577,24 +1688,32 @@ class UserBotController:
         async def check_deposits(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            if not self._exec_ready():
-                await q.message.edit_text(USERBOT["deposit_not_configured"],
-                                          reply_markup=telegram.InlineKeyboardMarkup(
-                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
-                return
-            await q.message.edit_text(USERBOT["deposit_checking"])
+            b = self.registry.get_bot(bot_id)
+            chain = (b or {}).get("chain") or "sui"
+            account = {"balances": {}, "positions": [], "wallet_address": ""}
+            try:
+                account = self._exec_account(bot_id, chain)
+            except Exception:
+                pass
+            bal = account.get("balances") or {}
+            usdc = float(bal.get("USDC", 0))
+            native = float(bal.get("native", 0))
+            addr = account.get("wallet_address") or ""
+            # Gateway fully connected -> also run the on-chain deposit scanner.
             found_all = []
-            for chain in self.gateway.adapters:
-                try:
-                    found = self.gateway.scan_deposits(bot_id, chain) or []
-                    for ev in found:
-                        ev["chain"] = chain
-                    found_all.extend(found)
-                except Exception:
-                    continue
-            self._exec_path()
-            from wallet_ui import CHAIN_LABELS
+            if self._exec_ready():
+                await q.message.edit_text(USERBOT["deposit_checking"])
+                for ch in self.gateway.adapters:
+                    try:
+                        found = self.gateway.scan_deposits(bot_id, ch) or []
+                        for ev in found:
+                            ev["chain"] = ch
+                        found_all.extend(found)
+                    except Exception:
+                        continue
             if found_all:
+                self._exec_path()
+                from wallet_ui import CHAIN_LABELS
                 lines = [USERBOT["deposit_found"].format(
                     chain_label=CHAIN_LABELS.get(ev.get("chain"), ev.get("chain")),
                     amount=float(ev.get("amount") or 0),
@@ -1605,11 +1724,24 @@ class UserBotController:
                     reply_markup=telegram.InlineKeyboardMarkup(
                         [[telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent")],
                          [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
-            else:
-                await q.message.edit_text(USERBOT["deposit_none"],
-                                          reply_markup=telegram.InlineKeyboardMarkup(
-                                              [[telegram.InlineKeyboardButton("🔍 Check Again", callback_data="sb:check_deposits")],
-                                               [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            if addr and (usdc > 0 or native > 0):
+                # RPC-confirmed balance (works even without bonded gateway keys).
+                await q.message.edit_text(
+                    f"💰 <b>Balance confirmed on {_chain_label(chain)}</b>\n"
+                    f"  USDC  <code>${usdc:,.2f}</code>\n"
+                    f"  native {native:,.4f}\n\n"
+                    f"<code>{_esc(addr)}</code>\n\n"
+                    f"Your wallet is ready. Enable the agent to start trading.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent")],
+                         [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            await q.message.edit_text(USERBOT["deposit_none"],
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("🔍 Check Again", callback_data="sb:check_deposits")],
+                                           [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
 
         async def enable_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query

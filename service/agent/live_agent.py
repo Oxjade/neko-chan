@@ -896,6 +896,41 @@ def notify_error(message: str, kind: str = "error") -> None:
         pass
 
 
+def notify_trade(symbol: str, action: str, qty: float, price: float,
+                 stop_pct: float, take_pct: float, leverage: float,
+                 reasoning: str = "") -> None:
+    """Pop-up to the user right BEFORE a real/paper order goes out: the trade
+    the LLM + quant just decided on. Uses the shared dedup lock so repeated
+    cycles never double-post the same symbol/action/direction signal."""
+    if not TG_BOT_TOKEN or not TG_CHAT_ID:
+        return
+    side = "LONG" if action in ("buy", "cover") else "SHORT"
+    kind = "trade"
+    key = f"{kind}:{symbol}:{action}"
+    if not _notify_claim(key):
+        return
+    pad = f"{reasoning[:140]}" if reasoning else ""
+    text = (
+        f"🎯 <b>Neko-Chan decided: {side} {_esc(symbol)}</b>\n\n"
+        f"   {action.upper()} <b>{qty:g}</b> {_esc(symbol)} @ ${price:,.4f}\n"
+        f"   Leverage <b>{leverage:g}x</b> · Stop {stop_pct:.1f}% · Take {take_pct:.1f}%\n"
+        f"{f'   {_esc(pad)}' if pad else ''}"
+    )
+    try:
+        import requests as _r
+        _r.post(
+            f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
+            json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "HTML"},
+            timeout=15,
+        )
+    except Exception:
+        pass
+
+
+def _esc(v) -> str:
+    return str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def log_decision(row: dict):
     """Append one decision row to the CSV log. Never raises: a cycle that fails
     to execute a DB fill must still leave a durable log record."""
@@ -1414,6 +1449,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
             print(f"[dry] would {action} {qty} {symbol} [{market}] (stop {stop_pct}%, take {take_pct}%)")
             row["fill_ok"] = "dry"
         elif gw:
+            # Pop-up the decided trade BEFORE the order goes out.
+            notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
+                         stop_pct, take_pct,
+                         clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE),
+                         reasoning=f"[LLM+quant] {reasoning}")
             # REAL EXECUTION: route through the gateway (VenueRouter -> adapter).
             fill = route_real_order(gw, EXEC_BOT_ID, symbol, market, row["action"], qty,
                                     stop_pct or None, take_pct or None,
@@ -1435,6 +1475,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 stop=_last_scenario.stop,
                                 target=_last_scenario.target)
         else:
+            # Pop-up the decided trade BEFORE the paper order goes out.
+            notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
+                         stop_pct, take_pct,
+                         clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE),
+                         reasoning=f"[LLM+quant] {reasoning}")
             fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
                      leverage=clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE))
             row["fill_ok"] = fill["ok"]

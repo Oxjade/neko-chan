@@ -206,19 +206,29 @@ ONBOARD = {
               "🛡️ <b>Control</b> - kill-switch, withdrawal, and full visibility "
               "of keys and balances are always one tap away."),
     "trader": ("⚡ <b>What type of trader are you?</b>\n\n"
-               "This sets how Neko-Chan trades for you. You can change it anytime."),
+               "This sets how Neko-Chan trades for you (leverage, hold time, "
+               "risk). You can change it anytime."),
     "trader_scalp": ("⚡ <b>Scalp</b> - minutes\n\n"
                      "Fast in/out. 1-2% targets, tight stops, high trade count.\n"
-                     "Best for active, volatile markets."),
+                     "Best for active, volatile markets.\n\n"
+                     "<b>Leverage 3x</b> - tight stop + scalp speed keeps risk "
+                     "contained; bigger leverage with a tight stop only adds "
+                     "liquidation risk, not profit."),
     "trader_intraday": ("⏱ <b>Intraday</b> - hours\n\n"
                         "Positions held within the day. 2-4% targets, balanced pace.\n"
-                        "A steady cadence for most sessions."),
+                        "A steady cadence for most sessions.\n\n"
+                        "<b>Leverage 2x</b> - keeps room for wider intraday swings "
+                        "without liquidation pressure."),
     "trader_swing": ("📈 <b>Swing</b> - days\n\n"
                      "Ride the trend. 4-8% targets, wider stops, fewer bigger trades.\n"
-                     "For patient traders."),
+                     "For patient traders.\n\n"
+                     "<b>Leverage 2x</b> - wide stops need low leverage so a normal "
+                     "pullback doesn't liquidate you."),
     "trader_auto": ("🤖 <b>Auto</b> - let Neko decide\n\n"
                     "The engine adapts per market and volatility.\n"
-                    "Recommended for most users."),
+                    "Recommended for most users.\n\n"
+                    "<b>Leverage 2x</b> base, scaled down automatically when "
+                    "volatility or drawdown rises."),
     "chain": ("⛓ <b>Which chain will you trade on?</b>\n\n"
               "This is where your orders execute."),
     "chain_sui": ("⛓ <b>Sui</b> (Bluefin perps)\n\n"
@@ -240,9 +250,12 @@ ONBOARD = {
     "wallet_confirm": ("🗝️ <b>Did you save your private key?</b>\n\n"
                        "This is the ONLY copy that will ever be shown. "
                        "Without it you cannot withdraw your funds."),
-    "wallet_saved": ("✅ Perfect. Your wallet is locked in.\n\n"
-                     "Send USDC (or the chain's native token) to your address "
-                     "and Neko-Chan will start trading once the deposit lands."),
+"wallet_saved": ("✅ Perfect. Your wallet is locked in.\n\n"
+                      "Send USDC (or the chain's native token) to your address "
+                      "and Neko-Chan will start trading once the deposit lands.\n\n"
+                      "📣 <b>Follow our channel</b> to use Neko-Chan properly - "
+                      "updates, tips and announcements:\n"
+                      "https://t.me/Nekobotnews"),
 }
 
 NOTIF = {
