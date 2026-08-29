@@ -57,6 +57,9 @@ UNIVERSE = [
 INTERVAL = int(os.getenv("LIVE_AGENT_INTERVAL", "120"))
 BASE_URL = os.getenv("AI_TRADER_URL", "http://127.0.0.1:8000")
 MAX_DAILY_TRADES = int(os.getenv("LIVE_AGENT_MAX_DAILY_TRADES", "12"))
+# Per-user watchlist: comma-separated symbols the user typed "watch <ASSET>" for.
+# These are PREPENDED to the universe so the agent always considers them first.
+WATCHED = [s.strip().upper() for s in os.getenv("LIVE_AGENT_WATCHLIST", "").split(",") if s.strip()]
 MAX_POSITION_PCT = float(os.getenv("LIVE_AGENT_MAX_POSITION_PCT", "30"))
 FORCE_STOP_PCT = float(os.getenv("LIVE_AGENT_FORCE_STOP_PCT", "5"))
 # 1 = active scalper mode: hold a position most of the time (long/short), trade often.
@@ -1151,12 +1154,16 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         ]
                         has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
                         has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
-                    # top candidates the LLM will choose among (ranked by conviction)
+                    # top candidates the LLM will choose among (ranked by conviction).
+                    # Watched assets (user said "watch <ASSET>") are prioritized so
+                    # the agent focuses reasoning + trades on them first.
                     actionable = sorted([s for s in matrix if s.ev > 0],
-                                        key=lambda s: s.conviction, reverse=True)
+                                        key=lambda s: (s.symbol in WATCHED, s.conviction),
+                                        reverse=True)
                     top = actionable[:8]
                     print(f"[quant] scenario matrix: {len(matrix)} scenarios, "
-                          f"{len(actionable)} positive-EV")
+                          f"{len(actionable)} positive-EV"
+                          + (f", watched={[s for s in WATCHED]}" if WATCHED else ""))
 
                 if not top:
                     decision = {"action": "hold", "symbol": "", "quantity": 0,
@@ -1459,13 +1466,16 @@ def _scope_universe_to_chain() -> None:
     """At startup, if the user chose a specific chain (LIVE_AGENT_CHAIN) and no
     explicit perp universe is pinned, restrict trading to that chain's top-5
     perp assets. Runs before the gateway so paper mode still analyzes the
-    right chain's tokens."""
+    right chain's tokens. Also prepends any 'watch <ASSET>' symbols so the
+    user's picks always get priority."""
     try:
         chain = os.getenv("LIVE_AGENT_CHAIN", "").strip().lower()
-        if not chain:
-            return
         pinned = [s for s, m in UNIVERSE if m == "crypto"]
-        if pinned:
+        # Watched assets always join the universe first (highest priority).
+        for sym in WATCHED:
+            if sym and (sym, "crypto") not in UNIVERSE:
+                UNIVERSE.insert(0, (sym, "crypto"))
+        if not chain or pinned:
             return
         top5 = {
             "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
@@ -1478,7 +1488,8 @@ def _scope_universe_to_chain() -> None:
             if sym not in current:
                 UNIVERSE.append((sym, "crypto"))
                 current.add(sym)
-        print(f"[agent] chain={chain}: watching top {len(top5)} perp assets ({', '.join(top5)})")
+        print(f"[agent] chain={chain}: watching top {len(top5)} perp assets ({', '.join(top5)})"
+              + (f" + user picks {', '.join(WATCHED)}" if WATCHED else ""))
     except Exception as exc:
         print(f"[agent] chain scope skipped: {exc}")
 

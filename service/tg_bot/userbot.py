@@ -44,14 +44,14 @@ def _mask_addr(addr: str) -> str:
 
 
 def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
-    """Simple production dashboard: real chain balance + positions + chain."""
+    """Simple production dashboard: real chain balance + address + positions."""
     line = "─" * 26
     bal = account.get("balances") or {}
     usdc = float(bal.get("USDC", 0))
     native = float(bal.get("native", 0))
     positions = account.get("positions") or []
     realized = float(bal.get("realized_pnl", 0))
-    equity = usdc + realized
+    addr = str(account.get("wallet_address") or "") or ""
     pos_lines = []
     if not positions:
         pos_lines.append("  no open positions")
@@ -62,16 +62,15 @@ def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
         pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
         pos_lines.append(f"  {sym}  {side.upper()} {qty:g}  {_money(pnl)}")
     status = "🟢 RUNNING" if bot.get("is_running") else "⏸️ PAUSED"
-    addr = str(bot.get("wallet_address") or "") or ""
     return (
         f"<b>🐾 {bot['bot_name']}</b>\n"
         f"<code>{line}</code>\n"
-        f"{status} · {_chain_label(chain)}\n"
-        f"{('address <code>' + _mask_addr(addr) + '</code>') if addr else ''}\n\n"
+        f"{status} · {_chain_label(chain)}\n\n"
         f"<b>💰 BALANCE</b>\n"
         f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
         f"{f'  native {native:,.4f}' if native else ''}\n"
         f"{f'  realized {_money(realized)}' if realized else ''}\n\n"
+        f"{('<b>🔗 ADDRESS</b>\n  <code>' + addr + '</code>') if addr else ''}\n"
         f"<b>📡 POSITIONS ({len(positions)})</b>\n" + "\n".join(pos_lines) + "\n"
         f"<code>{line}</code>"
     )
@@ -269,6 +268,25 @@ class UserBotController:
                     pass
             return wallet
         except Exception:
+            return None
+
+    def _generate_user_wallet(self, bot_id: int, chain: str) -> dict | None:
+        """Generate + store a fresh per-chain wallet for the user. Returns the
+        wallet row (with decrypted key in 'private_key') or None on failure."""
+        try:
+            self._exec_path()
+            from exec_vault import ExecVault, generate_key_material
+            vault = ExecVault()
+            addr, key_hex = generate_key_material(chain)
+            enc = vault.encrypt(key_hex)
+            from ledger import ExecLedger
+            ledger = ExecLedger(os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
+            ledger.upsert_wallet(bot_id, chain, addr, addr, enc, ExecVault.key_hash(key_hex))
+            ledger.close()
+            return {"address": addr, "private_key": key_hex}
+        except Exception as exc:
+            import logging
+            logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
             return None
 
     def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
@@ -754,13 +772,22 @@ class UserBotController:
         async def peek(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            # Read the latest agent decision from the CSV log
             lines = ["👀 Agent Status\n"]
             b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            watched = _parse_watchlist(b.get("watchlist"))
+            if watched:
+                lines.append(f"Your picks: {', '.join(watched)}")
+            default = {
+                "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
+            }.get(chain, ["BTC", "ETH"])
+            active = (watched or default)[:5]
+            lines.append(f"Analyzing: {', '.join(active)} on {_chain_label(chain)}\n")
             if not b.get("is_running"):
                 lines.append("Agent is not running. Tap ▶️ Start to begin.")
             else:
-                lines.append("Agent is running. Checking latest activity...")
                 try:
                     import csv
                     from pathlib import Path
@@ -772,7 +799,7 @@ class UserBotController:
                                 last = reader[-1]
                                 lines.append(f"Last decision: {last.get('action','?')} {last.get('symbol','')} "
                                              f"qty={last.get('qty','')} price={last.get('price','')}")
-                                lines.append(f"Reason: {last.get('reasoning','')[:100]}")
+                                lines.append(f"Reason: {last.get('reasoning','')[:120]}")
                             else:
                                 lines.append("No decisions yet. Agent is analyzing.")
                 except Exception:
@@ -1084,14 +1111,76 @@ class UserBotController:
         async def watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            text = ("📋 <b>Watchlist</b>\n\n"
-                    "The markets Neko-Chan scans for setups:\n\n"
-                    "crypto: BTC, ETH, SOL, SUI, HYPE, SEI, NEAR, ATOM\n"
-                    "stocks: AAPL, NVDA, SPY (coming soon)\n\n"
-                    "Configure which markets your bot watches by setting "
-                    "LIVE_AGENT_SYMBOLS when the agent runs.")
+            b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            watched = _parse_watchlist(b.get("watchlist"))
+            default = {
+                "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
+            }.get(chain, ["BTC", "ETH"])
+            active = watched or default
+            text = (f"📋 <b>Watchlist</b> - {_chain_label(chain)}\n\n"
+                    f"Assets Neko-Chan is analyzing:\n"
+                    + "\n".join(f"  • {s}" for s in active)
+                    + "\n\nType <b>watch &lt;ASSET&gt;</b> (e.g. <b>watch DEEP</b>) "
+                      "to add a specific asset to your watchlist. Neko-Chan will "
+                      "check it's available on this chain and focus on it.")
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
+
+        async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            raw = (update.message.text or "").strip()
+            # "watch <ASSET>" - case-insensitive, any spacing
+            import re as _re
+            m = _re.match(r"(?i)^\s*watch\s+([A-Z0-9]+)\s*$", raw)
+            if not m:
+                await update.message.reply_text("Type <b>watch &lt;ASSET&gt;</b>, e.g. <b>watch DEEP</b>.",
+                                                parse_mode="HTML")
+                return
+            asset = m.group(1).upper()
+            b = self.registry.get_bot(bot_id)
+            chain = b.get("chain") or "sui"
+            # Check the asset is available on the chain's venue (Bluefin for Sui).
+            supported = self._chain_supported_assets(chain)
+            if supported and asset not in supported:
+                await update.message.reply_text(
+                    f"❌ <b>{asset}</b> isn't on {_chain_label(chain)}.\n"
+                    f"Available: {', '.join(sorted(supported))}",
+                    parse_mode="HTML")
+                return
+            watched = set(_parse_watchlist(b.get("watchlist")))
+            watched.add(asset)
+            self.registry.update_bot(bot_id, watchlist=",".join(sorted(watched)))
+            await update.message.reply_text(
+                f"✅ <b>{asset}</b> added to your watchlist.\n"
+                f"Neko-Chan will focus on {asset} for reasoning and trades.",
+                parse_mode="HTML")
+
+        def _parse_watchlist(raw):
+            try:
+                raw = raw or ""
+                if isinstance(raw, (list, tuple)):
+                    return [str(x).upper() for x in raw if str(x).strip()]
+                return [x.strip().upper() for x in str(raw).split(",") if x.strip()]
+            except Exception:
+                return []
+
+        def _chain_supported_assets(self, chain: str) -> list[str]:
+            try:
+                self._exec_path()
+                if self.gateway and chain in self.gateway.adapters:
+                    from wallet_ui import CHAIN_LABELS  # noqa
+                    bluefin = getattr(self.gateway.adapters[chain], "bluefin", None)
+                    if bluefin is not None:
+                        return sorted(bluefin.markets() or [])
+                return sorted({
+                    "sui": ["BTC", "ETH", "SOL", "SUI", "ARB", "DOGE", "LINK", "SEI", "OP", "BNB", "AVAX", "LTC", "MATIC"],
+                    "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                    "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE", "SEI", "NEAR", "ATOM"],
+                }.get(chain, ["BTC", "ETH"]))
+            except Exception:
+                return ["BTC", "ETH", "SOL", "SUI", "ARB"]
 
         async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1209,9 +1298,16 @@ class UserBotController:
                 account = {"balances": {}, "positions": []}
             addr = account.get("wallet_address") or ""
             if not addr:
-                await q.message.edit_text("💼 No wallet yet - generate one via onboarding.",
-                                          reply_markup=telegram.InlineKeyboardMarkup(
-                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                # No wallet yet: offer to generate + store one now.
+                text = ("💼 <b>No wallet yet</b>\n\n"
+                        "Generate a {chain} trading wallet to receive funds. "
+                        "You'll be shown the private key once - store it safely.".format(
+                            chain=_chain_label(chain)))
+                kb = telegram.InlineKeyboardMarkup([
+                    [telegram.InlineKeyboardButton("⚙️ Generate Wallet", callback_data=f"sb:gen_wallet:{chain}")],
+                    [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
+                ])
+                await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
                 return
             # QR code for the receive address
             photo_path = None
@@ -1224,7 +1320,7 @@ class UserBotController:
             except Exception:
                 photo_path = None
             text = (f"📥 <b>Receive on {_chain_label(chain)}</b>\n\n"
-                    f"Send USDC (or {chain} native) to this address:\n\n"
+                    f"Scan the QR or send USDC (or {chain} native) to this address:\n\n"
                     f"<code>{addr}</code>\n\n"
                     f"Only send {_chain_label(chain)} assets here. The bot activates "
                     f"once a deposit is detected.")
@@ -1245,6 +1341,33 @@ class UserBotController:
                 except Exception:
                     pass
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+        async def gen_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            chain = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else "sui"
+            wallet = self._generate_user_wallet(bot_id, chain)
+            if not wallet:
+                await q.message.edit_text("⚠️ Couldn't generate a wallet for this chain. Try again.",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+                return
+            text = (ONBOARD["wallet_created"].format(
+                chain=_chain_label(chain),
+                address=wallet["address"],
+                private_key=wallet["private_key"]))
+            kb = telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton("🗝️ I've saved my key", callback_data="sb:gen_wallet_done")],
+            ])
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+        async def gen_wallet_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            await q.message.edit_text("✅ Wallet saved. You can now receive funds.",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
+                                           [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def send_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1654,6 +1777,8 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))
         app.add_handler(CallbackQueryHandler(receive, pattern=r"^sb:receive$"))
+        app.add_handler(CallbackQueryHandler(gen_wallet, pattern=r"^sb:gen_wallet:"))
+        app.add_handler(CallbackQueryHandler(gen_wallet_done, pattern=r"^sb:gen_wallet_done$"))
         send_conv = ConversationHandler(
             entry_points=[CallbackQueryHandler(send_start, pattern=r"^sb:send$")],
             states={
@@ -1671,6 +1796,7 @@ class UserBotController:
         app.add_handler(send_conv)
         app.add_handler(CallbackQueryHandler(chain_switch, pattern=r"^sb:chain"))
         app.add_handler(CallbackQueryHandler(watchlist, pattern=r"^sb:watchlist$"))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, watch_command))
         app.add_handler(CallbackQueryHandler(support, pattern=r"^sb:support$"))
         app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))
         app.add_handler(CallbackQueryHandler(check_deposits, pattern=r"^sb:check_deposits$"))

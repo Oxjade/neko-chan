@@ -75,6 +75,7 @@ class AgentPool:
             "LIVE_AGENT_TRADER_TYPE": bot.get("trader_type") or "scalp",
             "LIVE_AGENT_NETWORK": bot.get("network") or "testnet",
             "LIVE_AGENT_CHAIN": bot.get("chain") or "sui",
+            "LIVE_AGENT_WATCHLIST": bot.get("watchlist") or "",
             # for pushing human-friendly error notifications straight to the user
             "TG_BOT_TOKEN": self.registry.bot_token(bot_id) or "",
             "TG_CHAT_ID": str(bot["tg_id"]),

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS bots (
     trader_type TEXT DEFAULT 'scalp',
     chain TEXT DEFAULT 'sui',
     network TEXT DEFAULT 'testnet',
+    watchlist TEXT DEFAULT '',
     onboarding_complete INTEGER DEFAULT 0,
     created_at TEXT NOT NULL
 );
@@ -94,6 +95,7 @@ class Registry:
                 "ALTER TABLE bots ADD COLUMN trader_type TEXT DEFAULT 'scalp'",
                 "ALTER TABLE bots ADD COLUMN chain TEXT DEFAULT 'sui'",
                 "ALTER TABLE bots ADD COLUMN network TEXT DEFAULT 'testnet'",
+                "ALTER TABLE bots ADD COLUMN watchlist TEXT DEFAULT ''",
                 "ALTER TABLE bots ADD COLUMN onboarding_complete INTEGER DEFAULT 0",
             ):
                 try:
@@ -243,7 +245,7 @@ class Registry:
     def update_bot(self, bot_id: int, **fields) -> None:
         allowed = {"bot_name", "symbols", "leverage", "interval_sec", "risk_profile",
                    "is_running", "paused", "pid", "last_heartbeat", "last_error",
-                   "trader_type", "chain", "onboarding_complete", "network"}
+                   "trader_type", "chain", "onboarding_complete", "network", "watchlist"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return
