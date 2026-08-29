@@ -914,6 +914,18 @@ class UserBotController:
             q = update.callback_query
             await q.answer()
             b = self.registry.get_bot(bot_id)
+            if q.data.startswith("sb:set_network"):
+                net = q.data.rsplit(":", 1)[1]
+                if net not in ("mainnet", "testnet"):
+                    net = "testnet"
+                self.registry.update_bot(bot_id, network=net)
+                label = "🌐 mainnet" if net == "mainnet" else "🧪 testnet"
+                await q.message.edit_text(f"✅ Network set to: <b>{label}</b>\n\n"
+                                          f"⚠️ This affects which endpoints your orders hit. "
+                                          f"Restart your bot for it to take effect.",
+                                          parse_mode="HTML",
+                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
+                return
             if q.data.startswith("sb:set_interval"):
                 seconds = int(q.data.rsplit(":", 1)[1])
                 self.registry.update_bot(bot_id, interval_sec=seconds)
@@ -942,8 +954,10 @@ class UserBotController:
             icons = {"scalp": "⚡", "intraday": "⏱", "swing": "📈", "auto": "🤖"}
             ttype_label = f"{icons.get(current_ttype, '❓')} {current_ttype.upper()}"
             current_chain = b.get("chain") or "sui"
+            current_network = b.get("network") or "testnet"
             text = (f"⚙️ Settings - {b['bot_name']}\n\n"
                     f"Chain:     {_chain_label(current_chain)}\n"
+                    f"Network:   {'🌐 mainnet' if current_network == 'mainnet' else '🧪 testnet'}\n"
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Risk:      {b['risk_profile']}\n"
                     f"Leverage:  {float(b.get('leverage') or 1):g}x\n"
@@ -951,6 +965,8 @@ class UserBotController:
                     f"AI key:    {'set ✓' if self.registry.get_active_key(tg_id) else 'not set'}")
             kb = [
                 [telegram.InlineKeyboardButton(f"⛓ Chain: {_chain_label(current_chain)}", callback_data="sb:chain")],
+                [telegram.InlineKeyboardButton(f"🌐 Network: {'mainnet' if current_network == 'mainnet' else 'testnet'}", callback_data="sb:set_network:mainnet"),
+                 telegram.InlineKeyboardButton("testnet", callback_data="sb:set_network:testnet")],
                 [telegram.InlineKeyboardButton(f"⏱ Interval: {b['interval_sec']}s", callback_data="sb:set_interval:120"),
                  telegram.InlineKeyboardButton("60s", callback_data="sb:set_interval:60"),
                  telegram.InlineKeyboardButton("5m", callback_data="sb:set_interval:300")],
@@ -1463,7 +1479,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(trades, pattern=r"^sb:trades$"))
         app.add_handler(CallbackQueryHandler(leaderboard, pattern=r"^sb:lb$"))
         app.add_handler(CallbackQueryHandler(bot_controls, pattern=r"^sb:(pause|resume|pause_yes|delete|delete_yes)$"))
-        app.add_handler(CallbackQueryHandler(settings, pattern=r"^sb:(settings|set_interval:\d+|set_trader_type:\w+|set_leverage:\d+)$"))
+        app.add_handler(CallbackQueryHandler(settings, pattern=r"^sb:(settings|set_interval:\d+|set_trader_type:\w+|set_leverage:\d+|set_network:\w+)$"))
         app.add_handler(CallbackQueryHandler(inbox, pattern=r"^sb:inbox$"))
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
         app.add_handler(CallbackQueryHandler(wallet_screen, pattern=r"^sb:wallet$"))

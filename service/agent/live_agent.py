@@ -641,6 +641,12 @@ def _get_exec_gateway():
     if _exec_gateway is None and EXEC_ENABLED:
         try:
             sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "execution"))
+            # Per-bot network selection: set the testnet env vars before building
+            # the gateway so the adapters hit the right RPC/API endpoints.
+            _network = os.getenv("LIVE_AGENT_NETWORK", "testnet").strip().lower()
+            is_testnet = _network != "mainnet"
+            for _chain_var in ("HL", "SOL", "SUI"):
+                os.environ[f"EXEC_{_chain_var}_TESTNET"] = "1" if is_testnet else "0"
             from gateway import ExecGateway
             gw = ExecGateway.build()
             if gw.ready:
