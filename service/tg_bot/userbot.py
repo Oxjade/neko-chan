@@ -604,13 +604,22 @@ class UserBotController:
             }
             chain = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if chain in texts:
-                await q.message.edit_text(texts[chain], parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup([
-                    [telegram.InlineKeyboardButton("✅ Trade on this chain", callback_data=f"ob:chain_confirm:{chain}")],
-                    [telegram.InlineKeyboardButton(BACK, callback_data="ob:chain")],
-                ]))
+                if chain == "sui":
+                    kb = telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("✅ Trade on this chain", callback_data="ob:chain_confirm:sui")],
+                        [telegram.InlineKeyboardButton(BACK, callback_data="ob:chain")],
+                    ])
+                else:
+                    # BLOCKED until released: non-Sui chains show the release
+                    # status and cannot be confirmed to trade.
+                    kb = telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("⛓ Sui is live now", callback_data="ob:chain:sui")],
+                        [telegram.InlineKeyboardButton(BACK, callback_data="ob:chain")],
+                    ])
+                await q.message.edit_text(texts[chain], parse_mode="HTML", reply_markup=kb)
                 return
             kb = telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton("⛓ Sui", callback_data="ob:chain:sui")],
+                [telegram.InlineKeyboardButton("⛓ Sui (live)", callback_data="ob:chain:sui")],
                 [telegram.InlineKeyboardButton("⛓ Solana", callback_data="ob:chain:solana")],
                 [telegram.InlineKeyboardButton("⛓ Hyperliquid", callback_data="ob:chain:hyperliquid")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="ob:trader")],
@@ -1104,15 +1113,28 @@ class UserBotController:
             await q.answer()
             target = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if target in ("sui", "solana", "hyperliquid"):
-                self.registry.update_bot(bot_id, chain=target)
-                await q.message.edit_text(f"✅ Trading chain set to {_chain_label(target)}.")
-                await dash(update, context)
+                if target == "sui":
+                    self.registry.update_bot(bot_id, chain=target)
+                    await q.message.edit_text(f"✅ Trading chain set to {_chain_label(target)}.")
+                    await dash(update, context)
+                    return
+                # BLOCKED until released: cannot switch to a not-yet-live chain.
+                text = (
+                    f"{_chain_label(target)}\n\n"
+                    f"{USERBOT['release_live']}\n\n"
+                    f"Only Sui (Bluefin) is live right now. "
+                    f"Switch back to Sui to trade."
+                )
+                await q.message.edit_text(text, parse_mode="HTML",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton("⛓ Switch to Sui", callback_data="sb:chain:sui")],
+                                               [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
                 return
             text = ("⛓ <b>Switch trading chain</b>\n\n"
                     "Your orders will execute on this chain.")
             kb = telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton("⛓ Sui (Bluefin)", callback_data="sb:chain:sui")],
-                [telegram.InlineKeyboardButton("⛓ Solana (Jupiter)", callback_data="sb:chain:solana")],
+                [telegram.InlineKeyboardButton("⛓ Sui (live)", callback_data="sb:chain:sui")],
+                [telegram.InlineKeyboardButton("⛓ Solana", callback_data="sb:chain:solana")],
                 [telegram.InlineKeyboardButton("⛓ Hyperliquid", callback_data="sb:chain:hyperliquid")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")],
             ])
@@ -1416,7 +1438,7 @@ class UserBotController:
         # onboarding: how Neko trades -> trader type -> chain -> wallet backup
         app.add_handler(CallbackQueryHandler(onboarding_intro, pattern=r"^ob:intro$"))
         app.add_handler(CallbackQueryHandler(onboarding_trader, pattern=r"^ob:trader"))
-        app.add_handler(CallbackQueryHandler(onboarding_chain, pattern=r"^ob:chain"))
+        app.add_handler(CallbackQueryHandler(onboarding_chain, pattern=r"^ob:chain(?::|$)"))
         app.add_handler(CallbackQueryHandler(onboarding_chain_confirm, pattern=r"^ob:chain_confirm:"))
         app.add_handler(CallbackQueryHandler(onboarding_key_saved, pattern=r"^ob:key_saved$"))
         app.add_handler(CallbackQueryHandler(dash, pattern=r"^sb:dash$"))
