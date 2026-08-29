@@ -108,7 +108,9 @@ class Notifier:
                buttons: list[list[str]] | None = None, dedup: bool = True,
                photo_path: str | None = None) -> bool:
         """Push one event. dedup=True drops repeats of the same (kind, ref_id).
-        If photo_path is set, sends the photo with caption instead of plain text."""
+        If photo_path is set, sends the photo with caption instead of plain text.
+        Every event is recorded in the registry for dedup; the dashboard's
+        Notifications button filters to trade events only."""
         if dedup and self.registry.event_seen(tg_id, kind, ref_id):
             return False
         if photo_path:

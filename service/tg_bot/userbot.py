@@ -994,11 +994,17 @@ class UserBotController:
         async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            events = self.registry.recent_events(tg_id, 15)
-            lines = ["📬 Notifications\n"]
+            # Only trade events belong in the notification button: fills, closes,
+            # stops, targets, liquidations. Milestone pings, position alerts and
+            # daily reports are chat-only and never shown here.
+            trade_kinds = {"watcher_fill", "watcher_close", "watcher_stop",
+                           "watcher_target", "watcher_liq"}
+            events = [e for e in self.registry.recent_events(tg_id, 60)
+                      if e["kind"] in trade_kinds]
+            lines = ["📬 Trade Notifications\n"]
             if not events:
-                lines.append("No notifications yet. Every fill, stop and summary lands here.")
-            for e in events:
+                lines.append("No trade notifications yet.")
+            for e in events[:15]:
                 payload = e.get("payload") or {}
                 txt = (payload.get("text") or "") if isinstance(payload, dict) else ""
                 if txt:
