@@ -1,0 +1,14 @@
+{
+  "__hold__": {
+    "ts": "2026-08-30T20:02:23.583393+00:00",
+    "symbol": "",
+    "action": "hold",
+    "price": 0,
+    "quantity": 0.0,
+    "stop_pct": 0.0,
+    "take_pct": 0.0,
+    "fill_ok": null,
+    "reasoning": "[LLM guard] short SOL below positive-EV/floor bar - held",
+    "error": ""
+  }
+}

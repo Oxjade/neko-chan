@@ -40,6 +40,7 @@ import requests
 
 AGENT_DIR = Path(__file__).resolve().parents[1]  # service/
 LOG_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
+CACHE_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_cache.json"
 TOKEN_FILE = Path(__file__).resolve().parents[2] / "service" / "agent" / ".agent_token"
 
 MODEL = os.getenv("LIVE_AGENT_MODEL", "opencode-go/deepseek-v4-flash")
@@ -1097,8 +1098,13 @@ def _esc(v) -> str:
 
 
 def log_decision(row: dict):
-    """Append one decision row to the CSV log. Never raises: a cycle that fails
-    to execute a DB fill must still leave a durable log record."""
+    """Append one decision row to the CSV log AND update the JSON cache.
+
+    The CSV is the append-only research/eval record. The JSON cache holds ONLY
+    the latest decision per symbol (overwritten every cycle) so Peek shows the
+    current state, not accumulated history - when a new trade is selected the
+    old rows are replaced, not stacked.
+    """
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         fresh = not LOG_PATH.exists()
@@ -1112,6 +1118,34 @@ def log_decision(row: dict):
                     f"{str(row.get('error','')).replace(',',';')}\n")
     except Exception as exc:
         print(f"[agent log] failed to append decision row: {exc}", file=sys.stderr)
+
+    # Cache: keep ONLY the latest decision per symbol. A hold is logged with an
+    # empty symbol, so it's stored under a fixed "__hold__" key. When the agent
+    # selects a new best trade the previous rows are overwritten in place.
+    try:
+        cache = {}
+        if CACHE_PATH.exists():
+            try:
+                cache = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                cache = {}
+        key = (str(row.get("symbol") or "").upper()) or "__hold__"
+        cache[key] = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "symbol": row.get("symbol"),
+            "action": row.get("action"),
+            "price": row.get("price"),
+            "quantity": row.get("quantity"),
+            "stop_pct": row.get("stop_pct"),
+            "take_pct": row.get("take_pct"),
+            "fill_ok": row.get("fill_ok"),
+            "reasoning": str(row.get("reasoning", "")),
+            "error": str(row.get("error", "")),
+        }
+        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CACHE_PATH.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"[agent log] failed to update cache: {exc}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------- main

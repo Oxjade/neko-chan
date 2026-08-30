@@ -1037,26 +1037,37 @@ class UserBotController:
             if not b.get("is_running"):
                 lines.append("⏸️ Agent is not running. Tap ▶️ Start to begin.")
             else:
-                # Latest decision per analyzed asset (the log is append-only, so
-                # the LAST row for a symbol is its most recent decision). Show
-                # every watched asset with its status - including "analyzing" -
-                # so Peek always reflects what the quant/LLM is working on, even
-                # when it's holding (a hold is logged with an EMPTY symbol, so
-                # we can't match it back; instead show the asset + "no trade").
+                # Latest decision per analyzed asset from the JSON cache (holds
+                # ONLY the current decision per symbol - old trades are replaced,
+                # never accumulated). Fall back to the append-only CSV if the
+                # cache is missing. A hold is stored under the "__hold__" key.
                 try:
-                    import csv
+                    import json as _json
                     from pathlib import Path
-                    log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
+                    cache_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_cache.json"
                     latest: dict[str, dict] = {}
                     last_reason = ""
-                    if log_path.exists():
-                        with open(log_path, newline="", encoding="utf-8") as f:
-                            for row in csv.DictReader(f):
-                                sym = (row.get("symbol") or "").upper()
+                    if cache_path.exists():
+                        try:
+                            cache = _json.loads(cache_path.read_text(encoding="utf-8"))
+                            for key, row in (cache or {}).items():
+                                sym = (row.get("symbol") or key or "").upper()
                                 if sym in active_upper:
                                     latest[sym] = row
                                 if row.get("reasoning"):
                                     last_reason = row.get("reasoning") or ""
+                        except Exception:
+                            pass
+                    if not latest:
+                        log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
+                        if log_path.exists():
+                            with open(log_path, newline="", encoding="utf-8") as f:
+                                for row in csv.DictReader(f):
+                                    sym = (row.get("symbol") or "").upper()
+                                    if sym in active_upper:
+                                        latest[sym] = row
+                                    if row.get("reasoning"):
+                                        last_reason = row.get("reasoning") or ""
                     for sym in active:
                         row = latest.get(sym.upper())
                         if row:
