@@ -363,6 +363,19 @@ HORIZONS = {
     "swing":    {"stop": 4.0, "target": 16.0, "min_r": 2.0},
 }
 
+# ---- trend-following model (intraday / swing) ----
+# Separate from the 5m scalp engine. Built on the horizon's OWN timeframe
+# (1h closes for intraday, daily closes for swing) so drift/vol are meaningful
+# at that horizon. Uses an EMA fast/slow crossover for trend direction and a
+# tight ~2R target so P(win) is realistic (web backtests: EMA crossover ~35-48%
+# WR, positive PF because winners run 2-3x bigger than losers).
+TREND_EMA_FAST = 12
+TREND_EMA_SLOW = 26
+TREND_HORIZON_PARAMS = {
+    "intraday": {"stop_sigma": 1.5, "target_r": 2.0, "min_r": 1.8},
+    "swing":    {"stop_sigma": 2.5, "target_r": 2.5, "min_r": 2.0},
+}
+
 
 def _ema(closes: list[float], period: int) -> float:
     """Exponential moving average over `period` closes (last value)."""
@@ -396,6 +409,76 @@ def momentum_confirmed(closes: list[float], direction: str,
     if direction == "short":
         return fast_ema < slow_ema
     return False
+
+
+def trend_confirmed(closes: list[float], direction: str,
+                    fast: int = TREND_EMA_FAST, slow: int = TREND_EMA_SLOW) -> bool:
+    """EMA fast/slow crossover trend filter for intraday/swing horizons.
+
+    Long only when EMA_fast > EMA_slow on the horizon's own timeframe closes
+    (1h for intraday, daily for swing); short when EMA_fast < EMA_slow. This is
+    the classic trend-following crossover — web backtests (BTC daily, 2023-2026)
+    show ~35-48% win rate with positive profit factor because winners run
+    2-3x larger than losers. The LLM still sees BOTH directions; this flag
+    marks which side is aligned with the prevailing trend.
+    """
+    if not closes or len(closes) < slow + 1:
+        return False
+    fast_ema = _ema(closes, fast)
+    slow_ema = _ema(closes, slow)
+    if fast_ema == slow_ema:
+        return False
+    if direction == "long":
+        return fast_ema > slow_ema
+    if direction == "short":
+        return fast_ema < slow_ema
+    return False
+
+
+def build_trend_scenarios(symbol: str, closes: list[float], current_price: float,
+                          horizon: str, bars_per_year: float = 365.0) -> list[TradeScenario]:
+    """LONG+SHORT scenarios for intraday/swing on the horizon's OWN timeframe.
+
+    Unlike build_scenarios (which derives every horizon from 5-min closes and
+    produced absurd R=6-7 with P(win)~13%), this builds intraday from 1h closes
+    and swing from daily closes, so drift/vol reflect that horizon. Target is a
+    tight ~2R (winners run 2-3x, but the stop is hit far less often than a
+    far-away 7-16R target — that's what makes P(win) real). Trend direction
+    (EMA crossover) is NOT a hard filter here: both sides are returned so the
+    LLM weighs P(win)/EV; the trend flag is surfaced in the prompt.
+    """
+    if not closes or current_price <= 0 or horizon not in TREND_HORIZON_PARAMS:
+        return []
+    drift, vol = estimate_drift_vol(closes, bars_per_year=bars_per_year)
+    params = TREND_HORIZON_PARAMS[horizon]
+    per_bar_sigma = (vol / math.sqrt(bars_per_year)) * 100.0 if vol > 0 else 1.0
+    stop = max(0.5, per_bar_sigma * params["stop_sigma"])
+    take = max(stop * params["min_r"], stop * params["target_r"])
+    scenarios = []
+    # LONG
+    long_stop = current_price * (1 - stop / 100.0)
+    long_target = current_price * (1 + take / 100.0)
+    p_long = barrier_win_prob(current_price, long_target, long_stop, drift, vol)
+    R = take / stop
+    scenarios.append(TradeScenario(
+        symbol=symbol, direction="long", horizon=horizon, entry=current_price,
+        target=long_target, stop=long_stop, p_win=p_long, R=R,
+        ev=p_long * R - (1 - p_long),
+        drift_annual=drift, vol_annual=vol,
+        conviction=p_long * (p_long * R - (1 - p_long)),
+    ))
+    # SHORT (mirror)
+    short_stop = current_price * (1 + stop / 100.0)
+    short_target = current_price * (1 - take / 100.0)
+    p_short = barrier_win_prob(current_price, short_target, short_stop, drift, vol)
+    scenarios.append(TradeScenario(
+        symbol=symbol, direction="short", horizon=horizon, entry=current_price,
+        target=short_target, stop=short_stop, p_win=p_short, R=R,
+        ev=p_short * R - (1 - p_short),
+        drift_annual=drift, vol_annual=vol,
+        conviction=p_short * (p_short * R - (1 - p_short)),
+    ))
+    return scenarios
 
 
 def _horizon_stop_take(sigma_5m: float, horizon: str,

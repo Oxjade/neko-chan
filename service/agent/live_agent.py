@@ -1152,6 +1152,41 @@ def fetch_5m_context(symbol: str, market: str, hours: int = 1) -> str:
         return f"5m: unavailable ({exc})"
 
 
+def fetch_interval_closes(symbol: str, market: str, interval: str,
+                          bars: int = 200) -> list[float]:
+    """Closes on an arbitrary candle interval (1h intraday, 1d swing) for the
+    trend-following model. crypto -> Hyperliquid candleSnapshot (1h/1d);
+    others -> yfinance. Returns [] on failure.
+    """
+    try:
+        if market == "crypto":
+            import requests as _r
+            now_ms = int(time.time() * 1000)
+            # startTime must span enough bars for the interval. Hyperliquid's
+            # candleSnapshot uses millisecond timestamps; we need ~bars * interval_ms.
+            mult = {"5m": 300000, "1h": 3600000, "1d": 86400000}
+            span_ms = bars * mult.get(interval, 3600000)
+            r = _r.post("https://api.hyperliquid.xyz/info", json={
+                "type": "candleSnapshot",
+                "req": {"coin": symbol, "interval": interval,
+                        "startTime": now_ms - span_ms,
+                        "endTime": now_ms},
+            }, timeout=15)
+            closes = [float(c["c"]) for c in r.json()]
+        else:
+            import yfinance as yf
+            ticker = f"{symbol}=X" if market == "forex" else symbol
+            period = "1mo" if interval == "5m" else "2y"
+            df = yf.download(ticker, period=period, interval=interval,
+                             progress=False, auto_adjust=True)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            closes = [float(v) for v in df["Close"].dropna().tolist()]
+        return [c for c in closes if c > 0]
+    except Exception:
+        return []
+
+
 def fetch_5m_closes(symbol: str, market: str,
                     hours: int = SCENARIO_5M_HOURS) -> list[float]:
     """Recent 5-minute closes for the scalp scenario engine's long/short read.
@@ -1420,7 +1455,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         momentum_ok = {}
                         for s in matrix:
                             m = scenario_closes.get(s.symbol)
-                            momentum_ok[(s.symbol, s.direction)] = (
+                            momentum_ok[(s.symbol, s.direction, s.horizon)] = (
                                 momentum_confirmed(m, s.direction) if m else False
                             )
                         # RSI momentum filter (hyperopt: PF 1.51 -> 1.66): only
@@ -1433,6 +1468,39 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             (s.direction == "long" and _rsi_fn(scenario_closes[s.symbol]) >= RSI_ENTRY_THRESHOLD) or
                             (s.direction == "short" and _rsi_fn(scenario_closes[s.symbol]) <= 100 - RSI_ENTRY_THRESHOLD)
                         ]
+                        # ---- TREND-FOLLOWING MODEL (intraday / swing) ----
+                        # Separate from the 5m scalp engine: built on each
+                        # horizon's OWN timeframe (1h for intraday, 1d for swing)
+                        # so drift/vol are meaningful there. Appended to the
+                        # matrix AFTER the 5m RSI filter so scalp's path is
+                        # completely untouched. The LLM sees these alongside
+                        # scalp scenarios and picks the best-EV horizon.
+                        try:
+                            from quant_strategy import build_trend_scenarios, trend_confirmed
+                            for tsym, tmarket in UNIVERSE:
+                                tpx = prices.get(tsym, 0)
+                                if tpx <= 0:
+                                    continue
+                                if TRADER_TYPE == "auto" or TRADER_TYPE == "intraday":
+                                    c1h = fetch_interval_closes(tsym, tmarket, "1h", 500)
+                                    if len(c1h) >= 30:
+                                        for ts in build_trend_scenarios(tsym, c1h, tpx, "intraday",
+                                                                        bars_per_year=24 * 365):
+                                            momentum_ok[(ts.symbol, ts.direction, ts.horizon)] = (
+                                                trend_confirmed(c1h, ts.direction)
+                                            )
+                                            matrix.append(ts)
+                                if TRADER_TYPE == "auto" or TRADER_TYPE == "swing":
+                                    c1d = fetch_interval_closes(tsym, tmarket, "1d", 200)
+                                    if len(c1d) >= 30:
+                                        for ts in build_trend_scenarios(tsym, c1d, tpx, "swing",
+                                                                        bars_per_year=365.0):
+                                            momentum_ok[(ts.symbol, ts.direction, ts.horizon)] = (
+                                                trend_confirmed(c1d, ts.direction)
+                                            )
+                                            matrix.append(ts)
+                        except Exception as _texc:
+                            print(f"[quant] trend model unavailable ({_texc})")
                         has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
                         has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
                         # DO NOT RE-ANALYZE a token that already has an OPEN
@@ -1525,7 +1593,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     skill_ctx = _load_skill_context()
                     matrix_txt = "\n".join(
                         s.to_prompt()
-                        + (" | MOMENTUM: CONFIRMED" if momentum_ok.get((s.symbol, s.direction)) else " | MOMENTUM: against")
+                        + (" | MOMENTUM: CONFIRMED" if momentum_ok.get((s.symbol, s.direction, s.horizon)) else " | MOMENTUM: against")
                         for s in top
                     )
                     system = (
