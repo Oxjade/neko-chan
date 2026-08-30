@@ -82,6 +82,11 @@ Scope: Verify every production-critical component of the Neko trade bot is corre
   EXPECT: SIGN ORDER: PASS
   EVIDENCE: exit=0; shell=/bin/sh; cwd=/home/carnage/tradebotpro; path=08538f152605/16 entries; EXPECT=matched; output-sha256=b92c85abdb4f35d0fe3388b327a86831c3d1282174fc8089ead5f83352e9d21e; output-bytes=171
 
+- [x] G18: Complete user journey — onboarding, key, agent, watch, decide, sign, cache, peek, fees
+  CHECK: .venv/bin/python scripts/verify/user_scenarios.py
+  EXPECT: USER CERTAINTY: 100.0 %
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/home/carnage/tradebotpro; path=08538f152605/16 entries; EXPECT=matched; output-sha256=2b9f4284e347b9af62a6d17334ef1b6b8215d80b13e50d78cc0e250ddddd0be0; output-bytes=483
+
 - [x] G15: Final certainty score report — every production gate verified
   CHECK: .venv/bin/python scripts/verify/certainty.py
   EXPECT: certainty:
