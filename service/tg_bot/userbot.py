@@ -1613,6 +1613,16 @@ class UserBotController:
                     f"❌ <b>{asset}</b> isn't a known token on {_chain_label(chain)}.\n"
                     f"Known: {', '.join(sorted(supported))}")
                 return
+            # Check the asset is available as a perp on the venue. Not all chain
+            # tokens have a perp market - e.g. IKA is a native Sui token but
+            # Bluefin doesn't list IKA-PERP. If there's no perp market, the
+            # agent can't fetch a price or build scenarios, so reject early.
+            if not _is_perp_tradeable(chain, asset):
+                await _respond(
+                    f"❌ <b>{asset}</b> is not available for perp trading on {_chain_label(chain)}.\n"
+                    f"Only assets with an active perp market can be analyzed and traded.\n"
+                    f"Check the venue's market list for tradeable symbols.")
+                return
             # Is this asset already in an open position? If so, the agent won't
             # re-analyze it until that trade resolves - adding it to the watch
             # would OVERRIDE that. Ask the user to confirm before overriding.
@@ -1724,6 +1734,22 @@ class UserBotController:
                                 "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"],
             }
             return known.get(chain)  # None if chain not in dict -> no restriction
+
+        def _is_perp_tradeable(chain: str, asset: str) -> bool:
+            """Check if an asset has a perp market on the venue for this chain.
+            Only assets with an active perp market can be priced and traded."""
+            # Bluefin perp symbols on Sui (from live_agent.py BLUEFIN_MARKET_SYMBOLS)
+            _perp_syms = {
+                "sui": {"BTC", "ETH", "SOL", "SUI", "ARB", "AVAX", "BNB", "DOGE",
+                        "LINK", "LTC", "OP", "MATIC", "SEI"},
+                "solana": {"BTC", "ETH", "SOL", "SUI", "DOGE"},
+                "hyperliquid": {"HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
+                                "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"},
+            }
+            perps = _perp_syms.get(chain)
+            if perps is None:
+                return True  # unknown chain, allow
+            return asset.upper() in perps
 
         async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
