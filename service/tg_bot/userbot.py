@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 
 import telegram
@@ -50,6 +51,18 @@ def _mask_addr(addr: str) -> str:
     return f"{addr[:6]}…{addr[-4:]}" if len(addr) > 12 else addr
 
 
+def _delayed_photo_delete(bot_token: str, chat_id: int, message_id: int,
+                          ttl: int = 300):
+    """Delete a photo message after ttl seconds (background thread)."""
+    import requests as _r
+    time.sleep(ttl)
+    try:
+        _r.post(f"https://api.telegram.org/bot{bot_token}/deleteMessage",
+                json={"chat_id": chat_id, "message_id": message_id}, timeout=10)
+    except Exception:
+        pass
+
+
 def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
     """Simple production dashboard: real chain balance + address + positions."""
     line = "─" * 26
@@ -67,7 +80,18 @@ def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
         side = str(p.get("side") or (p.get("szi", 0) > 0 and "long") or "short")
         qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
         pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
-        pos_lines.append(f"  {_esc(sym)}  {side.upper()} {qty:g}  {_money(pnl)}")
+        entry = float(p.get("entry") or p.get("entry_px") or p.get("entry_price") or 0)
+        cur = float(p.get("markPrice") or p.get("mark_price") or p.get("current_price") or entry)
+        stop = p.get("stop") or p.get("stop_loss") or ""
+        tgt = p.get("target") or p.get("take_profit") or ""
+        meta = ""
+        if entry and cur:
+            meta += f" entry {entry:,.4f} → {cur:,.4f}"
+        if stop:
+            meta += f" · stop {stop}"
+        if tgt:
+            meta += f" · target {tgt}"
+        pos_lines.append(f"  {_esc(sym)}  {side.upper()} {qty:g}  {_money(pnl)}{meta}")
     status = "🟢 RUNNING" if bot.get("is_running") else "⏸️ PAUSED"
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
@@ -253,6 +277,42 @@ class UserBotController:
                 continue
         return wallets, chain_state
 
+    def _real_close_position(self, bot_id: int, chain: str, symbol: str) -> dict:
+        """Close a position on the real execution gateway (Bluefin), not paper.
+
+        Reads the live position, builds a market reduce-only OrderIntent for the
+        opposite side, and routes it through the gateway (which enforces risk +
+        idempotency + fee sweep). Returns {ok, error}."""
+        try:
+            self._exec_path()
+            self.gateway.provision_wallet(bot_id, chain)
+            self.gateway.sync(bot_id, chain)
+            wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+            if not wallet:
+                return {"ok": False, "error": "no wallet for this bot"}
+            state = self.gateway.ledger.load_chain_state(wallet["id"]) or {}
+            positions = state.get("positions") or []
+            pos = next((p for p in positions
+                        if (p.get("symbol") or p.get("coin") or "").upper() == symbol.upper()), None)
+            if not pos:
+                return {"ok": False, "error": f"no open {symbol} position on-chain"}
+            qty = abs(float(pos.get("qty") or pos.get("szi") or pos.get("quantity") or 0))
+            side = str(pos.get("side") or ("long" if qty > 0 else "short"))
+            if qty <= 0:
+                return {"ok": False, "error": f"zero {symbol} quantity"}
+            # reduce-only market order on the opposite side
+            from order_model import OrderIntent
+            intent = OrderIntent(
+                chain=chain, venue="bluefin-perp", symbol=symbol,
+                side="sell" if side == "long" else "buy",
+                qty=qty, order_type="market", leverage=1.0,
+                idempotency_key=f"manual-close:{bot_id}:{symbol}:{int(time.time() * 1000)}",
+            )
+            res = self.gateway.route_and_sync(bot_id, intent, float(pos.get("entryPrice") or pos.get("entry") or 0) or 1.0)
+            return {"ok": bool(res.get("ok")), "error": res.get("error") or "", "qty": qty}
+        except Exception as exc:
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]}
+
     def _exec_ledger(self):
         """Open the canonical execution ledger (same path the gateway uses),
         so user wallets persist and are readable even before chain keys are
@@ -275,6 +335,16 @@ class UserBotController:
                 except Exception:
                     pass
             if wallet:
+                # Keep the registry's wallet_addr in sync so the fallback path
+                # always works (this was the 2026-08-29 "wallet doesn't persist"
+                # bug: the ledger had the wallet but the registry field was empty,
+                # and any ledger-read failure then showed 'no wallet').
+                try:
+                    b = self.registry.get_bot(bot_id)
+                    if b and not (b.get("wallet_addr") or ""):
+                        self.registry.update_bot(bot_id, wallet_addr=wallet.get("address") or "")
+                except Exception:
+                    pass
                 return wallet
         except Exception:
             pass
@@ -336,12 +406,59 @@ class UserBotController:
             logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
             return None
 
+    # Native Circle USDC on Sui mainnet (from Bluefin exchange info, 2026).
+    # The old wUSDC (0x5d4b3025...::coin::COIN) is deprecated.
+    SUI_USDC_MAINNET = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+    # Testnet (Bluefin staging) USDC — from api.sui-staging.bluefin.io exchange info.
+    SUI_USDC_TESTNET = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
+
+    def _sui_transfer(self, bot_id: int, chain: str, dest: str, amount: float) -> dict:
+        """Execute a real on-chain USDC transfer from the bot's wallet.
+
+        Builds a SUIAdapter from the stored wallet key, constructs a
+        SplitCoins + TransferObjects PTB, dry-runs, signs, and broadcasts.
+        Returns {ok, digest, tx_hash, error}.
+        """
+        self._exec_path()
+        try:
+            from ledger import ExecLedger
+            from exec_vault import ExecVault
+            from sui_adapter import SUIAdapter
+
+            b = self.registry.get_bot(bot_id) or {}
+            network = (b.get("network") or "testnet").strip().lower()
+            testnet = network != "mainnet"
+
+            ledger = ExecLedger(os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
+            wallet = ledger.wallet_by_bot_chain(bot_id, chain)
+            if not wallet or not wallet.get("key_enc"):
+                try:
+                    ledger.close()
+                except Exception:
+                    pass
+                return {"ok": False, "error": "no wallet key stored — generate one first"}
+            vault = ExecVault()
+            key_hex = vault.decrypt(wallet["key_enc"])
+            usdc_coin = self.SUI_USDC_TESTNET if testnet else self.SUI_USDC_MAINNET
+            adapter = SUIAdapter(ledger, key_hex, testnet=testnet,
+                                 usdc_coin_type=usdc_coin)
+            try:
+                result = adapter.transfer_asset(dest, amount, "USDC")
+                return result
+            finally:
+                try:
+                    ledger.close()
+                except Exception:
+                    pass
+        except Exception as exc:
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+
     def _rpc_balances(self, bot_id: int, chain: str, address: str) -> dict:
         """Read on-chain balances via public RPC using ONLY the wallet address
         (no private key needed). Keeps Receiver / dashboard accurate even when
         the execution gateway has no operator keys configured yet.
 
-        Sui: suix_getBalance for native SUI + USDC on the bot's network.
+        Sui: GraphQL balance for native SUI + USDC on the bot's network.
         Solana: getBalance (SOL) + token account (USDC). Hyperliquid: n/a via
         public RPC without keys -> returns {}.
         """
@@ -353,17 +470,17 @@ class UserBotController:
             testnet = network != "mainnet"
             import requests
             if chain == "sui":
-                rpc = ("https://fullnode.testnet.sui.io:443" if testnet
-                       else "https://fullnode.mainnet.sui.io:443")
-                usdc_type = "0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN"
+                gql = f"https://graphql.{'testnet' if testnet else 'mainnet'}.sui.io/graphql"
+                usdc_type = (self.SUI_USDC_TESTNET if testnet else self.SUI_USDC_MAINNET)
                 out = {"USDC": 0.0, "native": 0.0}
                 for key, coin in (("native", "0x2::sui::SUI"), ("USDC", usdc_type)):
                     try:
-                        r = requests.post(rpc, json={
-                            "jsonrpc": "2.0", "id": 1, "method": "suix_getBalance",
-                            "params": [address, coin]}, timeout=8)
+                        q = ('{ address(address: "' + address + '") { balance(coinType: "'
+                             + coin + '") { totalBalance } } }')
+                        r = requests.post(gql, json={"query": q}, timeout=8)
                         dec = 9 if key == "native" else 6
-                        out[key] = float(int(r.json().get("result", {}).get("totalBalance", 0) or 0)) / (10 ** dec)
+                        out[key] = float(int((r.json().get("data") or {})
+                                             .get("address", {}).get("balance", {}).get("totalBalance", 0) or 0)) / (10 ** dec)
                     except Exception:
                         pass
                 return out
@@ -784,6 +901,7 @@ class UserBotController:
             try:
                 self._exec_path()
                 from exec_vault import ExecVault, generate_key_material
+                vault = ExecVault()
                 from ledger import ExecLedger
                 _path = os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db")
                 _ledger = ExecLedger(_path)
@@ -837,6 +955,18 @@ class UserBotController:
                 account = self._exec_account(bot_id, chain)
             except Exception:
                 account = {"balances": {}, "positions": []}
+            # HARD FALLBACK: if _exec_account didn't return a wallet_address,
+            # read it directly from the registry. This ensures the dashboard
+            # ALWAYS shows the wallet address after generation, even if the
+            # ledger read path fails for any reason.
+            if not account.get("wallet_address"):
+                try:
+                    _b = self.registry.get_bot(bot_id)
+                    _addr = (_b or {}).get("wallet_addr") or ""
+                    if _addr:
+                        account["wallet_address"] = _addr
+                except Exception:
+                    pass
             text = render_production_dashboard(b, account, chain)
             start_label = "⏸️ Pause" if b.get("is_running") else "▶️ Start"
             start_cb = "sb:pause" if b.get("is_running") else "sb:start_agent"
@@ -896,33 +1026,52 @@ class UserBotController:
             if not b.get("is_running"):
                 lines.append("⏸️ Agent is not running. Tap ▶️ Start to begin.")
             else:
-                # Find the LATEST decision for an asset in the current universe.
+                # Latest decision per analyzed asset (the log is append-only, so
+                # the LAST row for a symbol is its most recent decision). Show
+                # its timestamp so a refresh visibly updates, even on a hold.
                 try:
                     import csv
                     from pathlib import Path
                     log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
-                    matched = None
+                    latest: dict[str, dict] = {}
                     if log_path.exists():
                         with open(log_path, newline="", encoding="utf-8") as f:
                             for row in csv.DictReader(f):
                                 sym = (row.get("symbol") or "").upper()
                                 if sym in active_upper:
-                                    matched = row
-                    if matched:
-                        action = matched.get("action", "?").upper()
-                        sym = matched.get("symbol", "?")
-                        qty = matched.get("qty", "")
-                        price = matched.get("price", "")
-                        reasoning = (_esc(matched.get("reasoning") or "")).strip()
-                        lines.append(f"📊 <b>Latest on {_esc(sym)}</b>\n"
-                                     f"  Action: {action} · qty {qty} · price ${price}")
-                        if reasoning:
-                            lines.append(f"  Why: {reasoning[:160]}")
+                                    latest[sym] = row
+                    if latest:
+                        for sym in active:
+                            row = latest.get(sym.upper())
+                            if not row:
+                                continue
+                            action = (row.get("action") or "?").upper()
+                            qty = row.get("quantity") or row.get("qty") or ""
+                            price = row.get("price") or ""
+                            when = str(row.get("ts") or "")[11:19] or "?"
+                            reasoning = (_esc(row.get("reasoning") or "")).strip()
+                            lines.append(f"📊 <b>{_esc(sym.upper())}</b> · {action} · {when} UTC\n"
+                                         f"  qty {qty} · price ${price}")
+                            if reasoning:
+                                lines.append(f"  Why: {reasoning[:160]}")
                     else:
                         lines.append("No decisions yet for the current watchlist. "
                                      "Agent is analyzing these assets...")
                 except Exception:
                     lines.append("Could not read agent log.")
+                # Live price snapshot so tapping Refresh always returns fresh data.
+                try:
+                    prices = []
+                    for sym in active:
+                        try:
+                            px = self.platform.price(platform_token, "crypto", sym)
+                            prices.append(f"{sym} ${px:,.4f}")
+                        except Exception:
+                            pass
+                    if prices:
+                        lines.append("\n💰 <b>Live</b>: " + " · ".join(prices))
+                except Exception:
+                    pass
             await q.message.edit_text("\n".join(lines), parse_mode="HTML",
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
@@ -967,7 +1116,45 @@ class UserBotController:
                 "wallet_address": wallet.get("address") or "",
             }
 
+        def _verify_wallet_signing(bot_id: int, chain: str) -> tuple[bool, str]:
+            """Verify the wallet key can actually sign transactions (a MUST).
+
+            Derives the address from the seed, checks it matches the stored
+            address, and does a sign+verify round-trip. Returns (ok, message).
+            Falls back to True + "no gateway" when execution isn't configured.
+            """
+            if not self._exec_ready():
+                return True, "no gateway (paper-only mode — key not needed)"
+            self._exec_path()
+            try:
+                from exec_vault import ExecVault
+                from sui_adapter import _ed25519_pubkey, _ed25519_sign, _ed25519_verify
+                wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+                if not wallet or not wallet.get("key_enc"):
+                    return False, f"no wallet key stored for {chain} — generate one"
+                vault = ExecVault()
+                seed = vault.decrypt(wallet["key_enc"])
+                if isinstance(seed, str):
+                    seed = bytes.fromhex(seed[2:] if seed.startswith("0x") else seed)
+                if len(seed) != 32:
+                    return False, f"key is {len(seed)} bytes (expected 32) — invalid"
+                pub = _ed25519_pubkey(seed)
+                import hashlib
+                derived = "0x" + hashlib.blake2b(b"\x00" + pub, digest_size=32).hexdigest()
+                stored = wallet.get("address", "").lower()
+                if derived != stored:
+                    return False, (f"key mismatch: derived {derived} ≠ stored {stored}"
+                                   " — the key won't sign for this wallet")
+                test_msg = b"neko-key-verify"
+                sig = _ed25519_sign(seed, test_msg)
+                if not _ed25519_verify(pub, test_msg, sig):
+                    return False, "sign+verify round-trip FAILED — key cannot sign"
+                return True, f"✅ key can sign (derived address matches, sign+verify OK)"
+            except Exception as exc:
+                return False, f"key verification failed: {exc}"
+
         async def pnl_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """P&L button = print a Neko-Chan PnL card (PNG) right in the chat."""
             q = update.callback_query
             await q.answer()
             b = self.registry.get_bot(bot_id)
@@ -979,32 +1166,90 @@ class UserBotController:
                 pass
             bal = account.get("balances") or {}
             usdc = float(bal.get("USDC", 0))
+            native = float(bal.get("native", 0))
             positions = account.get("positions") or []
             open_pnl = sum(float(p.get("pnl") or p.get("unrealized_pnl") or 0) for p in positions)
             total_pnl = float(bal.get("realized_pnl", 0)) + open_pnl
-            trade_count = len(positions)
-            line = "─" * 28
-            text = (
-                f"<b>📊 P&amp;L - {b['bot_name']}</b>\n"
-                f"<code>{line}</code>\n"
-                f"<b>💰 CHAIN BALANCE</b>\n"
-                f"  USDC    <code>${usdc:,.2f}</code>\n"
-                f"  Total   {_money(total_pnl)}\n\n"
-                f"<b>📡 POSITIONS</b>  {trade_count} open"
-            )
-            if positions:
-                lines = []
+
+            # Build the card PNG; fall back to a text panel if the renderer fails.
+            try:
+                from cards.generator import generate_pnl_card, random_avatar
+                import tempfile as _tf
+                out = os.path.join(_tf.gettempdir(),
+                                   f"neko_pnl_{bot_id}_{int(time.time())}.png")
+                # Pick the first open position for the card's entry/exit prices;
+                # fall back to portfolio-level numbers when no position is open.
+                p = positions[0] if positions else {}
+                pos_entry = float(p.get("entry") or p.get("entry_px") or p.get("entry_price") or 0)
+                pos_cur = float(p.get("markPrice") or p.get("mark_price") or p.get("current_price") or pos_entry)
+                pos_qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
+                pos_side = str(p.get("side") or "long")
+                if pos_entry > 0 and pos_cur > 0:
+                    pnl_pct = (pos_cur / pos_entry - 1.0) * 100.0 * (1 if pos_side == "long" else -1)
+                    buy_price = pos_entry
+                    sell_price = pos_cur
+                else:
+                    # Portfolio-level: use total P&L as a % of the USDC balance
+                    pnl_pct = (total_pnl / max(usdc, 0.01)) * 100.0 if usdc > 0 else total_pnl
+                    buy_price = usdc or 0.0
+                    sell_price = (usdc + total_pnl) or 0.0
+                token = (p.get("symbol") or b['bot_name']).upper() if p else "PORTFOLIO"
+                generate_pnl_card(
+                    avatar_path=random_avatar(),
+                    pnl_pct=pnl_pct,
+                    buy_price=buy_price,
+                    sell_price=sell_price,
+                    token=token,
+                    chain=_chain_label(chain).upper(),
+                    out_path=out,
+                    bot_name=b['bot_name'].upper(),
+                    timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                )
+                caption = (f"📊 <b>P&amp;L — {_esc(b['bot_name'])}</b>\n"
+                           f"💰 USDC <code>${usdc:,.2f}</code> · SUI <code>{native:,.4f}</code>\n"
+                           f"📡 Positions {len(positions)} · P&amp;L <b>{_money(total_pnl)}</b>")
+                try:
+                    with open(out, "rb") as f:
+                        sent = await context.bot.send_photo(
+                            chat_id=q.message.chat_id, photo=f, caption=caption,
+                            parse_mode="HTML",
+                            reply_markup=telegram.InlineKeyboardMarkup(
+                                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
+                                  telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                    if sent and sent.message_id:
+                        threading.Thread(
+                            target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
+                                self.registry.bot_token(bot_id) or "",
+                                q.message.chat_id, sent.message_id),
+                            daemon=True).start()
+                except Exception:
+                    await q.message.edit_text(caption, parse_mode="HTML")
+                try:
+                    os.remove(out)
+                except Exception:
+                    pass
+            except Exception:
+                # Fallback text panel (no Pillow / no templates).
+                line = "─" * 28
+                text = (f"<b>📊 P&amp;L - {b['bot_name']}</b>\n"
+                        f"<code>{line}</code>\n"
+                        f"<b>💰 CHAIN BALANCE</b>\n"
+                        f"  USDC    <code>${usdc:,.2f}</code>\n"
+                        f"  SUI     <code>{native:,.4f}</code>\n"
+                        f"  Total   {_money(total_pnl)}\n\n"
+                        f"<b>📡 POSITIONS</b>  {len(positions)} open")
                 for p in positions[:5]:
                     sym = str(p.get("symbol") or p.get("coin") or "?")
                     side = str(p.get("side") or "long")
                     qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
                     pp = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
-                    lines.append(f"  {sym} {side.upper()} {qty:g}  {_money(pp)}")
-                text += "\n" + "\n".join(lines[:5])
-            text += f"\n<code>{line}</code>"
-            await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
-                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                    text += f"\n  {sym} {side.upper()} {qty:g}  {_money(pp)}"
+                text += f"\n<code>{line}</code>"
+                await q.message.edit_text(text, parse_mode="HTML",
+                                          reply_markup=telegram.InlineKeyboardMarkup(
+                                              [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
+                                               [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                                                telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1025,11 +1270,27 @@ class UserBotController:
                 side = str(p.get("side") or "long")
                 qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
                 entry = float(p.get("entry") or p.get("entry_px") or 0)
+                cur = float(p.get("markPrice") or p.get("mark_price") or p.get("current_price") or entry)
+                stop = p.get("stop") or p.get("stop_loss") or ""
+                tgt = p.get("target") or p.get("take_profit") or ""
                 pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
-                lines.append(f"  {sym}  {side.upper()} {qty:g}  entry {entry:,.2f}  {_money(pnl)}")
-            await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pos")],
-                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                lev = p.get("leverage") or p.get("lev") or ""
+                if entry and cur:
+                    pnl_pct = (cur / entry - 1.0) * 100.0 * (1 if str(side).lower() == "long" else -1)
+                else:
+                    pnl_pct = 0.0
+                meta = f"entry {entry:,.2f} → {cur:,.2f} ({pnl_pct:+.2f}%)"
+                if stop:
+                    meta += f" · SL {stop}"
+                if tgt:
+                    meta += f" · TP {tgt}"
+                if lev:
+                    meta += f" · {lev}x"
+                lines.append(f"  {sym}  {side.upper()} {qty:g}  {_money(pnl)}\n     {meta}")
+            await q.message.edit_text("\n".join(lines), parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup(
+                                          [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pos")],
+                                           [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def live_markets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1259,14 +1520,58 @@ class UserBotController:
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
 
+        async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Handle "start", "pause", "resume" text commands — control the
+            agent (LLM + quant) without affecting the bot connection itself."""
+            raw = (update.message.text or "").strip().lower()
+            if raw in ("start", "resume", "go", "trade"):
+                if not self.registry.get_active_key(tg_id):
+                    await update.message.reply_text("🔑 Set an AI key first in Settings.",
+                                                    parse_mode="HTML")
+                    return
+                self.registry.update_bot(bot_id, paused=0, is_running=1)
+                if self.agent_pool:
+                    self.agent_pool.start(bot_id)
+                try:
+                    await update.message.delete()
+                except Exception:
+                    pass
+                await update.message.reply_text("▶️ Agent started. Neko-Chan is scanning markets.",
+                                                reply_markup=telegram.InlineKeyboardMarkup(
+                                                    [[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek"),
+                                                      telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            if raw in ("pause", "stop", "halt"):
+                self.registry.update_bot(bot_id, is_running=0, paused=1)
+                if self.agent_pool:
+                    self.agent_pool.stop(bot_id)
+                try:
+                    await update.message.delete()
+                except Exception:
+                    pass
+                await update.message.reply_text("⏸️ Agent paused. Neko-Chan is resting.",
+                                                reply_markup=telegram.InlineKeyboardMarkup(
+                                                    [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            # Fall through to watch_command for everything else.
+            await watch_command(update, context)
+
         async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            # Reply, then delete the user's command message so the chat stays clean.
+            async def _respond(text: str):
+                try:
+                    await update.message.reply_text(text, parse_mode="HTML")
+                finally:
+                    try:
+                        await update.message.delete()
+                    except Exception:
+                        pass
             raw = (update.message.text or "").strip()
             # "watch <ASSET>" or "watch <ASSET> now" - case-insensitive, any spacing
             import re as _re
             m = _re.match(r"(?i)^\s*watch\s+([a-z0-9]+)(?:\s+now)?\s*$", raw)
             if not m:
-                await update.message.reply_text("Type <b>watch &lt;ASSET&gt;</b>, e.g. <b>watch DEEP</b>.",
-                                                parse_mode="HTML")
+                await _respond("Type <b>watch &lt;ASSET&gt;</b>, e.g. <b>watch DEEP</b>.")
                 return
             asset = m.group(1).upper()
             b = self.registry.get_bot(bot_id)
@@ -1276,16 +1581,78 @@ class UserBotController:
             # doesn't list an IKA perp market).
             supported = _chain_supported_assets(chain)
             if supported is not None and asset not in supported:
-                await update.message.reply_text(
+                await _respond(
                     f"❌ <b>{asset}</b> isn't a known token on {_chain_label(chain)}.\n"
-                    f"Known: {', '.join(sorted(supported))}",
+                    f"Known: {', '.join(sorted(supported))}")
+                return
+            # Is this asset already in an open position? If so, the agent won't
+            # re-analyze it until that trade resolves - adding it to the watch
+            # would OVERRIDE that. Ask the user to confirm before overriding.
+            try:
+                account = self._exec_account(bot_id, chain)
+                held = any(
+                    (str(p.get("symbol") or p.get("coin") or "")).upper() == asset
+                    and float(p.get("qty") or p.get("szi") or p.get("quantity") or 0) != 0
+                    for p in (account.get("positions") or [])
+                )
+            except Exception:
+                held = False
+            if held:
+                q = update.message
+                await q.delete()
+                await update.message.reply_text(
+                    f"⚠️ <b>{asset}</b> already has an <b>OPEN position</b>.\n\n"
+                    f"Neko-Chan normally waits for that trade to resolve before "
+                    f"analyzing {asset} again (no stacking low-conviction entries).\n\n"
+                    f"Watch it anyway for the <b>next</b> trade?",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("✅ Yes, watch it", callback_data=f"watch:yes:{asset}"),
+                         telegram.InlineKeyboardButton("✖️ No", callback_data=f"watch:no:{asset}")],
+                    ]))
+                return
+
+            def _apply_watch():
+                watched = set(_parse_watchlist(b.get("watchlist")))
+                watched.add(asset)
+                self.registry.update_bot(bot_id, watchlist=",".join(sorted(watched)))
+                # Restart the agent so it immediately picks up the new watchlist
+                # (WATCHED is read at agent startup). If it's not running, leave it.
+                if self.agent_pool:
+                    try:
+                        self.agent_pool.stop(bot_id)
+                    except Exception:
+                        pass
+                    if b.get("is_running"):
+                        try:
+                            self.agent_pool.start(bot_id)
+                        except Exception:
+                            pass
+
+            _apply_watch()
+            await _respond(
+                f"✅ <b>{asset}</b> added to your watchlist.\n"
+                f"Neko-Chan is now focused on <b>{asset}</b> for reasoning and trades.")
+
+        async def watch_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            parts = q.data.split(":")
+            if len(parts) < 3:
+                await q.message.edit_text("❓ Hmm, that option didn't parse. Try <b>watch &lt;ASSET&gt;</b> again.",
+                                          parse_mode="HTML")
+                return
+            choice, asset = parts[1].upper(), parts[2].upper()
+            if choice == "NO":
+                await q.message.edit_text(
+                    f"👌 Understood - <b>{asset}</b> stays position-only. Neko-Chan will "
+                    f"analyze it again once your current trade resolves.",
                     parse_mode="HTML")
                 return
+            b = self.registry.get_bot(bot_id)
             watched = set(_parse_watchlist(b.get("watchlist")))
             watched.add(asset)
             self.registry.update_bot(bot_id, watchlist=",".join(sorted(watched)))
-            # Restart the agent so it immediately picks up the new watchlist
-            # (WATCHED is read at agent startup). If it's not running, leave it.
             if self.agent_pool:
                 try:
                     self.agent_pool.stop(bot_id)
@@ -1296,9 +1663,10 @@ class UserBotController:
                         self.agent_pool.start(bot_id)
                     except Exception:
                         pass
-            await update.message.reply_text(
+            await q.message.edit_text(
                 f"✅ <b>{asset}</b> added to your watchlist.\n"
-                f"Neko-Chan is now focused on <b>{asset}</b> for reasoning and trades.",
+                f"You already hold a position, so Neko-Chan will analyze it for the "
+                f"<b>next</b> trade once the current one resolves.",
                 parse_mode="HTML")
 
         def _parse_watchlist(raw):
@@ -1445,6 +1813,16 @@ class UserBotController:
                 account = {"balances": {}, "positions": []}
             addr = account.get("wallet_address") or ""
             if not addr:
+                # HARD FALLBACK: read directly from the registry so a freshly
+                # generated wallet always shows here, never asks to regenerate.
+                try:
+                    _b = self.registry.get_bot(bot_id)
+                    addr = (_b or {}).get("wallet_addr") or ""
+                    if addr:
+                        account["wallet_address"] = addr
+                except Exception:
+                    pass
+            if not addr:
                 # No wallet yet: offer to generate + store one now.
                 text = ("💼 <b>No wallet yet</b>\n\n"
                         "Generate a {chain} trading wallet to receive funds. "
@@ -1546,11 +1924,36 @@ class UserBotController:
                 return S_AMOUNT
             dest = context.bot_data.get("send_dest", "")
             context.bot_data.pop("send_dest", None)
-            text = (f"📤 Send <b>${amount:,.4f} USDC</b> to\n<code>{dest}</code>\n\n"
-                    f"⚠️ Double-check the address - transfers are final.")
+
+            # Execute the real on-chain transfer via the wallet key.
+            warning = ""
+            try:
+                result = self._sui_transfer(bot_id, chain, dest, amount)
+                if result.get("ok"):
+                    digest = result.get("digest", "?")
+                    text = (f"✅ <b>Sent ${amount:,.4f} USDC</b>\n"
+                            f"to <code>{_esc(dest)}</code>\n\n"
+                            f"Tx: <code>{_esc(digest[:20])}…</code>")
+                else:
+                    err = result.get("error", "unknown error")
+                    warning = f"\n\n⚠️ <b>Transfer failed</b>: {_esc(err[:120])}"
+                    if "insufficient" in err.lower() or "no usdc" in err.lower():
+                        text = (f"❌ <b>Transfer failed</b>\n\n"
+                                f"Your wallet doesn't have enough USDC or "
+                                f"SUI for gas. {_esc(err[:120])}")
+                    else:
+                        text = (f"⚠️ <b>Couldn't send</b> — {_esc(err[:120])}\n\n"
+                                f"To execute manually, use your private key to\n"
+                                f"sweep the funds in your wallet app.")
+            except Exception as exc:
+                text = (f"⚠️ <b>Couldn't send</b> — {_esc(str(exc)[:120])}\n\n"
+                        f"To execute manually, use your private key to\n"
+                        f"sweep the funds in your wallet app.")
+                warning = f"\n\nError: {_esc(str(exc)[:120])}"
+
             kb = telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton("✅ Confirm", callback_data="send:confirm"),
-                 telegram.InlineKeyboardButton("❌ Cancel", callback_data="send:cancel")],
+                [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
+                [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
             ])
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
             return ConversationHandler.END
@@ -1564,16 +1967,10 @@ class UserBotController:
             return ConversationHandler.END
 
         async def send_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            # Legacy entry point - the simplified flow confirms inline in the
+            # amount step; nothing to do here.
             q = update.callback_query
             await q.answer()
-            text = ("📤 <b>Send</b>\n\n"
-                    "To execute this transfer, use your private key to sweep "
-                    "the funds in your wallet app. The bot has no withdrawal "
-                    "rights on the venues.")
-            await q.message.edit_text(text, parse_mode="HTML",
-                                      reply_markup=telegram.InlineKeyboardMarkup(
-                                          [[telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
-                                           [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
             return ConversationHandler.END
 
         async def chain_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1824,6 +2221,25 @@ class UserBotController:
             await q.answer()
             _, _, symbol = q.data.split(":", 2)
             if q.data == f"sb:close_yes:{symbol}":
+                chain = (self.registry.get_bot(bot_id) or {}).get("chain") or "sui"
+                if self._exec_ready():
+                    # Real execution: close on Bluefin via the gateway.
+                    res = self._real_close_position(bot_id, chain, symbol)
+                    if res.get("ok"):
+                        await q.message.edit_text(
+                            f"✅ <b>Closed {symbol} on-chain</b>\n"
+                            f"• Reduce-only market order sent\n"
+                            f"• Qty: {res.get('qty', '?'):g}",
+                            parse_mode="HTML",
+                            reply_markup=telegram.InlineKeyboardMarkup(
+                                [[telegram.InlineKeyboardButton("📊 Dashboard", callback_data="sb:dash")]]))
+                    else:
+                        await q.message.edit_text(
+                            f"⚠️ <b>Couldn't close {symbol}</b>\n{res.get('error', '?')[:120]}",
+                            parse_mode="HTML",
+                            reply_markup=telegram.InlineKeyboardMarkup(
+                                [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                    return
                 try:
                     pf = self.platform.positions(platform_token)
                     pos = next((p for p in pf.get("positions", []) if p["symbol"] == symbol), None)
@@ -1960,11 +2376,11 @@ class UserBotController:
 
         app.add_handler(CallbackQueryHandler(send_confirm, pattern=r"^send:confirm$"))
 
-        app.add_handler(CallbackQueryHandler(receive, pattern=r"^sb:receive$"))
         app.add_handler(send_conv)
         app.add_handler(CallbackQueryHandler(chain_switch, pattern=r"^sb:chain"))
         app.add_handler(CallbackQueryHandler(watchlist, pattern=r"^sb:watchlist$"))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, watch_command))
+        app.add_handler(CallbackQueryHandler(watch_confirm, pattern=r"^watch:(yes|no):[A-Z0-9]+$"))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_command))
         app.add_handler(CallbackQueryHandler(support, pattern=r"^sb:support$"))
         app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))
         app.add_handler(CallbackQueryHandler(check_deposits, pattern=r"^sb:check_deposits$"))

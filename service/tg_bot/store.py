@@ -172,6 +172,10 @@ class Registry:
                 "UPDATE api_keys SET revoked_at = ? WHERE tg_id = ? AND revoked_at IS NULL",
                 (now, tg_id),
             )
+            # key_hash has a UNIQUE constraint across ALL rows (including revoked),
+            # so a previously-stored row with the same key would collide on insert.
+            # Delete any stale row for this key first (revoked or not).
+            self._conn.execute("DELETE FROM api_keys WHERE key_hash = ?", (h,))
             cur = self._conn.execute(
                 "INSERT INTO api_keys (tg_id, provider, base_url, model, encrypted_key, key_hash, validated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",

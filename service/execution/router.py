@@ -22,6 +22,7 @@ never an exception that leaves a position unexplained or un-halved.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from ledger import ExecLedger
@@ -116,11 +117,58 @@ class VenueRouter:
                 fee_venue = round(intent.notional(ref_price) * VENUE_FEE_BPS.get(venue, 0.0) / 10000, 6)
             self.ledger.record_fill(order_id, price=fill_price, qty=fill_qty,
                                     fee_venue=fee_venue, tx_hash=ven_id[:80], bot_id=bot_id)
+            # SWEEP THE PLATFORM FEE ON-CHAIN: after a fill, transfer the 0.5%
+            # platform fee (PLATFORM_FEE_BPS) from the trader's wallet to the
+            # operator's fee wallet (BLUEFIN_FEE_ADDR). Best-effort: a failed
+            # sweep logs but never fails the trade. Venue fees (e.g. 2.5bps)
+            # are Bluefin's own and already paid at the venue.
+            self._sweep_fee(bot_id, chain, fill_price, fill_qty, intent.symbol)
             log.info("[router] bot=%s %s %s %s @ %s ok", bot_id, venue, intent.side, intent.symbol, fill_price)
         else:
             self.ledger.set_order_status(order_id, "rejected")
         return {"ok": ok, "order_id": order_id, "status": "submitted" if ok else "rejected",
                 "error": result.get("error") if not ok else None, "fee": 0.0}
+
+    def _sweep_fee(self, bot_id: int, chain: str, fill_price: float,
+                   fill_qty: float, symbol: str) -> None:
+        """Transfer the 0.5% platform fee to the operator's fee wallet.
+
+        Reads BLUEFIN_FEE_ADDR (set in .env). Skips when unset. Builds a temp
+        SUIAdapter from the trader's wallet key and calls transfer_asset() with
+        the exact fee. Best-effort - never blocks the trade."""
+        if chain != "sui":
+            return
+        fee_addr = os.environ.get("BLUEFIN_FEE_ADDR", "").strip()
+        if not fee_addr:
+            return
+        from ledger import PLATFORM_FEE_BPS
+        notional = fill_price * fill_qty
+        fee_usd = round(notional * PLATFORM_FEE_BPS / 10000, 6)
+        if fee_usd <= 0:
+            return
+        try:
+            wallet = self.ledger.wallet_by_bot_chain(bot_id, "sui")
+            if not wallet or not wallet.get("key_enc"):
+                log.warning("[fee] no wallet key for bot %s - fee sweep skipped", bot_id)
+                return
+            from exec_vault import ExecVault
+            from sui_adapter import SUIAdapter
+            vault = ExecVault()
+            key_hex = vault.decrypt(wallet["key_enc"])
+            # Match the trading adapter's network (testnet/mainnet) so the fee
+            # lands on the same chain the trade executed on.
+            existing = self.adapters.get("sui")
+            testnet = bool(getattr(existing, "testnet", True))
+            adapter = SUIAdapter(self.ledger, key_hex, testnet=testnet)
+            res = adapter.transfer_asset(fee_addr, fee_usd, "USDC")
+            if res.get("ok"):
+                log.info("[fee] swept $%s fee (%s %s) -> %s tx=%s",
+                         fee_usd, symbol, fill_qty, fee_addr[:10] + "…", res.get("digest", "?")[:16])
+            else:
+                log.warning("[fee] sweep failed ($%s %s %s): %s",
+                            fee_usd, symbol, fill_qty, res.get("error", "?")[:120])
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[fee] sweep exception: %s", exc)
 
     # ------------------------------------------------------------ helpers
 

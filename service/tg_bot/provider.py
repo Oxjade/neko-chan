@@ -118,10 +118,12 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
             raise ProviderError("network", f"provider call failed: {type(exc).__name__}")
 
         # OpenRouter free tier: a paid-model routing (402), per-day free cap
-        # (429), or a forbidden model (403) on a free candidate is NOT a bad
-        # key - try the next free model instead of giving up.
+        # (429), or a forbidden model (403/400) is NOT a bad key - skip this
+        # candidate and try the next free model. `openrouter/auto` (the preset)
+        # commonly returns 402 on a free-tier key, so we must skip past it too,
+        # not raise. Without this the validation "gets stuck on Testing your key".
         if provider == "openrouter" and len(candidates) > 1:
-            if resp.status_code in (402, 400, 403, 429) and cand != resolved_model:
+            if resp.status_code in (402, 400, 403, 429):
                 continue
         if resp.status_code in (401, 403):
             raise ProviderError("invalid", "provider rejected the key (401/403)")

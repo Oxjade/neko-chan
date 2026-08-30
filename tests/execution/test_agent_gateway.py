@@ -150,14 +150,14 @@ def test_gateway_none_when_execution_disabled():
 
 def test_clamp_leverage_asset_caps():
     from live_agent import clamp_leverage
-    # BTC caps at 40x on Hyperliquid
+    # BTC caps at 40x on Bluefin
     assert clamp_leverage("BTC", "crypto", 50) == 40
     assert clamp_leverage("BTC", "crypto", 20) == 20
-    # SOL caps at 20x
-    assert clamp_leverage("SOL", "crypto", 25) == 20
-    # ATOM/SEI cap at 5x
-    assert clamp_leverage("ATOM", "crypto", 10) == 5
-    assert clamp_leverage("SEI", "crypto", 10) == 5
+    # SOL caps at 25x on Bluefin (research: Bluefin Pro SOL-PERP IMR=3.8% → 25x)
+    assert clamp_leverage("SOL", "crypto", 25) == 25
+    assert clamp_leverage("SOL", "crypto", 30) == 25
+    # Unknown symbol defaults to 25x (Bluefin perp default)
+    assert clamp_leverage("ATOM", "crypto", 10) == 10
     # 1x stays 1x (safe default)
     assert clamp_leverage("BTC", "crypto", 1) == 1
     # non-crypto is always 1x

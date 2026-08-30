@@ -16,6 +16,7 @@ a pure-python fallback), and broadcast via sui_executeTransactionBlock.
 
 import base64
 import hashlib
+import json
 import logging
 import time
 
@@ -34,7 +35,11 @@ SUI_COIN_TYPE = "0x2::sui::SUI"
 # Circle-issued USDC on Sui mainnet (well-known coin type). Pass usdc_coin_type
 # explicitly for testnet or for the newer 0x...::usdc::USDC deployment.
 USDC_MAINNET_COIN_TYPE = (
-    "0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN"
+    "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+)
+# Testnet (Bluefin staging) USDC — from api.sui-staging.bluefin.io exchange info.
+USDC_TESTNET_COIN_TYPE = (
+    "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
 )
 
 DEEPBOOK_MODULE = "deepbook"
@@ -120,6 +125,11 @@ def _bcs_call_arg_shared(object_id: str, initial_shared_version: int, mutable: b
     return b"\x01" + b"\x01" + _bcs_addr(object_id) + _bcs_u64(initial_shared_version) + _bcs_bool(mutable)
 
 
+def _bcs_call_arg_imm_or_owned(object_id: str, version: int, digest: str) -> bytes:
+    # CallArg::Object(ObjectArg::ImmOrOwnedObject { address, version, digest })
+    return b"\x01" + b"\x00" + _bcs_object_ref(object_id, version, digest)
+
+
 def _bcs_call_arg_pure(value_bytes: bytes) -> bytes:
     # CallArg::Pure(Vector<u8>)
     return b"\x00" + _bcs_bytes(value_bytes)
@@ -128,6 +138,21 @@ def _bcs_call_arg_pure(value_bytes: bytes) -> bytes:
 def _bcs_argument_input(n: int) -> bytes:
     # Argument::Input(u16)
     return b"\x01" + _bcs_u16(n)
+
+
+def _bcs_argument_result(n: int) -> bytes:
+    # Argument::Result(u16)
+    return b"\x02" + _bcs_u16(n)
+
+
+def _bcs_command_split_coins(coin: bytes, amounts: list[bytes]) -> bytes:
+    # Command::SplitCoins { coin: Argument, amounts: vector<Argument> }
+    return b"\x02" + coin + _bcs_vec(amounts)
+
+
+def _bcs_command_transfer_objects(coins: list[bytes], to: bytes) -> bytes:
+    # Command::TransferObjects { coins: vector<Argument>, to: Argument }
+    return b"\x01" + _bcs_vec(coins) + to
 
 
 def _bcs_command_move_call(command: dict, arguments: list[bytes]) -> bytes:
@@ -213,6 +238,23 @@ def _serialize_tx_data_v1(call_args: list[dict], command: dict, sender: str,
     arguments = [_bcs_argument_input(i) for i in range(len(inputs))]
     # TransactionKind::ProgrammableTransaction
     kind = b"\x00" + _bcs_programmable(inputs, [_bcs_command_move_call(command, arguments)])
+    gas_data = (
+        _bcs_vec([_bcs_object_ref(gas_coin["objectId"], gas_coin["version"], gas_coin["digest"])])
+        + _bcs_addr(sender)
+        + _bcs_u64(gas_price)
+        + _bcs_u64(budget)
+    )
+    # TransactionData::V1 { kind, sender, gas_data, expiration: None }
+    return b"\x00" + kind + _bcs_addr(sender) + gas_data + b"\x00"
+
+
+def _serialize_tx_ptb_v1(inputs: list[bytes], commands: list[bytes], sender: str,
+                         gas_coin: dict, gas_price: int, budget: int,
+                         shared_versions: dict) -> bytes:
+    """Serialize a ProgrammableTransaction whose inputs are already BCS CallArg
+    bytes and commands are already BCS Command bytes (used by transfer_asset)."""
+    # TransactionKind::ProgrammableTransaction
+    kind = b"\x00" + _bcs_programmable(inputs, commands)
     gas_data = (
         _bcs_vec([_bcs_object_ref(gas_coin["objectId"], gas_coin["version"], gas_coin["digest"])])
         + _bcs_addr(sender)
@@ -444,6 +486,62 @@ class SUIAdapter:
             raise SuiRpcError(method, msg)
         return payload.get("result") if isinstance(payload, dict) else payload
 
+    # ---- GraphQL endpoint (replaces deprecated JSON-RPC for balance/coins) ----
+    GQL_URL = "https://graphql.{network}.sui.io/graphql"
+
+    def _gql(self, query: str) -> dict:
+        """Execute a GraphQL query against the public Sui GraphQL endpoint."""
+        url = self.GQL_URL.format(network="testnet" if self.testnet else "mainnet")
+        try:
+            r = requests.post(url, json={"query": query}, timeout=RPC_TIMEOUT)
+            if r.status_code != 200:
+                raise SuiRpcError("graphql", f"HTTP {r.status_code}: {r.text[:200]}")
+            data = r.json()
+            if data.get("errors"):
+                raise SuiRpcError("graphql", str(data["errors"][:2]))
+            return data.get("data", {})
+        except requests.RequestException as exc:
+            raise SuiRpcError("graphql", f"transport error: {exc}") from exc
+
+    def _gql_coins(self, coin_type: str) -> list[dict]:
+        """Owned coin objects via GraphQL (JSON-RPC suix_getCoins is deprecated)."""
+        addr = self.address[2:] if self.address.startswith("0x") else self.address
+        # Query: get MoveObject nodes (which ARE the coin objects) owned by the
+        # address, filtered by the coin's Move type. The balance field needs the
+        # coinType argument.
+        q = (
+            '{ address(address: "0x' + addr + '") {'
+            '  objects(first: 50, filter: {type: "' + coin_type + '"}) {'
+            '    nodes {'
+            '      address'
+            '      version'
+            '      digest'
+            '      balance(coinType: "' + coin_type + '") { totalBalance }'
+            '    }'
+            '  }'
+            '} }'
+        )
+        data = self._gql(q)
+        nodes = (data.get("address") or {}).get("objects") or {}
+        nodes = nodes.get("nodes") or []
+        out = []
+        for n in nodes:
+            oid = n.get("address")
+            if not oid:
+                continue
+            bal = 0
+            try:
+                bal = int((n.get("balance") or {}).get("totalBalance", 0) or 0)
+            except Exception:
+                pass
+            out.append({
+                "objectId": oid,
+                "version": int(n.get("version", 0) or 0),
+                "digest": n.get("digest", ""),
+                "balance": bal,
+            })
+        return out
+
     # ------------------------------------------------------------ balances / positions
 
     def _coin_spec(self, asset: str) -> tuple[str, int]:
@@ -456,8 +554,8 @@ class SUIAdapter:
     def get_balance(self, asset: str) -> float:
         try:
             coin_type, decimals = self._coin_spec(asset)
-            res = self._rpc("suix_getBalance", [self.address, coin_type])
-            total = int(res.get("totalBalance", 0))
+            coins = self._gql_coins(coin_type)
+            total = sum(c["balance"] for c in coins)
             return total / (10**decimals)
         except Exception:  # noqa: BLE001
             log.exception("get_balance failed for %s", asset)
@@ -527,32 +625,165 @@ class SUIAdapter:
         return cache
 
     def _pick_gas_coin(self) -> dict:
-        res = self._rpc("suix_getCoins", [self.address, SUI_COIN_TYPE, None, 10])
-        for coin in (res or {}).get("data") or []:
-            if int(coin.get("balance", 0)) >= GAS_MIN_BALANCE:
-                return {
-                    "objectId": coin["coinObjectId"],
-                    "version": int(coin["version"]),
-                    "digest": coin["digest"],
-                }
-        raise SuiRpcError("suix_getCoins", "no SUI gas coin with >= 1 SUI balance")
+        coins = self._gql_coins(SUI_COIN_TYPE)
+        for c in coins:
+            if c["balance"] >= GAS_MIN_BALANCE:
+                return {"objectId": c["objectId"], "version": c["version"], "digest": c["digest"]}
+        raise SuiRpcError("graphql coins", "no SUI gas coin with >= 1 SUI balance")
+
+    def _get_coins(self, coin_type: str, limit: int = 50) -> list[dict]:
+        """Owned coin objects of a type: [{objectId, version, digest, balance}].
+
+        Uses GraphQL (suix_getCoins is deprecated on public fullnodes)."""
+        return self._gql_coins(coin_type)
+
+    def transfer_asset(self, recipient: str, amount: float, asset: str = "USDC") -> dict:
+        """Send `amount` of `asset` (USDC or SUI) to `recipient` on-chain.
+
+        Builds a SplitCoins + TransferObjects programmable transaction (merge
+        dust coins first if the primary is short), dry-runs it, then signs and
+        broadcasts with the wallet key. Returns {ok, digest, tx_bytes} or
+        {ok: False, error: ...}.
+        """
+        if self._sign_error:
+            return {"ok": False, "error": self._sign_error}
+        try:
+            coin_type, decimals = self._coin_spec(asset)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        if not recipient or len(recipient.replace("0x", "")) < 40:
+            return {"ok": False, "error": "invalid recipient address"}
+        if amount <= 0:
+            return {"ok": False, "error": "amount must be positive"}
+        amount_raw = int(round(amount * (10 ** decimals)))
+        if amount_raw <= 0:
+            return {"ok": False, "error": f"amount too small for {asset} decimals"}
+
+        try:
+            coins = self._get_coins(coin_type)
+            if not coins:
+                return {"ok": False, "error": f"no {asset} balance on {self.address[:12]}…"}
+            coins.sort(key=lambda c: c["balance"], reverse=True)
+            primary = coins[0]
+            others = [c for c in coins[1:] if c["objectId"] != primary["objectId"]]
+            total = sum(c["balance"] for c in coins)
+            if amount_raw > total:
+                return {"ok": False,
+                        "error": f"insufficient {asset}: have {total / 10**decimals:.6f}, need {amount:.6f}"}
+
+            # Build BCS inputs/commands and JSON for dry-run.
+            bcs_inputs, bcs_commands = [], []
+            json_inputs, json_transactions = [], []
+
+            # Merge step: merge dust coins into primary.
+            if others:
+                for c in others:
+                    bcs_inputs.append(_bcs_call_arg_imm_or_owned(
+                        primary["objectId"], primary["version"], primary["digest"]))
+                    bcs_inputs.append(_bcs_call_arg_imm_or_owned(
+                        c["objectId"], c["version"], c["digest"]))
+                    bcs_commands.append(b"\x03" + _bcs_argument_input(0) + _bcs_vec(
+                        [_bcs_argument_input(1)]))
+                    json_inputs.append({"Object": {"ImmOrOwnedObject": {
+                        "objectId": primary["objectId"], "version": primary["version"],
+                        "digest": primary["digest"]}}})
+                    json_inputs.append({"Object": {"ImmOrOwnedObject": {
+                        "objectId": c["objectId"], "version": c["version"],
+                        "digest": c["digest"]}}})
+                    # MergeCoins command: merge the second coin into the first
+                    json_transactions.append({
+                        "MergeCoins": {"destination": {"Input": 0}, "sources": [{"Input": 1}]}})
+
+            # Transfer step: SplitCoins(primary, [amount]) + TransferObjects([res0], recipient)
+            recipient_addr = recipient if recipient.startswith("0x") else f"0x{recipient}"
+            coin_idx = len(bcs_inputs)  # index of the primary coin input in the BCS array
+            bcs_inputs.append(_bcs_call_arg_imm_or_owned(
+                primary["objectId"], primary["version"], primary["digest"]))
+            bcs_inputs.append(_bcs_call_arg_pure(_bcs_u64(amount_raw)))
+            bcs_inputs.append(_bcs_call_arg_pure(_bcs_addr(recipient_addr)))
+            json_inputs.append({"Object": {"ImmOrOwnedObject": {
+                "objectId": primary["objectId"], "version": primary["version"],
+                "digest": primary["digest"]}}})
+            json_inputs.append({"Pure": "0x" + _bcs_u64(amount_raw).hex()})
+            json_inputs.append({"Pure": "0x" + _bcs_addr(recipient_addr).hex()})
+
+            coin_arg = _bcs_argument_input(coin_idx)
+            amount_arg = _bcs_argument_input(coin_idx + 1)
+            recv_arg = _bcs_argument_input(coin_idx + 2)
+            bcs_commands.append(_bcs_command_split_coins(coin_arg, [amount_arg]))
+            bcs_commands.append(_bcs_command_transfer_objects([_bcs_argument_result(0)], recv_arg))
+            json_transactions.append(
+                {"SplitCoins": {"coin": {"Input": coin_idx}, "amounts": [{"Input": coin_idx + 1}]}})
+            json_transactions.append(
+                {"TransferObjects": {"coins": [{"Result": 0}], "to": {"Input": coin_idx + 2}}})
+
+            tx_json = {
+                "kind": "ProgrammableTransaction",
+                "inputs": json_inputs,
+                "transactions": json_transactions,
+            }
+            gas = self._dry_run(tx_json)
+            out = self._broadcast_ptb(bcs_inputs, bcs_commands, gas["gas_price"], gas["budget"])
+            return {
+                "ok": True,
+                "venue": "sui",
+                "asset": asset,
+                "amount": amount,
+                "recipient": recipient_addr,
+                "tx_hash": out["digest"],
+                "digest": out["digest"],
+                "tx_bytes": out["tx_bytes"],
+            }
+        except Exception as exc:  # noqa: BLE001
+            log.exception("transfer_asset failed %s->%s", asset, recipient)
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+
+    def _broadcast_ptb(self, inputs: list[bytes], commands: list[bytes],
+                       gas_price: int, budget: int) -> dict:
+        """Broadcast a raw programmable-transaction (input bytes already BCS)."""
+        tx_bytes = _serialize_tx_ptb_v1(
+            inputs, commands, self.address, self._pick_gas_coin(),
+            gas_price, budget, self._shared_versions(),
+        )
+        return self._broadcast_tx(tx_bytes)
 
     def _dry_run(self, tx_json: dict) -> dict:
-        dry = self._rpc("sui_dryRunTransactionBlock", [self.address, tx_json])
-        if dry.get("errors"):
-            raise SuiRpcError("sui_dryRunTransactionBlock", "; ".join(dry["errors"]))
-        effects = dry.get("effects") or {}
+        """Simulate a transaction via GraphQL simulateTransaction (the JSON-RPC
+        sui_dryRunTransactionBlock is deprecated on public fullnodes).
+
+        tx_json is the ProgrammableTransaction {kind, inputs, transactions}
+        JSON shape. Returns {gas_price, budget}."""
+        q = (
+            'mutation { '
+            '  simulateTransaction(transaction: ' + json.dumps(tx_json) + ', '
+            '    doGasSelection: true) { '
+            '    effects { '
+            '      status { status error } '
+            '      gasUsed { computationCost storageCost } '
+            '    } '
+            '  } '
+            '}'
+        )
+        data = self._gql(q)
+        effects = (data.get("simulateTransaction") or {}).get("effects") or {}
         status = effects.get("status") or {}
-        if status.get("status") == "failure":
+        if str(status.get("status")) != "SUCCESS":
             raise SuiRpcError(
-                "sui_dryRunTransactionBlock",
-                "dry run failure: " + str(status.get("error", "unknown")),
+                "simulateTransaction",
+                "dry run failure: " + str(status.get("error") or status.get("status") or "unknown"),
             )
         gas = effects.get("gasUsed") or {}
         budget = int(gas.get("computationCost", 0)) + int(gas.get("storageCost", 0))
         budget = max(budget + budget // 2, 500_000)
-        gas_price = int(self._rpc("suix_getReferenceGasPrice", []))
+        gas_price = int(self._gql_gas_price())
         return {"gas_price": gas_price, "budget": budget}
+
+    def _gql_gas_price(self) -> int:
+        """Reference gas price via GraphQL (suix_getReferenceGasPrice deprecated)."""
+        q = '{ serviceConfig { referenceGasPrice } }'
+        data = self._gql(q)
+        cfg = data.get("serviceConfig") or {}
+        return int(cfg.get("referenceGasPrice") or 1000)
 
     def _broadcast(self, call_args: list[dict], command: dict,
                    gas_price: int, budget: int) -> dict:
@@ -560,12 +791,27 @@ class SUIAdapter:
             call_args, command, self.address,
             self._pick_gas_coin(), gas_price, budget, self._shared_versions(),
         )
+        return self._broadcast_tx(tx_bytes)
+
+    def _broadcast_tx(self, tx_bytes: bytes) -> dict:
+        """Broadcast tx bytes via GraphQL executeTransaction mutation.
+
+        GraphQL signature: executeTransaction(transactionDataBcs: Base64!,
+        signatures: [Signature!]!). Returns {tx_bytes, signature, digest}."""
         signature = self._sign(tx_bytes)
         tx_b64 = base64.b64encode(tx_bytes).decode()
-        res = self._rpc("sui_executeTransactionBlock", [
-            tx_b64, [signature], {"showEffects": True},
-        ])
-        digest = res.get("digest") or ""
+        q = (
+            'mutation { '
+            '  executeTransaction(transactionDataBcs: "' + tx_b64 + '", '
+            '    signatures: ["' + signature + '"]) { '
+            '    digest '
+            '    effects { status { status } } '
+            '  } '
+            '}'
+        )
+        data = self._gql(q)
+        exec_res = data.get("executeTransaction") or {}
+        digest = exec_res.get("digest") or ""
         return {"tx_bytes": tx_b64, "signature": signature, "digest": digest}
 
     def _sign(self, tx_bytes: bytes) -> str:

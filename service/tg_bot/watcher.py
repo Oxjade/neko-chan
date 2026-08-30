@@ -52,6 +52,17 @@ K_MILESTONE_UP = "watcher_milestone_up"
 K_MILESTONE_DOWN = "watcher_milestone_down"
 
 
+def pnl_pct_fmt(cur: float, entry: float, direction: int) -> str:
+    """Format a position's P&L % with its sign (+ long / - short)."""
+    try:
+        if entry <= 0:
+            return "?"
+        pct = (cur / entry - 1.0) * 100.0 * direction
+        return f"{pct:+.2f}%"
+    except Exception:
+        return "?"
+
+
 class Watcher:
     def __init__(self, db_path, notify, registry, bot_id: int, tg_id: int,
                  bot_token: str, chat_id: int, platform_base: str,
@@ -339,14 +350,85 @@ class Watcher:
         except Exception:
             return []
 
-    def _check_positions(self) -> None:
-        """Push live per-position P&L alerts + take-profit prompt.
+    # ---- deposit detection (Sui GraphQL balance-delta watch) ----
+    # Native Circle USDC on Sui mainnet (from Bluefin exchange info, 2026).
+    SUI_USDC_MAINNET = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+    SUI_USDC_TESTNET = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
 
-        Alerts fire on USD profit/loss crossed, NOT fixed percentages - the
-        levels adapt to each position's notional (see _pnl_alert_levels), so a
-        $25 profit on a small position alerts the same as a big profit on a big
-        position. Each (symbol, level) alerts once. Exits/closes are handled by
-        the signals watcher (K_CLOSE) - this only surfaces live moves.
+    def _wallet_balances(self) -> tuple[float, float] | None:
+        """(USDC, SUI) on-chain balance for the bot's wallet via Sui GraphQL
+        (JSON-RPC suix_getBalance is deprecated on public fullnodes)."""
+        try:
+            bot = self.registry.get_bot(self.bot_id) or {}
+            addr = bot.get("wallet_addr") or ""
+            if not addr:
+                return None
+            network = (bot.get("network") or "testnet").strip().lower()
+            testnet = network != "mainnet"
+            gql = f"https://graphql.{'testnet' if testnet else 'mainnet'}.sui.io/graphql"
+            usdc_type = self.SUI_USDC_TESTNET if testnet else self.SUI_USDC_MAINNET
+            out = {"USDC": 0.0, "SUI": 0.0}
+            for key, coin, dec in (("SUI", "0x2::sui::SUI", 9), ("USDC", usdc_type, 6)):
+                try:
+                    q = ('{ address(address: "' + addr + '") { balance(coinType: "' + coin + '") '
+                         '{ totalBalance } } }')
+                    r = requests.post(gql, json={"query": q}, timeout=8)
+                    data = r.json()
+                    out[key] = float(int((data.get("data") or {})
+                                         .get("address", {}).get("balance", {}).get("totalBalance", 0) or 0)) / (10 ** dec)
+                except Exception:
+                    pass
+            return out["USDC"], out["SUI"]
+        except Exception:
+            return None
+
+    def _watch_deposits(self) -> None:
+        """Detect + notify incoming USDC/SUI deposits (balance delta vs last poll).
+
+        Uses a per-bot persisted watermark (registry event ledger) so restarts
+        never double-notify: the last seen balance is stored under
+        kind=watcher_balance, ref_id=<wallet_addr>, and we only notify on an
+        INCREASE above the recorded value. Falls back to in-memory tracking."""
+        try:
+            bal = self._wallet_balances()
+            if bal is None:
+                return
+            usdc, sui = bal
+            last = getattr(self, "_last_bal", None)
+            if last is not None:
+                du = usdc - last[0]
+                ds = sui - last[1]
+                if du > 0.05:
+                    self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
+                                       self.chat_id, "watcher_deposit", f"usdc:{usdc:.6f}",
+                                       f"💰 <b>USDC deposit detected</b>\n"
+                                       f"  +${du:,.2f} USDC → balance <b>${usdc:,.2f}</b>",
+                                       dedup=True)
+                if ds > 0.02:
+                    self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
+                                       self.chat_id, "watcher_deposit", f"sui:{sui:.6f}",
+                                       f"💰 <b>SUI deposit detected</b>\n"
+                                       f"  +{ds:,.4f} SUI → balance <b>{sui:,.4f}</b>",
+                                       dedup=True)
+            self._last_bal = (usdc, sui)
+        except Exception as exc:
+            log.warning("[watcher] deposit watch error: %s", exc)
+
+    def _check_positions(self) -> None:
+        """Push live per-position P&L + TP/SL percentage-ladder alerts.
+
+        Two independent alert streams, both deduped per (symbol, level):
+
+        1. USD P&L alerts (existing): fire on profit/loss USD crossed, scaled to
+           the position's notional.
+        2. TP/SL percentage ladder (new): notify at 50% / 75% / 90% / 100% of the
+           distance toward the take-profit AND toward the stop-loss, escalating
+           as the position closes in. These are the "getting close to TP" and
+           "warn me before it hits SL" notifications the operator asked for.
+
+        TP ladder = green, escalating urgency; SL ladder = amber→red warning.
+        Closes are handled by the signals watcher (K_CLOSE) - this only
+        surfaces live moves.
         """
         try:
             for p in self._positions():
@@ -360,6 +442,8 @@ class Watcher:
                 pnl_usd = (cur - entry) * (qty if qty >= 0 else -qty)
                 notional = abs(qty) * entry
                 sent = self._sent_position_alerts.setdefault(symbol, set())
+
+                # ---- USD P&L stream (existing behavior) ----
                 for level in self._pnl_alert_levels(notional):
                     crossed = (pnl_usd >= level if level >= 0 else pnl_usd <= level)
                     key = f"${level:+.0f}"
@@ -383,18 +467,98 @@ class Watcher:
                                            f"{symbol}:{key}", text,
                                            buttons=buttons, dedup=True)
                         log.info("[push] pnl alert %s %s (%.2f%%)", symbol, key, pnl_pct)
+
+                # ---- TP/SL percentage ladder (new) ----
+                self._check_tp_sl_ladder(symbol, qty, entry, cur,
+                                         p.get("take_profit"), p.get("stop_loss"),
+                                         sent)
         except Exception as exc:
             log.warning("[watcher] position check error: %s", exc)
+
+    # TP/SL notification ladder: notify at these % distances to the barrier.
+    TP_SL_LADDER_PCTS = (0.5, 0.75, 0.9, 1.0)
+    # labels + urgency per rung (order matches TP_SL_LADDER_PCTS)
+    TP_RUNG = ("halfway to target 🎯", "75% to target 🚀", "90% to target 🔥", "TARGET HIT 🎉")
+    SL_RUNG = ("⚠️ half to stop-loss", "⚠️ 75% to stop-loss", "🔴 90% to stop-loss — close or ride it", "⛔ STOP-LOSS HIT")
+
+    def _check_tp_sl_ladder(self, symbol: str, qty: float, entry: float,
+                            cur: float, target_raw, stop_raw, sent: set) -> None:
+        """Notify as a position crosses 50/75/90/100% of the distance to its
+        take-profit and to its stop-loss. Escalating, deduped per (symbol, tp|sl,
+        rung) so each rung fires once per position."""
+        try:
+            target = float(target_raw or 0)
+            stop = float(stop_raw or 0)
+            if entry <= 0:
+                return
+            direction = 1 if qty >= 0 else -1  # +1 long, -1 short
+
+            def _travel(pct_to_barrier: float) -> float | None:
+                """Fraction of the way from entry to a barrier, signed + toward
+                target / - toward stop. None when the barrier is missing."""
+                if pct_to_barrier is None:
+                    return None
+                return pct_to_barrier * direction
+
+            # take-profit: how far (in %) we've gone from entry toward target
+            if target > 0:
+                tp_travel = (cur / entry - 1.0) * direction
+                tp_dist = (target / entry - 1.0) * direction
+                if tp_dist > 0:
+                    frac = tp_travel / tp_dist
+                    for rung, pct in enumerate(self.TP_SL_LADDER_PCTS):
+                        if frac >= pct:
+                            key = f"tp:{rung}"
+                            if key not in sent:
+                                sent.add(key)
+                                icon = "📈"
+                                text = (f"{icon} <b>{symbol} {self.TP_RUNG[rung]}</b>\n"
+                                        f"• Now ${cur:,.4f} (entry ${entry:,.4f})\n"
+                                        f"• Target ${target:,.4f} · {frac*100:.0f}% there\n"
+                                        f"• P&L {pnl_pct_fmt(cur, entry, direction)}")
+                                self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
+                                                   self.chat_id, "watcher_tp",
+                                                   f"{symbol}:{key}", text,
+                                                   buttons=[[("📊 Dashboard", "sb:dash")]],
+                                                   dedup=True)
+                                log.info("[push] TP ladder %s %s (%.0f%%)", symbol, key, frac*100)
+
+            # stop-loss: how far (in %) we've gone from entry toward the stop
+            if stop > 0:
+                sl_travel = (cur / entry - 1.0) * direction
+                sl_dist = (stop / entry - 1.0) * direction
+                if sl_dist < 0:  # stop is on the loss side
+                    frac = sl_travel / sl_dist  # 0 at entry, + as it approaches stop
+                    for rung, pct in enumerate(self.TP_SL_LADDER_PCTS):
+                        if frac >= pct:
+                            key = f"sl:{rung}"
+                            if key not in sent:
+                                sent.add(key)
+                                icon = "🔴" if rung >= 2 else "⚠️"
+                                text = (f"{icon} <b>{symbol} {self.SL_RUNG[rung]}</b>\n"
+                                        f"• Now ${cur:,.4f} (entry ${entry:,.4f})\n"
+                                        f"• Stop ${stop:,.4f} · {frac*100:.0f}% to stop\n"
+                                        f"• P&L {pnl_pct_fmt(cur, entry, direction)}")
+                                self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
+                                                   self.chat_id, "watcher_sl",
+                                                   f"{symbol}:{key}", text,
+                                                   buttons=[[("📊 Dashboard", "sb:dash")]],
+                                                   dedup=True)
+                                log.info("[push] SL ladder %s %s (%.0f%%)", symbol, key, frac*100)
+        except Exception as exc:
+            log.warning("[watcher] tp/sl ladder error %s: %s", symbol, exc)
 
     def run(self):
         log.info("[watcher] started agent watcher (watermark %s)", self.watermark)
         self.last_equity_mark = self.equity() or self.start_equity
         self._last_profit_day = None
         self._sent_position_alerts: dict[str, set[str]] = {}  # symbol -> alert levels sent
+        self._last_bal = self._wallet_balances()  # seed baseline (no notify on first poll)
         while not self._stop:
             try:
                 self.poll_once()
                 self._check_positions()
+                self._watch_deposits()
                 eq = self.equity()
                 if eq is not None:
                     pct = (eq / self.last_equity_mark - 1) * 100

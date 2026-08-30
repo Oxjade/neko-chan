@@ -78,6 +78,16 @@ STRATEGY = os.getenv("LIVE_AGENT_STRATEGY", "momentum20").strip().lower()
 # engine can pick: scalp (minutes) / intraday (hours) / swing (days) / auto.
 # A scalp trader never sees 4% swing targets.
 TRADER_TYPE = os.getenv("LIVE_AGENT_TRADER_TYPE", "scalp").strip().lower()
+# 5-minute data window (hours) fed to the scalp scenario engine. The engine
+# derives drift/vol/RSI from THIS window so 5-min momentum (not 30-day daily
+# drift) decides long vs short. 288 bars/day, so 6h = 72 bars (plenty for a
+# lookback of 20, cheap on the RPC).
+SCENARIO_5M_HOURS = int(os.getenv("LIVE_AGENT_SCENARIO_5M_HOURS", "6"))
+# Conviction floor: a scenario only becomes a candidate when its conviction
+# (P(win) * EV) clears this bar. Below it the move is noise - we hold cash
+# instead of posting a low-conviction decision. Only ONE best trade is ever
+# posted per cycle (across all watched tokens), picked from the floor-crossers.
+CONVICTION_FLOOR = float(os.getenv("LIVE_AGENT_CONVICTION_FLOOR", "0.30"))
 # Peak-price tracker for trailing stops (in-memory per agent process).
 _trailing_high: dict[str, float] = {}
 # Per-user LLM credentials (set by the Telegram bot network). When LIVE_AGENT_API_KEY
@@ -86,14 +96,14 @@ LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
 LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "1"))
-# Max leverage is PER ASSET, not per chain (verified live from Hyperliquid:
-# BTC 40x, ETH 25x, SOL 20x, HYPE/SUI/NEAR 10x, ATOM/SEI 5x). Jupiter perps
-# allow up to 100x, Bluefin 25x, DeepBook margin 10x. The bot clamps any
-# user-selected leverage to the asset's venue max so it never asks for more
-# than the venue allows.
-HL_MAX_LEVERAGE = {
-    "BTC": 40, "ETH": 25, "SOL": 20, "SUI": 10, "HYPE": 10,
-    "SEI": 5, "NEAR": 10, "ATOM": 5,
+# Max leverage is PER ASSET, per venue. Verified live from Bluefin Pro's
+# /exchange/info (2026-08-29): BTC-PERP max 40x, ETH/SOL/SUI 25x. The bot
+# clamps any user-selected leverage (5x-100x range) to the venue/asset max so
+# it never submits a leverage the venue rejects.
+BLUEFIN_MAX_LEVERAGE = {
+    "BTC": 40, "ETH": 25, "SOL": 25, "SUI": 25, "ARB": 25, "AVAX": 25,
+    "BNB": 25, "DOGE": 25, "LINK": 25, "LTC": 25, "OP": 25, "MATIC": 25,
+    "SEI": 25,
 }
 
 
@@ -103,7 +113,8 @@ def clamp_leverage(symbol: str, market: str, lev: float) -> float:
         return 1.0
     if lev <= 1:
         return lev
-    cap = HL_MAX_LEVERAGE.get(symbol.upper(), 10)
+    # Bluefin is the live Sui venue - use its real per-market max.
+    cap = BLUEFIN_MAX_LEVERAGE.get(symbol.upper(), 25)
     return min(lev, cap)
 # Real execution through the chain adapters (execution gateway). Requires
 # REAL_TRADING_ENABLED=1 AND per-chain keys in the gateway env. Default off:
@@ -148,6 +159,57 @@ def get_price(token: str, symbol: str, market: str) -> float:
     if r.status_code != 200:
         raise RuntimeError(f"price {symbol}: {r.text[:120]}")
     return float(r.json()["price"])
+
+
+# Bluefin public perp CLOB orderbook (no API key required for reads). Used to
+# price Sui-based perp analysis/trades directly from the venue's own book
+# instead of routing through Hyperliquid.
+BLUEFIN_PROD_API = "https://dapi.api.sui-prod.bluefin.io"
+BLUEFIN_STAGING_API = "https://stg-api.bluefin.io"
+BLUEFIN_MARKET_SYMBOLS = {
+    "BTC": "BTC-PERP", "ETH": "ETH-PERP", "SOL": "SOL-PERP", "SUI": "SUI-PERP",
+    "ARB": "ARB-PERP", "AVAX": "AVAX-PERP", "BNB": "BNB-PERP", "DOGE": "DOGE-PERP",
+    "LINK": "LINK-PERP", "LTC": "LTC-PERP", "OP": "OP-PERP", "MATIC": "MATIC-PERP",
+    "SEI": "SEI-PERP",
+}
+
+
+def fetch_bluefin_price(symbol: str) -> float | None:
+    """Mid price from Bluefin's public orderbook for a perp base symbol.
+
+    Returns None when the market is unknown or the venue is unreachable, so
+    the caller can fall back to the platform/Hyperliquid price.
+    """
+    market = BLUEFIN_MARKET_SYMBOLS.get((symbol or "").upper())
+    if not market:
+        return None
+    api = (BLUEFIN_STAGING_API
+           if os.getenv("EXEC_HL_TESTNET", "1") in {"1", "true", "yes", "on"}
+           else BLUEFIN_PROD_API)
+    try:
+        import requests as _r
+        r = _r.get(f"{api}/order/book/{market}", timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        bids = data.get("bids") or []
+        asks = data.get("asks") or []
+        def _px(level) -> float | None:
+            try:
+                return float(level.get("price") or level.get("p") or 0) / 1e6
+            except Exception:
+                return None
+        best_bid = max((_px(x) for x in bids if _px(x) is not None), default=None)
+        best_ask = min((_px(x) for x in asks if _px(x) is not None), default=None)
+        if best_bid is not None and best_ask is not None:
+            return (best_bid + best_ask) / 2.0
+        if best_bid is not None:
+            return best_bid
+        if best_ask is not None:
+            return best_ask
+        return None
+    except Exception:
+        return None
 
 
 def get_history(symbol: str, market: str, days: int = 30) -> pd.DataFrame:
@@ -271,6 +333,46 @@ def compute_risk_size(equity_val: float, entry_price: float, stop_pct: float,
     units = min(units, kelly_units) * vol_mult
     return units, (f"risk {RISK_PER_TRADE_PCT:.1f}% -> {units:.6f} units "
                    f"(kelly {f_used:.2f}, vol x{vol_mult:.2f})")
+
+
+def balance_aware_size(equity_val: float, cash: float, entry_price: float,
+                       stop_pct: float, symbol: str,
+                       market: str = "crypto") -> tuple[float, float, str]:
+    """Balance-aware position sizing + leverage for a perp trade.
+
+    Risk-based sizing (risk 1% of equity / stop distance) tells us HOW MANY
+    UNITS. Leverage is then chosen so the margin required (notional/lev) fits
+    comfortably inside the real cash balance - small balance uses more of the
+    5x-100x range, big balance stays low - and is clamped to the venue's per-
+    market max (Bluefin: BTC 40x, others 25x).
+
+    Returns (units, leverage, attribution).
+    """
+    stop_pct = float(stop_pct or FORCE_STOP_PCT or 0.5)
+    units, why = compute_risk_size(equity_val, entry_price, stop_pct, stop_pct * 3)
+    if units <= 0 or entry_price <= 0:
+        return 0.0, 1.0, why
+    notional = units * entry_price
+    usable_cash = max(float(cash or 0), 0.0) * 0.95  # leave a fee buffer
+    # leverage so margin fits the balance: lev = notional / (cash x margin_use)
+    # margin_use target ~ 20% of usable cash so the book stays liquid.
+    margin_use = max(0.05, min(0.5, 0.20))
+    if usable_cash > 0:
+        lev = notional / (usable_cash * margin_use)
+    else:
+        lev = LIVE_AGENT_LEVERAGE
+    lev = max(5.0, min(lev, 100.0))                 # user range 5x-100x
+    lev = clamp_leverage(symbol, market, lev)       # venue/asset cap
+    # final notional must never exceed the balance at ANY leverage
+    if lev > 1 and notional > usable_cash * lev:
+        units = (usable_cash * lev) / entry_price
+        notional = units * entry_price
+    # hard cap: notional <= 30% of equity (momentum book cap)
+    if equity_val > 0 and notional > equity_val * MAX_POSITION_PCT / 100.0:
+        units = (equity_val * MAX_POSITION_PCT / 100.0) / entry_price
+        notional = units * entry_price
+    return units, lev, (f"balance-size {units:.6f}u (~${notional:,.0f} notional @ "
+                        f"{lev:g}x, margin fits cash {why.split('->')[-1].strip()})")
 
 
 def market_stats(symbol: str, market: str) -> dict:
@@ -484,13 +586,16 @@ def _opencode_completion(system: str, user: str) -> dict:
 
 
 def _provider_completion(system: str, user: str) -> dict:
-    """Direct OpenAI-compatible (OpenRouter/Anthropic/etc.) JSON decision call.
+    """Provider-aware JSON decision call (Claude + OpenAI-compatible).
 
-    OpenRouter uses the OpenAI /chat/completions shape. The active model may be a
-    reasoning model that spends tokens on `reasoning` before emitting the final
-    JSON in `content`. A small max_tokens budget truncates the thinking and
-    returns content=None, so we pass a generous budget + low temperature, and
-    fall back to a safe hold if content is empty or unparseable.
+    - claude:     Anthropic /v1/messages, x-api-key header (NOT OpenAI shape)
+    - openai / openrouter / deepseek / custom: OpenAI /chat/completions,
+      Bearer auth. OpenRouter uses the same shape; deepseek-chat uses the
+      OpenAI-compatible endpoint.
+    The active model may be a reasoning model that spends tokens on `reasoning`
+    before emitting the final JSON in `content`. We pass a generous budget +
+    low temperature, and fall back to a safe hold if content is empty or
+    unparseable.
     """
     # No external API key -> use the opencode-go gateway (our own model) via the
     # `opencode run` CLI, which is not rate-limited by OpenRouter.
@@ -498,39 +603,75 @@ def _provider_completion(system: str, user: str) -> dict:
         return _opencode_completion(system, user)
     import requests as _requests
 
-    base = (LIVE_AGENT_BASE_URL or "https://openrouter.ai/api/v1").rstrip("/")
-    url = f"{base}/chat/completions"
-    headers = {"Authorization": f"Bearer {LIVE_AGENT_API_KEY}",
-               "Content-Type": "application/json"}
-    body = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "temperature": 0.2,
-    }
-    if int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0")) > 0:
-        # Clamp to the provider's accepted range (observed InvalidParameter
-        # error when >393216 on deepseek-v4-flash via b.ai gateway).
-        body["max_tokens"] = min(int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0")), 393216)
-    try:
-        resp = _requests.post(url, headers=headers, json=body, timeout=300)
-        if resp.status_code != 200:
-            return {"action": "hold", "quantity": 0,
-                    "reasoning": f"llm-http-{resp.status_code}: {resp.text[:120]}"}
-        data = resp.json()
-        content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
-        if not content or not content.strip():
-            return {"action": "hold", "quantity": 0,
-                    "reasoning": "llm-empty: reasoning model returned no content"}
-        start, end = content.find("{"), content.rfind("}")
-        if start == -1 or end == -1:
-            return {"action": "hold", "quantity": 0,
-                    "reasoning": f"parse-failed: {content[:120]}"}
-        return json.loads(content[start : end + 1])
-    except Exception as exc:  # noqa: BLE001
-        return {"action": "hold", "quantity": 0, "reasoning": f"llm-error: {exc}"}
+    prov = (LIVE_AGENT_PROVIDER or "openai").strip().lower()
+
+    # ---- Anthropic (Claude): /v1/messages + x-api-key ----
+    if prov == "claude":
+        base = (LIVE_AGENT_BASE_URL or "https://api.anthropic.com/v1").rstrip("/")
+        url = f"{base}/messages"
+        headers = {
+            "x-api-key": LIVE_AGENT_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "model": MODEL,
+            "max_tokens": int(os.getenv("LIVE_AGENT_MAX_TOKENS", "4000")),
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        }
+        try:
+            resp = _requests.post(url, headers=headers, json=body, timeout=300)
+            if resp.status_code != 200:
+                return {"action": "hold", "quantity": 0,
+                        "reasoning": f"llm-http-{resp.status_code}: {resp.text[:120]}"}
+            data = resp.json()
+            content = ""
+            for block in data.get("content") or []:
+                if block.get("type") == "text" and block.get("text"):
+                    content = block["text"]
+                    break
+            if not content or not content.strip():
+                return {"action": "hold", "quantity": 0,
+                        "reasoning": "llm-empty: claude returned no text"}
+        except Exception as exc:  # noqa: BLE001
+            return {"action": "hold", "quantity": 0, "reasoning": f"llm-error: {exc}"}
+    else:
+        # ---- OpenAI / OpenRouter / DeepSeek / custom: /chat/completions ----
+        base = (LIVE_AGENT_BASE_URL or "https://openrouter.ai/api/v1").rstrip("/")
+        url = f"{base}/chat/completions"
+        headers = {"Authorization": f"Bearer {LIVE_AGENT_API_KEY}",
+                   "Content-Type": "application/json"}
+        body = {
+            "model": MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.2,
+        }
+        if int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0")) > 0:
+            # Clamp to the provider's accepted range (observed InvalidParameter
+            # error when >393216 on deepseek-v4-flash via b.ai gateway).
+            body["max_tokens"] = min(int(os.getenv("LIVE_AGENT_MAX_TOKENS", "0")), 393216)
+        try:
+            resp = _requests.post(url, headers=headers, json=body, timeout=300)
+            if resp.status_code != 200:
+                return {"action": "hold", "quantity": 0,
+                        "reasoning": f"llm-http-{resp.status_code}: {resp.text[:120]}"}
+            data = resp.json()
+            content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+            if not content or not content.strip():
+                return {"action": "hold", "quantity": 0,
+                        "reasoning": "llm-empty: reasoning model returned no content"}
+        except Exception as exc:  # noqa: BLE001
+            return {"action": "hold", "quantity": 0, "reasoning": f"llm-error: {exc}"}
+
+    start, end = content.find("{"), content.rfind("}")
+    if start == -1 or end == -1:
+        return {"action": "hold", "quantity": 0,
+                "reasoning": f"parse-failed: {content[:120]}"}
+    return json.loads(content[start : end + 1])
 
 
 def ask_model(prompt: str) -> dict:
@@ -859,6 +1000,20 @@ def _notify_claim(key: str) -> bool:
             return True
 
 
+def _schedule_delete(bot_token: str, chat_id: int, message_id: int,
+                     ttl: int = 300) -> None:
+    """Delete a sent Telegram message after ttl seconds (background thread)."""
+    def _delete():
+        time.sleep(ttl)
+        try:
+            import requests as _r
+            _r.post(f"https://api.telegram.org/bot{bot_token}/deleteMessage",
+                    json={"chat_id": chat_id, "message_id": message_id}, timeout=10)
+        except Exception:
+            pass
+    threading.Thread(target=_delete, daemon=True).start()
+
+
 def notify_error(message: str, kind: str = "error") -> None:
     """Push one human-friendly message to the user's bot chat (best-effort).
 
@@ -866,7 +1021,8 @@ def notify_error(message: str, kind: str = "error") -> None:
     the user knows exactly what's happening (AI key rate-limited vs venue
     down vs a trade rejected). Each (kind, message) is sent AT MOST once per
     NOTIFY_DEDUP_SECONDS via a shared lock file, so no message is ever
-    duplicated - even by concurrent agent processes.
+    duplicated - even by concurrent agent processes. The chat message
+    auto-deletes after 3 minutes (TTL) to keep the chat clean.
     """
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         return
@@ -887,11 +1043,15 @@ def notify_error(message: str, kind: str = "error") -> None:
                 "keeps trading. No fake trades.")
     try:
         import requests as _r
-        _r.post(
+        r = _r.post(
             f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
             json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "HTML"},
             timeout=15,
         )
+        if r.status_code == 200:
+            mid = r.json().get("result", {}).get("message_id")
+            if mid:
+                _schedule_delete(TG_BOT_TOKEN, TG_CHAT_ID, mid)
     except Exception:
         pass
 
@@ -901,7 +1061,8 @@ def notify_trade(symbol: str, action: str, qty: float, price: float,
                  reasoning: str = "") -> None:
     """Pop-up to the user right BEFORE a real/paper order goes out: the trade
     the LLM + quant just decided on. Uses the shared dedup lock so repeated
-    cycles never double-post the same symbol/action/direction signal."""
+    cycles never double-post the same symbol/action/direction signal. The chat
+    message auto-deletes after 3 minutes (TTL)."""
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         return
     side = "LONG" if action in ("buy", "cover") else "SHORT"
@@ -918,11 +1079,15 @@ def notify_trade(symbol: str, action: str, qty: float, price: float,
     )
     try:
         import requests as _r
-        _r.post(
+        r = _r.post(
             f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
             json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "HTML"},
             timeout=15,
         )
+        if r.status_code == 200:
+            mid = r.json().get("result", {}).get("message_id")
+            if mid:
+                _schedule_delete(TG_BOT_TOKEN, TG_CHAT_ID, mid)
     except Exception:
         pass
 
@@ -987,6 +1152,37 @@ def fetch_5m_context(symbol: str, market: str, hours: int = 1) -> str:
         return f"5m: unavailable ({exc})"
 
 
+def fetch_5m_closes(symbol: str, market: str,
+                    hours: int = SCENARIO_5M_HOURS) -> list[float]:
+    """Recent 5-minute closes for the scalp scenario engine's long/short read.
+
+    crypto -> Hyperliquid candleSnapshot "5m"; others -> yfinance 5m. Returns
+    [] on failure (caller falls back to the daily series).
+    """
+    try:
+        if market == "crypto":
+            import requests as _r
+            now_ms = int(time.time() * 1000)
+            r = _r.post("https://api.hyperliquid.xyz/info", json={
+                "type": "candleSnapshot",
+                "req": {"coin": symbol, "interval": "5m",
+                        "startTime": now_ms - hours * 3600 * 1000,
+                        "endTime": now_ms},
+            }, timeout=15)
+            closes = [float(c["c"]) for c in r.json()]
+        else:
+            import yfinance as yf
+            ticker = f"{symbol}=X" if market == "forex" else symbol
+            df = yf.download(ticker, period="1d", interval="5m",
+                             progress=False, auto_adjust=True)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            closes = [float(v) for v in df["Close"].dropna().tolist()]
+        return [c for c in closes if c > 0]
+    except Exception:
+        return []
+
+
 def market_open(market: str) -> bool:
     """Client-side market-hours pre-check (platform enforces regardless)."""
     from datetime import time as dtime
@@ -1026,9 +1222,20 @@ def run_cycle(token: str, dry: bool = False) -> None:
     price_txt = []
     context = {}
     closes_by_symbol: dict[str, list[float]] = {}
+    # When the agent trades on a specific perp chain, use that venue's direct
+    # pricing for crypto perps instead of routing through Hyperliquid.
+    _chain = os.getenv("LIVE_AGENT_CHAIN", "sui").strip().lower()
     for sym, market in UNIVERSE:
         try:
             px = get_price(token, sym, market)
+            # Override with Bluefin pricing when trading Sui perps: the
+            # platform's price_fetcher uses Hyperliquid for all crypto, but
+            # Sui trades should use Bluefin's own orderbook for accurate
+            # entry/exit analysis on that venue.
+            if _chain == "sui" and market == "crypto":
+                bf = fetch_bluefin_price(sym)
+                if bf is not None and bf > 0:
+                    px = bf
             prices[sym] = px
             hist = get_history(sym, market, 30)
             closes_by_symbol[sym] = [float(c) for c in hist["Close"].tolist()]
@@ -1065,6 +1272,24 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 price_txt[-1] = f"{price_txt[-1]} | {senti}"
         except Exception:
             pass
+
+    # 5-minute closes for the scalp scenario engine so 5-min momentum (not
+    # 30-day daily drift) drives long vs short direction selection.
+    BARS_PER_YEAR_5M = 288.0 * 365.0
+    scenario_closes: dict[str, list[float]] = {}
+    bpy_by_symbol: dict[str, float] = {}
+    for sym, market in UNIVERSE:
+        try:
+            c5 = fetch_5m_closes(sym, market)
+            if len(c5) >= 20:
+                scenario_closes[sym] = c5
+                bpy_by_symbol[sym] = BARS_PER_YEAR_5M
+            else:
+                scenario_closes[sym] = closes_by_symbol.get(sym, [])
+                bpy_by_symbol[sym] = 365.0
+        except Exception:
+            scenario_closes[sym] = closes_by_symbol.get(sym, [])
+            bpy_by_symbol[sym] = 365.0
 
     positions = portfolio.get("positions", [])
     pos_txt = "; ".join(
@@ -1176,28 +1401,51 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         decision = pick.to_dict()
                         decision["_forced_exit"] = True
                     else:
-                        # build the full scenario matrix (long + short per symbol)
-                        matrix = scenario_matrix(closes_by_symbol, prices, trader_type=TRADER_TYPE)
+                        # build the full scenario matrix (long + short per symbol).
+                        # Uses 5-minute closes so scalp direction follows 5-min
+                        # momentum, not the 30-day daily drift.
+                        matrix = scenario_matrix(scenario_closes, prices,
+                                                 trader_type=TRADER_TYPE,
+                                                 bars_per_year=bpy_by_symbol)
                         # RSI momentum filter (hyperopt: PF 1.51 -> 1.66): only
                         # consider symbols whose RSI confirms direction. Longs
                         # need RSI > threshold, shorts need RSI < 100-threshold.
+                        # RSI is read on the SAME 5m series the matrix was built on.
                         matrix = [
                             s for s in matrix
-                            if not closes_by_symbol.get(s.symbol) or
-                            (s.direction == "long" and _rsi_fn(closes_by_symbol[s.symbol]) >= RSI_ENTRY_THRESHOLD) or
-                            (s.direction == "short" and _rsi_fn(closes_by_symbol[s.symbol]) <= 100 - RSI_ENTRY_THRESHOLD)
+                            if not scenario_closes.get(s.symbol) or
+                            (s.direction == "long" and _rsi_fn(scenario_closes[s.symbol]) >= RSI_ENTRY_THRESHOLD) or
+                            (s.direction == "short" and _rsi_fn(scenario_closes[s.symbol]) <= 100 - RSI_ENTRY_THRESHOLD)
                         ]
                         has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
                         has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
+                        # DO NOT RE-ANALYZE a token that already has an OPEN
+                        # position (long OR short): while it is held we wait for
+                        # that trade to resolve instead of stacking low-conviction
+                        # entries on top of it. The only override is an explicit
+                        # user "watch <ASSET>" - then the user is confirming they
+                        # want it analyzed for the next trade.
+                        open_symbols = {p["symbol"] for p in positions
+                                        if p.get("quantity") not in (0, None, "")}
+                        if open_symbols:
+                            skipped = sorted(open_symbols - set(WATCHED))
+                            matrix = [s for s in matrix
+                                      if s.symbol not in open_symbols or s.symbol in WATCHED]
+                            if skipped:
+                                print(f"[quant] holding on {len(skipped)} open position(s) "
+                                      f"({', '.join(skipped)}) - not re-analyzing until they resolve "
+                                      f"(override: watch <ASSET>)")
                     # top candidates the LLM will choose among (ranked by conviction).
                     # Watched assets (user said "watch <ASSET>") are prioritized so
                     # the agent focuses reasoning + trades on them first.
-                    actionable = sorted([s for s in matrix if s.ev > 0],
+                    # Conviction floor: below it, hold cash - never post noise.
+                    actionable = sorted([s for s in matrix
+                                         if s.ev > 0 and s.conviction >= CONVICTION_FLOOR],
                                         key=lambda s: (s.symbol in WATCHED, s.conviction),
                                         reverse=True)
                     top = actionable[:8]
                     print(f"[quant] scenario matrix: {len(matrix)} scenarios, "
-                          f"{len(actionable)} positive-EV"
+                          f"{len(actionable)} ≥conv {CONVICTION_FLOOR:.2f}"
                           + (f", watched={[s for s in WATCHED]}" if WATCHED else ""))
 
                 if not top:
@@ -1210,25 +1458,26 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     # best scenario deterministically instead of burning another
                     # paid/rate-limited call. The math pick is the same engine the
                     # model is given; this just skips the model's vote for a while.
-                    best = pick_best_scenario(matrix, has_long, has_short)
+                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR)
                     if best is None:
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
                                     "stop_loss_pct": 0, "take_profit_pct": 0,
                                     "reasoning": "AI-key cooldown - no strong scenario, cash"}
                         _last_scenario = None
                     else:
-                        side = "buy" if best.direction == "long" else "sell"
+                        side = "buy" if best.direction == "long" else "short"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
-                        risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                        cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
-                        max_qty = min(risk_notional, cap_notional) / best.entry
+                        qty, lev, why = balance_aware_size(
+                            eq, portfolio.get('cash', eq), best.entry, stop_pct,
+                            best.symbol)
                         decision = {"action": side, "symbol": best.symbol,
-                                    "quantity": max_qty,
+                                    "quantity": qty,
                                     "stop_loss_pct": round(stop_pct, 2),
                                     "take_profit_pct": round(take_pct, 2),
+                                    "leverage": lev,
                                     "reasoning": f"[quant/cooldown] best scenario {best.direction} "
-                                                 f"{best.symbol} EV={best.ev:+.2f}R"}
+                                                 f"{best.symbol} EV={best.ev:+.2f}R | {why}"}
                         _last_scenario = best
                 elif LIVE_AGENT_API_KEY:
                     # LLM compiles the matrix and picks the best trade
@@ -1252,12 +1501,15 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         "do not invent rules that contradict them.\n\n"
                         f"{skill_ctx}\n\n"
                         "Reply with a single JSON object only:\n"
-                        '{"action":"buy|sell","symbol":"<SYMBOL>",'
+                        '{"action":"buy|short","symbol":"<SYMBOL>",'
                         '"direction":"long|short",'
                         '"quantity":<notional risk size in units of the symbol>,'
                         '"reasoning":"<2-3 sentences: cite the P(win), EV, and why '
                         'this scenario beats the others>"}\n'
-                        "IMPORTANT: stop and take are already set per scenario. "
+                        "IMPORTANT: action 'buy' opens a LONG, action 'short' opens "
+                        "a SHORT. Only ever pick an open-side action - exits are "
+                        "handled by the engine, not you. "
+                        "stop and take are already set per scenario. "
                         "quantity = dollars-at-risk / entry price, "
                         "where dollars-at-risk is ~1% of equity. The system will "
                         "clamp your size afterward - stay conservative."
@@ -1284,7 +1536,16 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     llm_action = str(llm.get("action", "")).lower()
                     llm_dir = str(llm.get("direction", "")).lower()
                     llm_sym = str(llm.get("symbol", "")).upper()
-                    if llm_action in ("buy", "sell") and llm_sym and llm_action != "":
+                    # Derive the OPEN-side action from direction: the LLM may
+                    # return action="buy|short" with direction="long|short".
+                    # When direction is present, it takes precedence so a
+                    # "short" direction always opens a short regardless of the
+                    # action field value.
+                    if llm_dir == "short":
+                        llm_action = "short"
+                    elif llm_dir == "long":
+                        llm_action = "buy"
+                    if llm_action in ("buy", "short") and llm_sym:
                         # risk-clamp: never exceed 1% risk; stop/target come from
                         # the chosen scenario's REAL volatility-based levels.
                         # Correct retail sizing: risk$ = 1% of equity, and the
@@ -1343,25 +1604,27 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         _last_scenario = None
                 else:
                     # no LLM key -> fall back to the math's best scenario
-                    best = pick_best_scenario(matrix, has_long, has_short)
+                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR)
                     if best is None:
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
                                     "stop_loss_pct": 0, "take_profit_pct": 0,
                                     "reasoning": "best scenario has non-positive EV - cash"}
                         _last_scenario = None
                     else:
-                        side = "buy" if best.direction == "long" else "sell"
+                        # OPEN-SIDE action: a SHORT scenario opens a real short.
+                        side = "buy" if best.direction == "long" else "short"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
-                        risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                        cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
-                        max_qty = min(risk_notional, cap_notional) / best.entry
+                        qty, lev, why = balance_aware_size(
+                            eq, portfolio.get('cash', eq), best.entry, stop_pct,
+                            best.symbol)
                         decision = {"action": side, "symbol": best.symbol,
-                                    "quantity": max_qty,
+                                    "quantity": qty,
                                     "stop_loss_pct": round(stop_pct, 2),
                                     "take_profit_pct": round(take_pct, 2),
+                                    "leverage": lev,
                                     "reasoning": f"[quant] best scenario {best.direction} "
-                                                 f"{best.symbol} EV={best.ev:+.2f}R"}
+                                                 f"{best.symbol} EV={best.ev:+.2f}R | {why}"}
                         _last_scenario = best
         except Exception as exc:
             print(f"[quant] engine failed, holding: {exc}")
@@ -1376,8 +1639,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
     stop_pct = float(decision.get("stop_loss_pct", 0) or 0)
     take_pct = float(decision.get("take_profit_pct", 0) or 0)
     reasoning = str(decision.get("reasoning", ""))[:300]
-
     market = dict(UNIVERSE).get(symbol, "crypto")
+    # Balance-aware leverage chosen by the sizing engine (clamped to venue max).
+    # Closes (sell/cover) always go 1x - leverage only applies to opens.
+    lev_choice = float(decision.get("leverage") or 0) or LIVE_AGENT_LEVERAGE
+    lev_choice = clamp_leverage(symbol, market, lev_choice)
+
     row = {"symbol": symbol, "action": action, "price": prices.get(symbol, 0),
            "quantity": qty, "stop_pct": stop_pct, "take_pct": take_pct,
            "fill_ok": None, "reasoning": reasoning, "error": ""}
@@ -1398,6 +1665,14 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"; row["error"] = "position size cap exceeded"
         elif action in ("buy", "short") and stop_pct == 0 and FORCE_STOP_PCT > 0:
             stop_pct = FORCE_STOP_PCT  # mandatory stop-loss on new entries
+        elif action in ("buy", "short") and positions and symbol not in WATCHED:
+            # ONE POSITION RULE: only one open position at a time. If the book
+            # already holds anything and this is a NEW open (not a watched
+            # override), wait for the current trade to resolve first.
+            row["action"] = "hold"
+            row["error"] = ("one-position rule: wait for the current trade to "
+                            "resolve before opening another (override: watch "
+                            f"<ASSET> to analyze {symbol} for the next trade)")
         elif action == "buy" and has_long:
             row["action"] = "hold"; row["error"] = "already long in symbol"
         elif action == "short" and has_short:
@@ -1446,19 +1721,19 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 row["error"] = reason
                 print(f"[gate] {symbol} {action} blocked: {reason}")
         if dry:
-            print(f"[dry] would {action} {qty} {symbol} [{market}] (stop {stop_pct}%, take {take_pct}%)")
+            print(f"[dry] would {action} {qty} {symbol} [{market}] "
+                  f"(stop {stop_pct}%, take {take_pct}%, lev {lev_choice:g}x)")
             row["fill_ok"] = "dry"
         elif gw:
             # Pop-up the decided trade BEFORE the order goes out.
             notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
-                         stop_pct, take_pct,
-                         clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE),
+                         stop_pct, take_pct, lev_choice,
                          reasoning=f"[LLM+quant] {reasoning}")
             # REAL EXECUTION: route through the gateway (VenueRouter -> adapter).
             fill = route_real_order(gw, EXEC_BOT_ID, symbol, market, row["action"], qty,
                                     stop_pct or None, take_pct or None,
                                     prices.get(symbol, 0) or 0,
-                                    clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE))
+                                    lev_choice if action in ("buy", "short") else 1.0)
             row["fill_ok"] = fill.get("ok")
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])
@@ -1477,11 +1752,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
         else:
             # Pop-up the decided trade BEFORE the paper order goes out.
             notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
-                         stop_pct, take_pct,
-                         clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE),
+                         stop_pct, take_pct, lev_choice,
                          reasoning=f"[LLM+quant] {reasoning}")
             fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
-                     leverage=clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE))
+                     leverage=lev_choice if action in ("buy", "short") else 1.0)
             row["fill_ok"] = fill["ok"]
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])

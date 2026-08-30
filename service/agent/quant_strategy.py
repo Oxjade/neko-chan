@@ -279,11 +279,17 @@ class TradeScenario:
                 f"conviction {self.conviction:.3f}")
 
 
-def estimate_drift_vol(closes: list[float], lookback: int = 20) -> tuple[float, float]:
-    """(annualized log drift, annualized vol) from daily closes. 0s if insufficient.
+def estimate_drift_vol(closes: list[float], lookback: int = 20,
+                       bars_per_year: float = 365.0) -> tuple[float, float]:
+    """(annualized log drift, annualized vol) from closes. 0s if insufficient.
+
+    bars_per_year annualizes the per-bar drift/vol correctly for the data
+    resolution: 365 for daily closes, 288*365 for 5-min closes. The scalp
+    engine passes 5-min closes so 5-minute momentum (not 30-day drift) drives
+    the long/short selection.
 
     The raw drift is SHRUNK toward zero (DRIFT_SHRINK) and capped at a sane
-    annualized level (DRIFT_ANNUAL_CAP). A 20-day hot streak does NOT mean the
+    annualized level (DRIFT_ANNUAL_CAP). A 20-bar hot streak does NOT mean the
     asset grows 700%/yr forever — momentum persists but mean-reverts, so the
     barrier probabilities must use an honest, conservative drift or P(win) is
     systematically over-optimistic (the 2026-08-28 calibration lesson).
@@ -296,10 +302,10 @@ def estimate_drift_vol(closes: list[float], lookback: int = 20) -> tuple[float, 
     mu = sum(rets) / len(rets)
     var = sum((r - mu) ** 2 for r in rets) / (len(rets) - 1)
     sigma = math.sqrt(var) if var > 0 else 0.0
-    raw_annual = mu * 365.0
+    raw_annual = mu * bars_per_year
     shrunk = raw_annual * DRIFT_SHRINK
     capped = max(-DRIFT_ANNUAL_CAP, min(DRIFT_ANNUAL_CAP, shrunk))
-    return capped, sigma * math.sqrt(365.0)
+    return capped, sigma * math.sqrt(bars_per_year)
 
 
 def barrier_win_prob(entry: float, target: float, stop: float,
@@ -378,7 +384,8 @@ def _horizon_stop_take(sigma_5m: float, horizon: str,
 
 
 def build_scenarios(symbol: str, closes: list[float], current_price: float,
-                    stop_pct: float | None = None, take_pct: float | None = None) -> list[TradeScenario]:
+                    stop_pct: float | None = None, take_pct: float | None = None,
+                    bars_per_year: float = 365.0) -> list[TradeScenario]:
     """Produce LONG+SHORT scenarios across THREE horizons: scalp / intraday /
     swing, with targets scaled by drift strength (not one fixed 0.6%).
 
@@ -387,10 +394,13 @@ def build_scenarios(symbol: str, closes: list[float], current_price: float,
     - swing:    4 sigma stop,   16 sigma target (~0.5%  / ~1.9% BTC)
     In a strong trend the swing target extends further (let it run); in a weak
     trend the scalp dominates. The LLM picks the best-EV horizon per cycle.
+
+    bars_per_year annualizes closes (365 daily / 288*365 for 5-min). The scalp
+    engine passes 5-min closes so 5-minute momentum drives the long/short read.
     """
     if not closes or current_price <= 0:
         return []
-    drift, vol = estimate_drift_vol(closes)
+    drift, vol = estimate_drift_vol(closes, bars_per_year=bars_per_year)
     daily_vol_pct = (vol / math.sqrt(365.0)) * 100.0 if vol > 0 else 1.0
     sigma_5m = daily_vol_pct / math.sqrt(288.0)
     r20 = momentum20_return(closes)
@@ -431,11 +441,15 @@ def build_scenarios(symbol: str, closes: list[float], current_price: float,
 
 def scenario_matrix(closes_by_symbol: dict, prices: dict,
                     stop_pct: float | None = None, take_pct: float | None = None,
-                    trader_type: str = "auto") -> list[TradeScenario]:
+                    trader_type: str = "auto",
+                    bars_per_year: float | dict = 365.0) -> list[TradeScenario]:
     """Build the full long/short scenario matrix across the universe.
 
     stop_pct/take_pct default to None -> volatility-based reachable levels
     (see build_scenarios). Pass explicit values only to override.
+
+    bars_per_year: annualization bars for drift/vol - a scalar (365 daily,
+    288*365 for 5-min) or a per-symbol dict {symbol: bpy}.
 
     trader_type filters which horizons are returned:
       "scalp"    -> scalp targets only (tight, minutes)
@@ -449,14 +463,16 @@ def scenario_matrix(closes_by_symbol: dict, prices: dict,
         px = prices.get(symbol, 0)
         if px <= 0 or not closes:
             continue
-        for s in build_scenarios(symbol, closes, px, stop_pct, take_pct):
+        bpy = bars_per_year.get(symbol, 365.0) if isinstance(bars_per_year, dict) else bars_per_year
+        for s in build_scenarios(symbol, closes, px, stop_pct, take_pct, bars_per_year=bpy):
             if s.horizon in allowed:
                 out.append(s)
     return out
 
 
 def pick_best_scenario(scenarios: list[TradeScenario],
-                       has_long: dict, has_short: dict) -> TradeScenario | None:
+                       has_long: dict, has_short: dict,
+                       conviction_floor: float = 0.0) -> TradeScenario | None:
     """Pick the highest-conviction actionable scenario.
 
     Respects position state: skip a long scenario if we're already long that
@@ -466,6 +482,7 @@ def pick_best_scenario(scenarios: list[TradeScenario],
     actionable = [
         s for s in scenarios
         if s.ev > 0
+        and s.conviction >= conviction_floor
         and not (s.direction == "long" and has_long.get(s.symbol))
         and not (s.direction == "short" and has_short.get(s.symbol))
     ]

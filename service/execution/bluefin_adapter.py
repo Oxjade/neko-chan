@@ -2,40 +2,38 @@
 
 Bluefin is a perp CLOB on Sui: orders are placed off-chain REST and verified
 on-chain at settlement time via the order signature. This adapter implements
-the Ed25519 order-signature construction directly (no TS/Python SDK dependency)
-using the documented spec:
+the EXACT signing scheme of the official Bluefin Pro SDK
+(@bluefin-exchange/pro-sdk, verified from its published source):
 
-  serializedOrder
-  [0,15]   price        (128-bit, hex 32 chars)
-  [16,31]  quantity     (128-bit)
-  [32,47]  leverage     (128-bit)
-  [48,63]  salt         (128-bit)
-  [64,71]  expiration   (64-bit, unix ms)
-  [72,103] maker        (256-bit = 32-byte address)
-  [104,135] market      (256-bit = 32-byte market hash)
-  [136]    flags        (1 byte: bit0 ioc, bit1 postOnly, bit2 reduceOnly,
-                         bit3 isBuy, bit4 orderbookOnly)
-  [137,143] domain      ('Bluefin' 7 bytes)
+  Order signing (Sui PersonalMessage over pretty-printed JSON):
+    1. Build the UI request object (exact key order):
+         {type, ids, account, market, price, quantity, leverage, side,
+          positionType, expiration, salt, signedAt}
+    2. json = JSON.stringify(ui, null, 2)          # 2-space indent, exact order
+    3. msg  = BCS byteVector(json) = uleb128(len) + utf8(json)
+    4. intent_bytes = [0x03, 0x00, 0x00]           # IntentScope::PersonalMessage
+    5. digest = blake2b-256(intent_bytes + msg)
+    6. sig   = ed25519_sign(seed, digest)
+    7. serialized = base64( 0x00 || sig(64) || pubkey(32) )   # flag || sig || pk
 
-  sha256(serialized) -> sign -> hex signature + b'01' suffix for ed25519.
+  Login signing: JSON.stringify(loginRequest) compact (no indent), same
+  PersonalMessage scheme, signature sent in the 'payloadSignature' header.
 
-Endpoints (v2.0.1, readme.io reference):
-  POST {API}/orders            place signed order
-  POST {API}/orders/cancel     cancel order
-  POST {API}/orders/cancel_all cancel all by symbol
-  GET  {API}/order/book/{sym}  order book (public)
-  GET  {API}/positions/{addr}  positions
-  GET  {API}/user/{addr}       account
+Endpoints (v2.1, from the SDK config):
+  auth  : https://auth.api.sui-prod.bluefin.io /auth/v2/token
+  trade : https://trade.api.sui-prod.bluefin.io /api/v1/trade/orders
+  market: https://api.sui-prod.bluefin.io /api/v1/exchange/...
 
-Auth: onboarding signature -> JWT bearer token used for user endpoints.
 All methods are failure-tolerant: network/format errors -> {"ok": False, ...}.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
+import os
 import random
 import time
 from typing import Any
@@ -47,121 +45,128 @@ from order_model import OrderIntent
 
 log = logging.getLogger("execution")
 
-# Bluefin env (Sui). Prod + staging; always default to STAGING until account
-# keys and risk gates are validated - nothing crosses to prod implicitly.
-API_PROD = "https://dapi.api.sui-prod.bluefin.io"
-API_STAGING = "https://stg-api.bluefin.io"
-MARKET_HASH = "0x06f300c91b1db75d3e93626c1b88ccb4897e44228a9b6513a66695f8c0e74987"
+# Bluefin env (Sui). Current API (v2.1, from the official SDK config):
+#   auth  = auth.api.sui-prod.bluefin.io
+#   trade = trade.api.sui-prod.bluefin.io
+#   market = api.sui-prod.bluefin.io
+API_TRADE = "https://trade.api.sui-prod.bluefin.io"
+API_AUTH = "https://auth.api.sui-prod.bluefin.io"
+API_MARKET = "https://api.sui-prod.bluefin.io"
+API_STAGING_TRADE = "https://trade.api.sui-staging.bluefin.io"
+API_STAGING_AUTH = "https://auth.api.sui-staging.bluefin.io"
+API_STAGING_MARKET = "https://api.sui-staging.bluefin.io"
 
-# Bluefin Pro perp markets. Map OUR symbols -> Bluefin market symbols.
+# Bluefin Pro perp market symbols (v2.1).
 MARKET_SYMBOLS: dict[str, str] = {
-    "BTC": "BTC-PERP",
-    "ETH": "ETH-PERP",
-    "SOL": "SOL-PERP",
-    "SUI": "SUI-PERP",
-    "ARB": "ARB-PERP",
-    "AVAX": "AVAX-PERP",
-    "BNB": "BNB-PERP",
-    "DOGE": "DOGE-PERP",
-    "LINK": "LINK-PERP",
-    "LTC": "LTC-PERP",
-    "OP": "OP-PERP",
-    "MATIC": "MATIC-PERP",
+    "BTC": "BTC-PERP", "ETH": "ETH-PERP", "SOL": "SOL-PERP",
+    "SUI": "SUI-PERP", "ARB": "ARB-PERP", "AVAX": "AVAX-PERP",
+    "BNB": "BNB-PERP", "DOGE": "DOGE-PERP", "LINK": "LINK-PERP",
+    "LTC": "LTC-PERP", "OP": "OP-PERP", "MATIC": "MATIC-PERP",
     "SEI": "SEI-PERP",
 }
 
-DOMAIN = b"Bluefin"
-CALLBACK_PRICE_SCALE = 1e6  # Bluefin prices on Sui are u64 scaled by 1e6
+# e9 scale: Bluefin v2.1 uses 10^9 for price/quantity/leverage.
+E9 = 1_000_000_000
+
+# Sui IntentScope::PersonalMessage = 3, IntentVersion::V0 = 0, AppId::Sui = 0.
+# The Intent is BCS-serialized as three enum variant bytes in that order.
+SUI_INTENT_PERSONAL_MESSAGE = b"\x03\x00\x00"
 
 
-def _to_hex128(value: int) -> str:
-    return f"{int(value):032x}"  # 128-bit = 16 bytes = 32 hex chars
+def _bcs_uleb128(n: int) -> bytes:
+    """BCS uleb128 encoding (used for the byteVector length prefix)."""
+    out = bytearray()
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return bytes(out)
 
 
-def _to_hex64(value: int) -> str:
-    return f"{int(value):016x}"  # 64-bit = 8 bytes = 16 hex chars
+def _bcs_byte_vector(data: bytes) -> bytes:
+    """BCS vector<u8>: uleb128(length) || bytes."""
+    return _bcs_uleb128(len(data)) + data
 
 
-def _to_hex32(value: int) -> str:
-    return f"{int(value):064x}"  # 32-byte address as 64 hex chars
+def _sign_personal_message(seed32: bytes, pub32: bytes, message: bytes) -> str:
+    """Sui PersonalMessage Ed25519 signature, exactly like @mysten/sui.
 
-
-def _flags(order: dict) -> int:
-    """Encode boolean flags into a byte per Bluefin's spec."""
-    f = 0
-    if order.get("ioc"):
-        f |= 1 << 0
-    if order.get("postOnly"):
-        f |= 1 << 1
-    if order.get("reduceOnly"):
-        f |= 1 << 2
-    if order.get("isBuy"):
-        f |= 1 << 3
-    if order.get("orderbookOnly"):
-        f |= 1 << 4
-    return f
-
-
-def _serialize_order(order: dict, maker_addr: str, domain: bytes = DOMAIN) -> bytes:
-    """Serialize an order per the Bluefin order-signature layout.
-
-    Layout (documented):
-      [0,15]   price        16 bytes
-      [16,31]  quantity     16 bytes
-      [32,47]  leverage     16 bytes
-      [48,63]  salt         16 bytes
-      [64,71]  expiration    8 bytes
-      [72,103] maker        32 bytes
-      [104,135] market      32 bytes
-      [136]    flags         1 byte
-      [137,143] domain       7 bytes
-      = 144 bytes total.
+    scheme = flag(0x00 ED25519) || signature(64) || public_key(32), base64.
+    This is what the Bluefin Pro SDK sends as the order 'signature' and the
+    login 'payloadSignature' header.
     """
-    parts = [
-        _to_hex128(int(order["price"])),
-        _to_hex128(int(order["qty"])),
-        _to_hex128(int(order["leverage"])),
-        _to_hex128(int(order["salt"])),
-        _to_hex64(int(order["expiration"])),
-        _to_hex32(int(maker_addr, 16)),
-        _to_hex32(int(order["market"][2:], 16)),
-        f"{_flags(order):02x}",
-        domain.hex(),
-    ]
-    b = bytes.fromhex("".join(parts))
-    if len(b) != 144:
-        raise ValueError(f"bluefin serialized order must be 144 bytes, got {len(b)}")
-    return b
+    from sui_adapter import _ed25519_sign
+    # @mysten/sui signPersonalMessage: BCS byteVector of the raw message,
+    # wrapped in an IntentMessage(Intent{PersonalMessage,V0,Sui}, bytes).
+    vec = _bcs_byte_vector(message)
+    intent_msg = SUI_INTENT_PERSONAL_MESSAGE + vec
+    digest = hashlib.blake2b(intent_msg, digest_size=32).digest()
+    sig = _ed25519_sign(seed32, digest)
+    serialized = b"\x00" + sig + pub32
+    return base64.b64encode(serialized).decode()
 
 
-def _signature(seed32: bytes, serialized: bytes, byte_array_as_hex: bytes) -> str:
-    """sha256(serialized) signed by ed25519 + '01' suffix (per spec)."""
-    from sui_adapter import _ed25519_sign  # reuse the pure-python ed25519
+def _to_ui_order_request(signed: dict) -> dict:
+    """Build the UI order request object the SDK signs (exact key order).
 
-    h = hashlib.sha256(serialized).digest()
-    sig = _ed25519_sign(seed32, h)
-    return bytes(sig).hex() + "01"
+    Mirrors the SDK's toUICreateOrderRequest(): a fixed key order, price/
+    quantity/leverage kept as e9 strings, numeric fields as decimal strings.
+    """
+    side = "LONG" if str(signed.get("side", "")).upper() in ("LONG", "BUY", "B") else "SHORT"
+    return {
+        "type": "Bluefin Pro Order",
+        "ids": str(signed["idsId"]),
+        "account": str(signed["accountAddress"]),
+        "market": str(signed["symbol"]),
+        "price": str(signed["priceE9"]),
+        "quantity": str(signed["quantityE9"]),
+        "leverage": str(signed["leverageE9"]),
+        "side": side,
+        "positionType": "ISOLATED" if signed.get("isIsolated") else "CROSS",
+        "expiration": str(signed["expiresAtMillis"]),
+        "salt": str(signed["salt"]),
+        "signedAt": str(signed["signedAtMillis"]),
+    }
+
+
+def _order_signature(seed32: bytes, pub32: bytes, signed: dict) -> str:
+    """Sign an order request with the exact SDK scheme (pretty-printed JSON)."""
+    ui = _to_ui_order_request(signed)
+    order_json = json.dumps(ui, indent=2)
+    return _sign_personal_message(seed32, pub32, order_json.encode("utf-8"))
 
 
 class BluefinAdapter:
-    """Thin failure-tolerant Bluefin Pro REST client with local signing."""
+    """Thin failure-tolerant Bluefin Pro (v2.1) REST client with local signing."""
 
-    def __init__(self, ledger: ExecLedger, seed32: bytes, address: str,
+    def __init__(self, ledger: ExecLedger, seed32: bytes, pubkey32: bytes, address: str,
                  testnet: bool = True, api_base: str | None = None):
         self.ledger = ledger
         self.seed = seed32
+        self.pubkey = pubkey32
         self.address = address if address.startswith("0x") else f"0x{address}"
-        self.api = (api_base or (API_STAGING if testnet else API_PROD)).rstrip("/")
+        self.trade_api = (api_base or (API_STAGING_TRADE if testnet else API_TRADE)).rstrip("/")
+        self.auth_api = (API_STAGING_AUTH if testnet else API_AUTH).rstrip("/")
+        self.market_api = (API_STAGING_MARKET if testnet else API_MARKET).rstrip("/")
         self._token: str | None = None
         self._token_at = 0.0
+        self._ids_id: str | None = None
         log.info("[bluefin] adapter ready env=%s addr=%s", "staging" if testnet else "prod", self.address)
 
     # ---------------------------------------------------------------- helpers
 
     def _req(self, method: str, path: str, json_body: dict | None = None,
-             public: bool = False) -> dict:
-        url = f"{self.api}{path}"
+             public: bool = False, auth_api: bool = False,
+             market_api: bool = False,
+             extra_headers: dict | None = None) -> dict:
+        base = self.market_api if market_api else (self.auth_api if auth_api else self.trade_api)
+        url = f"{base}{path}"
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if extra_headers:
+            headers.update(extra_headers)
         if not public:
             token = self._ensure_token()
             if token:
@@ -179,23 +184,31 @@ class BluefinAdapter:
             return {"ok": False, "error": f"request failed: {exc}"[:300]}
 
     def _ensure_token(self) -> str | None:
+        """Authenticate via POST /auth/v2/token (exact SDK scheme).
+
+        LoginRequest {accountAddress, signedAtMillis, audience:'api'} is
+        JSON.stringify'd COMPACT (no indent), signed as a Sui PersonalMessage,
+        and the serialized signature is sent in the 'payloadSignature' header.
+        This matches @bluefin-exchange/pro-sdk signLoginRequest() exactly."""
         if self._token and time.time() - self._token_at < 3600:
             return self._token
-        # onboarding: sign a nonce (Bluefin expects the wallet to sign a
-        # timestamp-based message for the auth token; v2 uses the onboarding
-        # signature over a nonce string 'SUI:<addr>:<nonce>').
-        nonce = str(int(time.time() * 1000))
-        from sui_adapter import _ed25519_sign
-        payload = f"SUI:{self.address}:{nonce}"
-        sig = _ed25519_sign(self.seed, hashlib.sha256(payload.encode()).digest())
-        resp = self._req("POST", "/v1/auth/token",
-                         json_body={"address": self.address, "nonce": nonce,
-                                    "signature": bytes(sig).hex() + "01"},
-                         public=True)
+        signed_at = int(time.time() * 1000)
+        audience = os.environ.get("BLUEFIN_AUDIENCE", "api")
+        login = {
+            "accountAddress": self.address,
+            "signedAtMillis": signed_at,
+            "audience": audience,
+        }
+        login_json = json.dumps(login, separators=(",", ":"))  # compact, no spaces
+        sig = _sign_personal_message(self.seed, self.pubkey, login_json.encode("utf-8"))
+        resp = self._req("POST", "/auth/v2/token",
+                         json_body=login,
+                         extra_headers={"payloadSignature": sig},
+                         public=True, auth_api=True)
         if not resp.get("ok"):
-            log.warning("[bluefin] onboarding failed: %s", resp.get("error"))
+            log.warning("[bluefin] auth v2 failed: %s", resp.get("error"))
             return None
-        tok = (resp["data"].get("token") or resp["data"].get("accessToken"))
+        tok = (resp["data"].get("accessToken") or resp["data"].get("token"))
         if not tok:
             return None
         self._token = tok
@@ -209,46 +222,48 @@ class BluefinAdapter:
         mapped = MARKET_SYMBOLS.get(sym)
         if mapped:
             return mapped
-        # Fall back to the live listing: any base symbol Bluefin lists becomes
-        # tradable even if it is not in the static map.
         listed = self.markets()
         if sym in listed:
             return f"{sym}-PERP"
         return None
 
     def markets(self) -> list[str]:
-        """All tradable perp base symbols (long + short) offered by Bluefin.
-
-        Prefers the live /exchangeInfo listing; falls back to the static
-        MARKET_SYMBOLS map when the API is unreachable (offline/test). Each
-        entry is the base symbol, e.g. 'BTC' for 'BTC-PERP'."""
+        """Tradable perp base symbols from market API /api/v1/exchange/info."""
         cached = getattr(self, "_markets_cache", None)
         if cached:
             return list(cached)
         try:
-            resp = self._req("GET", "/exchangeInfo", public=True)
-            rows = resp.get("data") if isinstance(resp.get("data"), list) else None
-            if rows is None:
-                rows = resp.get("data", {}).get("symbols") if isinstance(resp.get("data"), dict) else None
+            resp = self._req("GET", "/api/v1/exchange/info", public=True, market_api=True)
+            data = resp.get("data") if isinstance(resp.get("data"), dict) else {}
+            markets = data.get("markets") or []
             out = []
-            if isinstance(rows, list):
-                for r in rows:
-                    sym = str(r.get("symbol") or r.get("name") or "")
+            if isinstance(markets, list):
+                for m in markets:
+                    sym = str(m.get("symbol") or m.get("name") or "")
                     if sym.endswith("-PERP"):
-                        base = sym[: -len("-PERP")]
-                        if base:
-                            out.append(base.upper())
+                        out.append(sym[:-5].upper())
             if out:
                 self._markets_cache = sorted(set(out))
                 return self._markets_cache
         except Exception as exc:  # noqa: BLE001
-            log.warning("[bluefin] exchangeInfo failed (%s); using static map", exc)
+            log.warning("[bluefin] exchange info failed (%s); using static map", exc)
         self._markets_cache = sorted({v.split("-")[0].upper() for v in MARKET_SYMBOLS.values()})
         return list(self._markets_cache)
 
-    def price(self, symbol: str, ref_price: float) -> int:
-        """Bluefin expects u64 prices scaled by 1e6."""
-        return int(round(ref_price * CALLBACK_PRICE_SCALE))
+    def ids_id(self) -> str:
+        """The 'idsId' (internal datastore id) required in signed fields."""
+        if self._ids_id:
+            return self._ids_id
+        try:
+            resp = self._req("GET", "/api/v1/exchange/info", public=True, market_api=True)
+            data = resp.get("data") if isinstance(resp.get("data"), dict) else {}
+            ids = data.get("idsId") or data.get("ids_id")
+            if ids:
+                self._ids_id = str(ids)
+                return self._ids_id
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[bluefin] idsId resolve failed: %s", exc)
+        return "0"  # fallback: server may infer; logged for diagnosis
 
     # ---------------------------------------------------------------- orders
 
@@ -256,76 +271,57 @@ class BluefinAdapter:
         market = self.market(intent.symbol)
         if not market:
             return {"ok": False, "error": f"unsupported bluefin market {intent.symbol}"}
-        price_int = 0 if intent.order_type == "market" else self.price(intent.symbol, ref_price)
-        try:
-            market_hash = self._market_hash(market)
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": f"market hash: {exc}"[:200]}
+        price_e9 = "0" if intent.order_type == "market" else str(int(round(ref_price * E9)))
+        qty_e9 = str(int(round(intent.qty * E9)))
+        leverage_e9 = str(int(round(intent.leverage * E9)))
+        salt = str(random.randint(1, 2**31))
+        signed_at = int(time.time() * 1000)
+        expires_at = signed_at + 30 * 24 * 3600 * 1000
+        side = "SHORT" if intent.side == "sell" else "LONG"
+        is_isolated = False
+        ids = self.ids_id()
+        account = self.address
 
-        salt = random.randint(1, 2**31)
-        expiration_ms = int((time.time() + 30 * 86400) * 1000)
-        order = {
+        # Signed fields (exact SDK shape + key order).
+        signed = {
             "symbol": market,
-            "price": price_int if price_int else int(ref_price * CALLBACK_PRICE_SCALE),
-            "qty": int(round(intent.qty * CALLBACK_PRICE_SCALE)),
-            "side": "BUY" if intent.side == "buy" else "SELL",
-            "orderType": "MARKET" if intent.order_type == "market" else "LIMIT",
-            "leverage": int(intent.leverage),
-            "isBuy": intent.side == "buy",
-            "orderbookOnly": True,
-            "postOnly": False,
-            "reduceOnly": False,
+            "accountAddress": account,
+            "priceE9": price_e9,
+            "quantityE9": qty_e9,
+            "side": side,
+            "leverageE9": leverage_e9,
+            "isIsolated": is_isolated,
             "salt": salt,
-            "expiration": expiration_ms,
-            "market": market_hash,
+            "idsId": ids,
+            "expiresAtMillis": expires_at,
+            "signedAtMillis": signed_at,
         }
-        serialized = _serialize_order(order, self.address)
-        order["order_signature"] = _signature(self.seed, serialized, b"")
-        body = {
-            "symbol": order["symbol"],
-            "price": order["price"],
-            "quantity": order["qty"],
-            "side": order["side"],
-            "orderType": order["orderType"],
-            "leverage": order["leverage"],
-            "isBuy": order["isBuy"],
-            "orderbookOnly": order["orderbookOnly"],
-            "postOnly": order["postOnly"],
-            "reduceOnly": order["reduceOnly"],
-            "salt": order["salt"],
-            "expiration": order["expiration"],
-            "orderSignature": order["order_signature"],
-        }
-        return self._req("POST", "/orders", json_body=body)
+        sig = _order_signature(self.seed, self.pubkey, signed)
 
-    def _market_hash(self, market: str) -> str:
-        # Bluefin market hashes are published per market in the deployment
-        # config. We resolve via the public instrument endpoint; fallback to
-        # the known BTC hash only for a warning (never place with a wrong hash
-        # silently - the trade would sign but not be matchable).
-        try:
-            resp = self._req("GET", f"/instruments/{market}", public=True)
-            if resp.get("ok"):
-                mh = resp["data"].get("marketHash") or resp["data"].get("market")
-                if mh:
-                    return mh if str(mh).startswith("0x") else f"0x{int(mh):064x}"
-        except Exception as exc:  # noqa: BLE001
-            log.warning("[bluefin] instrument resolve %s: %s", market, exc)
-        if market == "BTC-PERP":
-            return MARKET_HASH
-        return f"0x{int(hashlib.sha256(market.encode()).hexdigest()[:64], 16):064x}"  # never reusable
+        order_type = "MARKET" if intent.order_type == "market" else "LIMIT"
+        body = {
+            "signedFields": signed,
+            "signature": sig,
+            "type": order_type,
+            "reduceOnly": False,
+            "postOnly": False,
+            "timeInForce": None if intent.order_type == "market" else "GTT",
+        }
+        return self._req("POST", "/api/v1/trade/orders", json_body=body)
 
     # ---------------------------------------------------------------- state
 
     def positions(self) -> dict:
-        return self._req("GET", f"/accounts/positions/{self.address}", public=False)
+        return self._req("GET", f"/api/v1/accounts/positions/{self.address}", public=False)
 
     def open_orders(self) -> dict:
-        return self._req("GET", "/orders/open", public=False)
+        return self._req("GET", "/api/v1/trade/openOrders", public=False)
 
     def cancel_all(self, symbol: str | None = None) -> dict:
-        body = {"symbol": self.market(symbol)} if symbol and self.market(symbol) else {}
-        return self._req("POST", "/orders/cancel_all", json_body=body or None)
+        body = {}
+        if symbol and self.market(symbol):
+            body["symbol"] = self.market(symbol)
+        return self._req("PUT", "/api/v1/trade/orders/cancel", json_body=body or None)
 
     # ---------------------------------------------------------------- killswitch hook
 
@@ -342,9 +338,12 @@ class BluefinAdapter:
             result["errors"].append(f"positions: {pos.get('error')}")
             result["ok"] = False
             return result
-        for p in pos["data"] if isinstance(pos["data"], list) else []:
+        rows = pos.get("data") or []
+        if isinstance(rows, dict):
+            rows = rows.get("positions") or []
+        for p in rows if isinstance(rows, list) else []:
             market = p.get("symbol") or p.get("market")
-            qty = p.get("quantity") or p.get("position")
+            qty = p.get("quantity") or p.get("position") or p.get("qty")
             if market and qty and float(qty) != 0:
                 close = self.place_order(
                     OrderIntent(chain="sui", venue="bluefin-perp",
@@ -352,7 +351,7 @@ class BluefinAdapter:
                                 side="sell" if float(qty) > 0 else "buy",
                                 qty=abs(float(qty)), order_type="market",
                                 idempotency_key=f"kill-{bot_id}-{market}"),
-                    ref_price=float(p.get("entryPrice") or p.get("markPrice") or 0) / 1e6 or 1.0,
+                    ref_price=float(p.get("entryPrice") or p.get("markPrice") or 0) / E9 or 1.0,
                 )
                 result["closed"].append({market: close.get("ok")})
                 if not close.get("ok"):
@@ -368,12 +367,14 @@ def build_bluefin(ledger: ExecLedger, keypair_hex: str, testnet: bool = True,
         from pysui.sui.sui_crypto import SuiKeyPair
         kp = SuiKeyPair.from_bech32(keypair_hex)
         seed = bytes(kp.private_key.key_bytes)
-        addr = "0x" + hashlib.blake2b(b"\x00" + bytes(kp.public_key.key_bytes), digest_size=32).hexdigest()
+        pub = bytes(kp.public_key.key_bytes)
+        addr = "0x" + hashlib.blake2b(b"\x00" + pub, digest_size=32).hexdigest()
     else:
         hexed = keypair_hex[2:] if keypair_hex.startswith("0x") else keypair_hex
         seed = bytes.fromhex(hexed)
         if len(seed) != 32:
             raise ValueError(f"bluefin keypair_hex must be 32 bytes, got {len(seed)}")
         from sui_adapter import _ed25519_pubkey
-        addr = "0x" + hashlib.blake2b(b"\x00" + _ed25519_pubkey(seed), digest_size=32).hexdigest()
-    return BluefinAdapter(ledger, seed, addr, testnet=testnet, api_base=api_base)
+        pub = _ed25519_pubkey(seed)
+        addr = "0x" + hashlib.blake2b(b"\x00" + pub, digest_size=32).hexdigest()
+    return BluefinAdapter(ledger, seed, pub, addr, testnet=testnet, api_base=api_base)

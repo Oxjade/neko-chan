@@ -18,7 +18,7 @@ from messages import NOTIF
 
 # Chat messages self-destruct after this many seconds (default 3 minutes).
 # The notification REMAINS stored in the registry inbox regardless.
-MSG_TTL_SECONDS = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
+MSG_TTL_SECONDS = int(os.getenv("TG_MSG_TTL_SECONDS", "300"))
 
 
 def _schedule_delete(bot_token: str, chat_id: int, message_id: int,
