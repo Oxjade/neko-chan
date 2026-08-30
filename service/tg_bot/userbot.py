@@ -1910,7 +1910,13 @@ class UserBotController:
             if photo_path:
                 try:
                     with open(photo_path, "rb") as f:
-                        await q.message.reply_photo(photo=f, caption=text, parse_mode="HTML", reply_markup=kb)
+                        sent = await q.message.reply_photo(photo=f, caption=text, parse_mode="HTML", reply_markup=kb)
+                    if sent and getattr(sent, "message_id", None):
+                        threading.Thread(
+                            target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
+                                self.registry.bot_token(bot_id) or "",
+                                q.message.chat_id, sent.message_id),
+                            daemon=True).start()
                     import os as _os
                     try:
                         _os.remove(photo_path)
@@ -2009,7 +2015,13 @@ class UserBotController:
                 [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
                 [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
             ])
-            await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+            sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+            if sent and getattr(sent, "message_id", None):
+                threading.Thread(
+                    target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
+                        self.registry.bot_token(bot_id) or "",
+                        update.message.chat_id, sent.message_id),
+                    daemon=True).start()
             return ConversationHandler.END
 
         async def send_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
