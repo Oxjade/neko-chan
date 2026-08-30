@@ -16,7 +16,7 @@ VENUES = {
 MAX_LEVERAGE_BY_VENUE = {
     "hl-perp": 50,
     "deepbook-margin": 10,
-    "bluefin-perp": 100,
+    "bluefin-perp": 25,
     "jup-perp": 100,
 }
 

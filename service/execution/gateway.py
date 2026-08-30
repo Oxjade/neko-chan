@@ -270,7 +270,7 @@ class ExecGateway:
         rg = RiskGuard(profile=BotRiskProfile(
             max_notional_usd=_env_float("EXEC_MAX_NOTIONAL", 500.0),
             max_exposure_pct=_env_float("EXEC_MAX_EXPOSURE_PCT", 30.0),
-            max_leverage=_env_float("EXEC_MAX_LEVERAGE", 20.0),
+            max_leverage=_env_float("EXEC_MAX_LEVERAGE", 100.0),
             require_stop=_env("EXEC_REQUIRE_STOP", "1") != "0",
             min_stop_pct=_env_float("EXEC_MIN_STOP_PCT", 2.0),
             max_stop_pct=_env_float("EXEC_MAX_STOP_PCT", 8.0),

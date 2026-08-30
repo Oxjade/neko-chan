@@ -1665,8 +1665,16 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         '{"action":"buy|short","symbol":"<SYMBOL>",'
                         '"direction":"long|short",'
                         '"quantity":<notional risk size in units of the symbol>,'
+                        '"leverage":<20-40 integer based on your confidence>,'
                         '"reasoning":"<2-3 sentences: cite the P(win), EV, and why '
                         'this scenario beats the others>"}\n'
+                        "LEVERAGE: Set it based on your confidence in the trade.\n"
+                        "  - High confidence (P(win) >= 55% + momentum confirmed):\n"
+                        "    40x for BTC, 25x for all other assets (max the venue allows)\n"
+                        "  - Medium confidence (P(win) 45-55%): 20-25x\n"
+                        "  - Low confidence (P(win) < 45%): 20x (minimum)\n"
+                        "  You have all the numbers (P(win), EV, R, conviction, momentum).\n"
+                        "  'Do the math' - pick the right leverage for the edge you see.\n"
                         "IMPORTANT: action 'buy' opens a LONG, action 'short' opens "
                         "a SHORT. Only ever pick an open-side action - exits are "
                         "handled by the engine, not you. "
@@ -1754,6 +1762,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 "quantity": qty if qty > 0 else 0,
                                 "stop_loss_pct": round(stop_pct, 2),
                                 "take_profit_pct": round(take_pct, 2),
+                                "leverage": int(float(llm.get("leverage", 0) or 0) or LIVE_AGENT_LEVERAGE),
                                 "reasoning": f"[LLM scenario pick] {llm_reasoning[:240]}",
                             }
                             print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
