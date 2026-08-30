@@ -1408,16 +1408,21 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         matrix = scenario_matrix(scenario_closes, prices,
                                                  trader_type=TRADER_TYPE,
                                                  bars_per_year=bpy_by_symbol)
-                        # MOMENTUM CONFIRMATION (the proven scalp edge): only take
-                        # a long when EMA8 > EMA21 on the 5m series, a short when
+                        # MOMENTUM CONFIRMATION (the proven scalp edge): LONG is
+                        # favored when EMA8 > EMA21 on the 5m series, SHORT when
                         # EMA8 < EMA21. This lifts the ~36% GBM coin-flip win rate
-                        # to a real 55-60% by only entering trades already moving
-                        # our way (research: 5-min scalp EMA-stack framework).
-                        matrix = [
-                            s for s in matrix
-                            if not scenario_closes.get(s.symbol) or
-                            momentum_confirmed(scenario_closes[s.symbol], s.direction)
-                        ]
+                        # by only entering trades already moving our way. We do NOT
+                        # hard-filter here: removing one direction entirely would
+                        # starve the LLM of the other side and defeat the
+                        # best-long/best-short choice. Momentum is instead shown to
+                        # the LLM as a soft signal (see matrix_txt below) so it can
+                        # weigh it against P(win) and EV.
+                        momentum_ok = {}
+                        for s in matrix:
+                            m = scenario_closes.get(s.symbol)
+                            momentum_ok[(s.symbol, s.direction)] = (
+                                momentum_confirmed(m, s.direction) if m else False
+                            )
                         # RSI momentum filter (hyperopt: PF 1.51 -> 1.66): only
                         # consider symbols whose RSI confirms direction. Longs
                         # need RSI > threshold, shorts need RSI < 100-threshold.
@@ -1456,9 +1461,18 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                         reverse=True)
                     # ALWAYS give the LLM the best LONG and the best SHORT so it
                     # can choose the more profitable direction instead of being
-                    # starved into one side. Then fill the rest by conviction.
-                    best_long = next((s for s in actionable if s.direction == "long"), None)
-                    best_short = next((s for s in actionable if s.direction == "short"), None)
+                    # starved into one side. CRITICAL: these two come from the
+                    # FULL matrix (any EV), NOT the positive-EV subset. The GBM
+                    # drift model makes EV positive on exactly ONE side almost
+                    # always (the drift direction), so a positive-EV-only pick
+                    # would starve the LLM of the opposite side. Presenting both
+                    # lets the LLM weigh P(win)/EV/momentum and pick the better
+                    # direction. The positive-EV + floor rules still gate the
+                    # FILL slots below and the deterministic cooldown path.
+                    best_long = max((s for s in matrix if s.direction == "long"),
+                                    key=lambda s: s.conviction, default=None)
+                    best_short = max((s for s in matrix if s.direction == "short"),
+                                     key=lambda s: s.conviction, default=None)
                     top = []
                     for s in (best_long, best_short):
                         if s is not None and s not in top:
@@ -1509,7 +1523,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     # LLM compiles the matrix and picks the best trade
                     _last_llm_at = time.time()
                     skill_ctx = _load_skill_context()
-                    matrix_txt = "\n".join(s.to_prompt() for s in top)
+                    matrix_txt = "\n".join(
+                        s.to_prompt()
+                        + (" | MOMENTUM: CONFIRMED" if momentum_ok.get((s.symbol, s.direction)) else " | MOMENTUM: against")
+                        for s in top
+                    )
                     system = (
                         "You are the decision layer of an automated trading agent. "
                         f"Your trader type: <b>{TRADER_TYPE.upper()}</b>. "
@@ -1528,6 +1546,15 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         "Weigh them against each other by P(win) and EV - if the "
                         "short has the higher win rate and positive EV, pick the "
                         "short. Trading both directions is expected and correct.\n\n"
+                        "MOMENTUM: each row ends with an EMA momentum flag. 'CONFIRMED' "
+                        "means EMA8>EMA21 (for a long) or EMA8<EMA21 (for a short) - "
+                        "the trade is already moving your way. 'against' means the "
+                        "EMA stack disagrees. Favor CONFIRMED rows, but do not treat "
+                        "it as an absolute veto - P(win) already bakes in drift.\n\n"
+                        "EV: rows with negative EV are shown for COMPARISON so you "
+                        "can see both sides. Do NOT pick a negative-EV trade - only "
+                        "trade a scenario whose EV is positive and whose P(win) beats "
+                        "the other direction.\n\n"
                         "THE STRATEGY SKILLS ARE LOADED BELOW. Follow them exactly; "
                         "do not invent rules that contradict them.\n\n"
                         f"{skill_ctx}\n\n"
@@ -1588,31 +1615,47 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             if _s.symbol == llm_sym and _s.direction == llm_dir:
                                 _last_scenario = _s
                                 break
+                        rejected = False
                         if qty > 0 and llm_sym in prices:
-                            stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
-                                if _last_scenario is not None else 0.3
-                            risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                            # cap at 30% of equity AND ~95% of available cash (leave
-                            # a fee buffer so margin + fee always fits)
-                            cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
-                            max_qty = min(risk_notional, cap_notional) / prices[llm_sym]
-                            qty = min(qty, max_qty)
-                        if _last_scenario is not None:
-                            stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
-                            take_pct = abs(_last_scenario.target - _last_scenario.entry) / _last_scenario.entry * 100
-                        else:
-                            stop_pct, take_pct = 8.0, 24.0  # fallback if no match
-                        decision = {
-                            "action": llm_action,
-                            "symbol": llm_sym,
-                            "quantity": qty if qty > 0 else 0,
-                            "stop_loss_pct": round(stop_pct, 2),
-                            "take_profit_pct": round(take_pct, 2),
-                            "reasoning": f"[LLM scenario pick] {llm_reasoning[:240]}",
-                        }
-                        print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
-                              f"qty={qty:.4f} stop={stop_pct:.1f}% take={take_pct:.1f}% "
-                              f":: {llm_reasoning[:60]}")
+                            # ENFORCE positive-EV: negative-EV rows are shown only
+                            # for comparison. Refuse to trade a scenario that does
+                            # not clear the positive-EV + floor bar.
+                            if _last_scenario is not None and \
+                               (_last_scenario.ev <= 0 or _last_scenario.conviction < CONVICTION_FLOOR):
+                                decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                            "stop_loss_pct": 0, "take_profit_pct": 0,
+                                            "reasoning": f"[LLM guard] {llm_dir} {llm_sym} below "
+                                                         f"positive-EV/floor bar - held"}
+                                rejected = True
+                                print(f"[agent] LLM pick rejected: {llm_dir} {llm_sym} "
+                                      f"EV={_last_scenario.ev:+.3f} conv={_last_scenario.conviction:.4f} "
+                                      f"< floor {CONVICTION_FLOOR}")
+                            else:
+                                stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
+                                    if _last_scenario is not None else 0.3
+                                risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
+                                # cap at 30% of equity AND ~95% of available cash (leave
+                                # a fee buffer so margin + fee always fits)
+                                cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
+                                max_qty = min(risk_notional, cap_notional) / prices[llm_sym]
+                                qty = min(qty, max_qty)
+                        if not rejected:
+                            if _last_scenario is not None:
+                                stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
+                                take_pct = abs(_last_scenario.target - _last_scenario.entry) / _last_scenario.entry * 100
+                            else:
+                                stop_pct, take_pct = 8.0, 24.0  # fallback if no match
+                            decision = {
+                                "action": llm_action,
+                                "symbol": llm_sym,
+                                "quantity": qty if qty > 0 else 0,
+                                "stop_loss_pct": round(stop_pct, 2),
+                                "take_profit_pct": round(take_pct, 2),
+                                "reasoning": f"[LLM scenario pick] {llm_reasoning[:240]}",
+                            }
+                            print(f"[agent] LLM PICKED {llm_dir.upper() or llm_action} {llm_sym} "
+                                  f"qty={qty:.4f} stop={stop_pct:.1f}% take={take_pct:.1f}% "
+                                  f":: {llm_reasoning[:60]}")
                     else:
                         # LLM is the decision layer. If it failed (rate-limited,
                         # network, parse) or chose hold, the bot HALTS new entries
