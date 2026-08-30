@@ -51,6 +51,17 @@ def _mask_addr(addr: str) -> str:
     return f"{addr[:6]}…{addr[-4:]}" if len(addr) > 12 else addr
 
 
+async def _safe_edit(q, text, parse_mode="HTML", reply_markup=None):
+    """edit_text that ignores the harmless 'Message is not modified' error so
+    repeat taps (Refresh / Back / Check Deposits) never throw BadRequest."""
+    try:
+        await q.message.edit_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+    except Exception as exc:
+        if "not modified" in str(exc).lower():
+            return
+        raise
+
+
 def _delayed_photo_delete(bot_token: str, chat_id: int, message_id: int,
                           ttl: int = 300):
     """Delete a photo message after ttl seconds (background thread)."""
@@ -1806,7 +1817,7 @@ class UserBotController:
                 [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
                  telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
             ])
-            await q.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+            await _safe_edit(q, "\n".join(lines), reply_markup=kb)
 
         async def receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1838,7 +1849,7 @@ class UserBotController:
                     [telegram.InlineKeyboardButton("⚙️ Generate Wallet", callback_data=f"sb:gen_wallet:{chain}")],
                     [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
                 ])
-                await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+                await _safe_edit(q, text, reply_markup=kb)
                 return
             # QR code for the receive address
             photo_path = None
@@ -2105,7 +2116,7 @@ class UserBotController:
             # Gateway fully connected -> also run the on-chain deposit scanner.
             found_all = []
             if self._exec_ready():
-                await q.message.edit_text(USERBOT["deposit_checking"])
+                await _safe_edit(q, USERBOT["deposit_checking"])
                 for ch in self.gateway.adapters:
                     try:
                         found = self.gateway.scan_deposits(bot_id, ch) or []
@@ -2121,30 +2132,32 @@ class UserBotController:
                     chain_label=CHAIN_LABELS.get(ev.get("chain"), ev.get("chain")),
                     amount=float(ev.get("amount") or 0),
                     asset=ev.get("asset", "")) for ev in found_all]
-                await q.message.edit_text(
+                await _safe_edit(
+                    q,
                     "\n\n".join(lines) + "\n\n▶️ Enable your agent to start trading.",
-                    parse_mode="HTML",
                     reply_markup=telegram.InlineKeyboardMarkup(
                         [[telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent")],
                          [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
             if addr and (usdc > 0 or native > 0):
                 # RPC-confirmed balance (works even without bonded gateway keys).
-                await q.message.edit_text(
+                await _safe_edit(
+                    q,
                     f"💰 <b>Balance confirmed on {_chain_label(chain)}</b>\n"
                     f"  USDC  <code>${usdc:,.2f}</code>\n"
                     f"  native {native:,.4f}\n\n"
                     f"<code>{_esc(addr)}</code>\n\n"
                     f"Your wallet is ready. Enable the agent to start trading.",
-                    parse_mode="HTML",
                     reply_markup=telegram.InlineKeyboardMarkup(
                         [[telegram.InlineKeyboardButton("▶️ Enable Agent", callback_data="sb:enable_agent")],
                          [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
                 return
-            await q.message.edit_text(USERBOT["deposit_none"],
-                                      reply_markup=telegram.InlineKeyboardMarkup(
-                                          [[telegram.InlineKeyboardButton("🔍 Check Again", callback_data="sb:check_deposits")],
-                                           [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
+            await _safe_edit(
+                q,
+                USERBOT["deposit_none"],
+                reply_markup=telegram.InlineKeyboardMarkup(
+                    [[telegram.InlineKeyboardButton("🔍 Check Again", callback_data="sb:check_deposits")],
+                     [telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")]]))
 
         async def enable_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
