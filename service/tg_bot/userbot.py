@@ -1028,23 +1028,27 @@ class UserBotController:
             else:
                 # Latest decision per analyzed asset (the log is append-only, so
                 # the LAST row for a symbol is its most recent decision). Show
-                # its timestamp so a refresh visibly updates, even on a hold.
+                # every watched asset with its status - including "analyzing" -
+                # so Peek always reflects what the quant/LLM is working on, even
+                # when it's holding (a hold is logged with an EMPTY symbol, so
+                # we can't match it back; instead show the asset + "no trade").
                 try:
                     import csv
                     from pathlib import Path
                     log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
                     latest: dict[str, dict] = {}
+                    last_reason = ""
                     if log_path.exists():
                         with open(log_path, newline="", encoding="utf-8") as f:
                             for row in csv.DictReader(f):
                                 sym = (row.get("symbol") or "").upper()
                                 if sym in active_upper:
                                     latest[sym] = row
-                    if latest:
-                        for sym in active:
-                            row = latest.get(sym.upper())
-                            if not row:
-                                continue
+                                if row.get("reasoning"):
+                                    last_reason = row.get("reasoning") or ""
+                    for sym in active:
+                        row = latest.get(sym.upper())
+                        if row:
                             action = (row.get("action") or "?").upper()
                             qty = row.get("quantity") or row.get("qty") or ""
                             price = row.get("price") or ""
@@ -1054,9 +1058,11 @@ class UserBotController:
                                          f"  qty {qty} · price ${price}")
                             if reasoning:
                                 lines.append(f"  Why: {reasoning[:160]}")
-                    else:
-                        lines.append("No decisions yet for the current watchlist. "
-                                     "Agent is analyzing these assets...")
+                        else:
+                            lines.append(f"📊 <b>{_esc(sym.upper())}</b> · analyzing…\n"
+                                         f"  Agent is watching this asset for a setup.")
+                    if not latest and last_reason:
+                        lines.append(f"\n💤 <b>Holding</b>: {_esc(last_reason[:160])}")
                 except Exception:
                     lines.append("Could not read agent log.")
                 # Live price snapshot so tapping Refresh always returns fresh data.
