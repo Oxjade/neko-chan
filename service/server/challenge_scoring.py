@@ -156,7 +156,7 @@ def score_agent_trades(
             if current_qty <= 0 or quantity > current_qty + 1e-12:
                 disqualified_reason = f'sell_exceeds_challenge_long:{symbol}'
                 break
-            cash += price * quantity - fee
+            cash += price * quantity
             new_qty = current_qty - quantity
             if new_qty <= 1e-12:
                 positions.pop(key, None)
@@ -193,7 +193,7 @@ def score_agent_trades(
             if current_qty >= 0 or quantity > abs(current_qty) + 1e-12:
                 disqualified_reason = f'cover_exceeds_challenge_short:{symbol}'
                 break
-            cash += ((2 * current_entry) - price) * quantity - fee
+            cash += ((2 * current_entry) - price) * quantity
             new_qty = current_qty + quantity
             if new_qty >= -1e-12:
                 positions.pop(key, None)

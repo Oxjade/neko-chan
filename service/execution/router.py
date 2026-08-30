@@ -93,6 +93,14 @@ class VenueRouter:
                     "error": f"duplicate idempotency_key {intent.idempotency_key}", "fee": 0.0}
         order_id = self.ledger.create_order(intent, bot_id)
 
+        # PLATFORM FEE BEFORE THE TRADE: the 0.5% fee is paid UPFRONT (before
+        # the order is placed) so it is never deducted from user profit after
+        # the trade. Best-effort: if the sweep fails the order is still routed
+        # (never blocks a trade), but the ledger fee is recorded at entry time.
+        # Venue fees (e.g. 2.5bps) are Bluefin's own and already paid at the
+        # venue - we do not charge those again.
+        self._sweep_fee(bot_id, chain, ref_price, intent.qty, intent.symbol)
+
         # call the adapter
         try:
             result = adapter.place_order(intent, ref_price) or {}
@@ -117,12 +125,6 @@ class VenueRouter:
                 fee_venue = round(intent.notional(ref_price) * VENUE_FEE_BPS.get(venue, 0.0) / 10000, 6)
             self.ledger.record_fill(order_id, price=fill_price, qty=fill_qty,
                                     fee_venue=fee_venue, tx_hash=ven_id[:80], bot_id=bot_id)
-            # SWEEP THE PLATFORM FEE ON-CHAIN: after a fill, transfer the 0.5%
-            # platform fee (PLATFORM_FEE_BPS) from the trader's wallet to the
-            # operator's fee wallet (BLUEFIN_FEE_ADDR). Best-effort: a failed
-            # sweep logs but never fails the trade. Venue fees (e.g. 2.5bps)
-            # are Bluefin's own and already paid at the venue.
-            self._sweep_fee(bot_id, chain, fill_price, fill_qty, intent.symbol)
             log.info("[router] bot=%s %s %s %s @ %s ok", bot_id, venue, intent.side, intent.symbol, fill_price)
         else:
             self.ledger.set_order_status(order_id, "rejected")

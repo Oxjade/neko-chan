@@ -1238,13 +1238,11 @@ def _execute_risk_close(
 ) -> dict:
     """Close a single position at exit_price with the platform fee model.
 
-    Mirrors routes_signals.py close math:
-      - sell (long):  cash += qty*price - fee
-      - cover (short): cash += (2*entry - price)*qty - fee
-    Returns {'closed': bool, 'agent_id': ..., 'symbol': ..., 'reason': ...}
+    Fee is charged at ENTRY (before the trade), never at close — so it
+    never deducts from user profit. The close credit returns the full
+    margin + realized PnL without a fee deduction.
     """
     from database import get_db_connection
-    from fees import TRADE_FEE_RATE
     from services import _reserve_signal_id
 
     agent_id = int(position["agent_id"])
@@ -1268,7 +1266,6 @@ def _execute_risk_close(
         timestamp = int(datetime.fromisoformat(now_iso.replace("Z", "+00:00")).timestamp())
         action = "sell" if side == "long" else "cover"
         value = exit_price * abs(qty)
-        fee = value * TRADE_FEE_RATE
 
         cursor.execute(
             """
@@ -1283,15 +1280,15 @@ def _execute_risk_close(
         if side == "long":
             if leverage > 1:
                 # Perp close: return unused margin + realized PnL.
-                credit = abs(qty) * (entry / leverage + exit_price - entry) - fee
+                credit = abs(qty) * (entry / leverage + exit_price - entry)
             else:
-                credit = value - fee
+                credit = value
             cursor.execute("UPDATE agents SET cash = cash + ? WHERE id = ?", (credit, agent_id))
         else:
             if leverage > 1:
-                credit = abs(qty) * (entry / leverage + entry - exit_price) - fee
+                credit = abs(qty) * (entry / leverage + entry - exit_price)
             else:
-                credit = ((2 * entry) - exit_price) * abs(qty) - fee
+                credit = ((2 * entry) - exit_price) * abs(qty)
             cursor.execute("UPDATE agents SET cash = cash + ? WHERE id = ?", (credit, agent_id))
 
         cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))

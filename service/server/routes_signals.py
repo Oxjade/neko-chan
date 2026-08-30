@@ -383,18 +383,19 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 if position_leverage > 1:
                     # Perp close: return unused margin + realized PnL.
                     # margin = qty * entry / leverage; realized = (price - entry) * qty
-                    credit = qty * (position_entry_price / position_leverage + price - position_entry_price) - fee
+                    # Fee is charged at ENTRY (before the trade), never at close.
+                    credit = qty * (position_entry_price / position_leverage + price - position_entry_price)
                     cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (credit, agent_id))
                 else:
-                    cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (trade_value - fee, agent_id))
+                    cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (trade_value, agent_id))
             else:
                 if position_entry_price is None:
                     raise HTTPException(status_code=400, detail='Short position entry price is missing')
                 if position_leverage > 1:
-                    credit = qty * (position_entry_price / position_leverage + position_entry_price - price) - fee
+                    credit = qty * (position_entry_price / position_leverage + position_entry_price - price)
                     cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (credit, agent_id))
                 else:
-                    cover_credit = ((2 * position_entry_price) - price) * qty - fee
+                    cover_credit = ((2 * position_entry_price) - price) * qty
                     cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (cover_credit, agent_id))
 
             signal_quality = score_signal_quality(
@@ -551,13 +552,10 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         follower_total = trade_value + follower_fee
                         cursor.execute('UPDATE agents SET cash = cash - ? WHERE id = ?', (follower_total, follower_id))
                     elif action_lower == 'sell':
-                        follower_fee = trade_value * TRADE_FEE_RATE
-                        follower_net = trade_value - follower_fee
-                        cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (follower_net, follower_id))
+                        cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (trade_value, follower_id))
                     else:
-                        follower_fee = trade_value * TRADE_FEE_RATE
                         follower_entry_price = float(follower_position['entry_price'])
-                        follower_net = ((2 * follower_entry_price) - price) * qty - follower_fee
+                        follower_net = ((2 * follower_entry_price) - price) * qty
                         cursor.execute('UPDATE agents SET cash = cash + ? WHERE id = ?', (follower_net, follower_id))
 
                     score_signal_quality(

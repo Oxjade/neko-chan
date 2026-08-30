@@ -383,8 +383,9 @@ class ChallengeTests(unittest.TestCase):
             )
 
         portfolio = get_agent_challenge_portfolio(challenge["challenge_key"], self.agent_2)
-        sell_fee = 2.0 * 150.0 * 0.001
-        expected_cash = (1000.0 - 200.0 - fee) + 300.0 - sell_fee
+        # Fee is charged at ENTRY (before the trade), never at close - so the
+        # sell side has NO fee and profit is never reduced after the trade.
+        expected_cash = (1000.0 - 200.0 - fee) + 300.0
         self.assertAlmostEqual(portfolio["portfolio"]["cash"], expected_cash)
 
     def test_polymarket_challenge_trade_requires_resolved_contract(self):

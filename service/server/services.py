@@ -304,8 +304,6 @@ def _update_position_from_signal(
             # Close position: record exit price + realized net PnL on the open
             # signal before deleting, so signals.pnl/exit_price are populated
             # (previously NULL forever — D1 defect, per-trade PnL was orphaned).
-            from fees import TRADE_FEE_RATE
-
             row_exit = cursor.execute(
                 "SELECT signal_id FROM signals WHERE agent_id = ? AND symbol = ? "
                 "AND side = 'buy' AND exit_price IS NULL "
@@ -313,8 +311,9 @@ def _update_position_from_signal(
                 (agent_id, symbol),
             ).fetchone()
             if row_exit:
-                close_fee = quantity * price * TRADE_FEE_RATE
-                realized_pnl = (price - float(row["entry_price"])) * current_qty - close_fee
+                # Fee is charged at ENTRY (before the trade), never at close -
+                # so it never deducts from user profit. PnL here is gross.
+                realized_pnl = (price - float(row["entry_price"])) * current_qty
                 cursor.execute(
                     "UPDATE signals SET exit_price = ?, pnl = ? WHERE signal_id = ?",
                     (price, realized_pnl, row_exit["signal_id"]),
@@ -367,10 +366,8 @@ def _update_position_from_signal(
         if new_qty >= 0:
             # Close position: record exit price + realized net PnL (short: exit
             # above entry is a loss, below is a win; 1x: (2*entry - price)*qty).
-            from fees import TRADE_FEE_RATE
-
-            close_fee = quantity * price * TRADE_FEE_RATE
-            realized_pnl = (float(row["entry_price"]) - price) * quantity - close_fee
+            # Fee is charged at ENTRY (before the trade), never at close.
+            realized_pnl = (float(row["entry_price"]) - price) * quantity
             row_exit = cursor.execute(
                 "SELECT signal_id FROM signals WHERE agent_id = ? AND symbol = ? "
                 "AND side = 'short' AND exit_price IS NULL "
