@@ -8,7 +8,7 @@ from typing import Optional
 class BotRiskProfile:
     max_notional_usd: float = 500.0          # per order (mainnet v1)
     max_exposure_pct: float = 30.0           # of wallet balance
-    max_leverage: float = 5.0                # capped further by venue caps
+    max_leverage: float = 20.0               # capped further by venue caps
     require_stop: bool = True                # mandatory stop on leveraged opens
     min_stop_pct: float = 2.0
     max_stop_pct: float = 8.0

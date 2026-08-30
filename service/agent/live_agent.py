@@ -96,27 +96,28 @@ _trailing_high: dict[str, float] = {}
 LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
-LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "1"))
+LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "20"))
 # Max leverage is PER ASSET, per venue. Verified live from Bluefin Pro's
 # /exchange/info (2026-08-29): BTC-PERP max 40x, ETH/SOL/SUI 25x. The bot
 # clamps any user-selected leverage (5x-100x range) to the venue/asset max so
 # it never submits a leverage the venue rejects.
 BLUEFIN_MAX_LEVERAGE = {
-    "BTC": 40, "ETH": 25, "SOL": 25, "SUI": 25, "ARB": 25, "AVAX": 25,
-    "BNB": 25, "DOGE": 25, "LINK": 25, "LTC": 25, "OP": 25, "MATIC": 25,
-    "SEI": 25,
+    "BTC": 40, "ETH": 25, "SOL": 25, "SUI": 25, "HYPE": 25, "DEEP": 25,
+    "WAL": 25, "GOLD": 25,
 }
 
 
 def clamp_leverage(symbol: str, market: str, lev: float) -> float:
-    """Clamp requested leverage to the venue/asset max. 1x if market not a perp."""
+    """Clamp requested leverage to the venue/asset max. 1x if market not a perp.
+    Enforces a 20x FLOOR for crypto perps: the bot never trades below 20x
+    (Bluefin supports up to 40x/100x - our cap was the problem, not the venue)."""
     if market != "crypto":
         return 1.0
     if lev <= 1:
         return lev
     # Bluefin is the live Sui venue - use its real per-market max.
     cap = BLUEFIN_MAX_LEVERAGE.get(symbol.upper(), 25)
-    return min(lev, cap)
+    return min(max(lev, 20.0), cap)
 # Real execution through the chain adapters (execution gateway). Requires
 # REAL_TRADING_ENABLED=1 AND per-chain keys in the gateway env. Default off:
 # the agent stays paper-only on the platform. When on, orders route through
@@ -362,7 +363,7 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
         lev = notional / (usable_cash * margin_use)
     else:
         lev = LIVE_AGENT_LEVERAGE
-    lev = max(5.0, min(lev, 100.0))                 # user range 5x-100x
+    lev = max(20.0, min(lev, 100.0))                # min 20x (Bluefin floor), max 100x
     lev = clamp_leverage(symbol, market, lev)       # venue/asset cap
     # final notional must never exceed the balance at ANY leverage
     if lev > 1 and notional > usable_cash * lev:
