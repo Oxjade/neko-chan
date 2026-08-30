@@ -150,6 +150,15 @@ def start_bot_cleanup(registry: Registry, userbot: UserBotController,
                     log.info("[cleanup] removed unconfigured bot %s (%s)", bot_id, bot.get("bot_name"))
             except Exception as exc:
                 log.warning("[cleanup] sweep error: %s", exc)
+            # Restart crashed agents: the pool is only touched at boot and on
+            # explicit commands, so a dead live_agent (e.g. a startup race
+            # against the API server) would otherwise stay dead forever and the
+            # bot silently stops trading. healthcheck() respawns crashed
+            # runners up to the per-hour cap.
+            try:
+                agent_pool.healthcheck()
+            except Exception as exc:
+                log.warning("[cleanup] agent healthcheck error: %s", exc)
             time.sleep(poll_seconds)
 
     t = _threading.Thread(target=_loop, name="bot-cleanup", daemon=True)
