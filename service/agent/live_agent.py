@@ -89,8 +89,17 @@ SCENARIO_5M_HOURS = int(os.getenv("LIVE_AGENT_SCENARIO_5M_HOURS", "6"))
 # instead of posting a low-conviction decision. Only ONE best trade is ever
 # posted per cycle (across all watched tokens), picked from the floor-crossers.
 CONVICTION_FLOOR = float(os.getenv("LIVE_AGENT_CONVICTION_FLOOR", "0.015"))
-# Peak-price tracker for trailing stops (in-memory per agent process).
+# Peak-price tracker for trailing stops (persisted to disk so it survives
+# agent restarts — without this a restart resets the tracker and a winning
+# position that was up 20% loses its peak, potentially missing the trail exit).
 _trailing_high: dict[str, float] = {}
+TRAILING_HIGH_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "trailing_high_cache.json"
+try:
+    if TRAILING_HIGH_PATH.exists():
+        import json as _json
+        _trailing_high = _json.loads(TRAILING_HIGH_PATH.read_text(encoding="utf-8"))
+except Exception:
+    pass
 # Per-user LLM credentials (set by the Telegram bot network). When LIVE_AGENT_API_KEY
 # is set, decisions call the provider API directly instead of the opencode CLI.
 LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
@@ -1440,6 +1449,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     px = prices.get(sym) or p.get("current_price") or p.get("entry_price") or 0
                     if px > 0:
                         _trailing_high[sym] = max(_trailing_high.get(sym, 0.0), px)
+            try:
+                TRAILING_HIGH_PATH.parent.mkdir(parents=True, exist_ok=True)
+                TRAILING_HIGH_PATH.write_text(
+                    json.dumps(_trailing_high), encoding="utf-8")
+            except Exception:
+                pass
             for p in positions:
                 sym = p.get("symbol")
                 if sym and p.get("quantity", 0) > 0 and _trailing_high.get(sym):

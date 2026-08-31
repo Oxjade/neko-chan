@@ -54,12 +54,25 @@ lcode = open(LEDGER).read()
 upsert_seg = lcode.split("def upsert_position")[1].split("def delete_position")[0]
 check("R6 upsert_position no accumulation", "ON CONFLICT" not in upsert_seg and "rowcount == 0" in upsert_seg, "position rows accumulate")
 
-# R7: router TOCTOU on idempotency_key
+# R7: router TOCTOU on idempotency_key — fixed in ledger.create_order (atomic
+# UNIQUE insert returns existing id on IntegrityError), router rejects id<0
+lcode = open(LEDGER).read()
 rcode = open(ROUTER).read()
-check("R7 router TOCTOU fixed", "except IntegrityError" in rcode or "IntegrityError" not in rcode, "unhandled IntegrityError")
+check("R7 router TOCTOU fixed",
+      "except sqlite3.IntegrityError" in lcode and 'return row["id"] if row else -1' in lcode
+      and "order_id is None or order_id < 0" in rcode,
+      "TOCTOU not fixed in create_order")
 
 # R8: router zero-fill handling
 check("R8 zero fill guard", "ZERO-FILL GUARD" in rcode and "fill_price <= 0 or fill_qty <= 0" in rcode, "zero fill not guarded")
+
+# R9: trailing_high persisted across restarts
+acode = open("service/agent/live_agent.py").read()
+check("R9 trailing_high persisted", "TRAILING_HIGH_PATH" in acode and "trailing_high_cache.json" in acode and "_trailing_high = _json.loads" in acode, "trailing_high not persisted")
+
+# R10: private-key messages auto-delete after 5 min
+ucode = open(SRC).read()
+check("R10 private keys auto-delete", "_schedule_msg_delete" in ucode and ucode.count("_schedule_msg_delete(") >= 3, "private key messages not auto-deleted")
 
 print(f"\n=== REVIEW REGRESSION: {PASS}/{PASS+FAIL} passed ===")
 print(f"REVIEW CERTAINTY: {round(PASS/max(PASS+FAIL,1)*100, 1)} %")

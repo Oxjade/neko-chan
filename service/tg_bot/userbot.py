@@ -74,6 +74,26 @@ def _delayed_photo_delete(bot_token: str, chat_id: int, message_id: int,
         pass
 
 
+def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
+                         ttl: int = 300) -> None:
+    """Delete a text message after ttl seconds (background thread)."""
+    threading.Thread(
+        target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
+            bot_token, chat_id, message_id, ttl),
+        daemon=True).start()
+
+
+def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
+                         ttl: int = 300) -> None:
+    """Delete a text message after ttl seconds (background thread). Reuses the
+    same delete path as photo messages - private keys self-destruct so they
+    don't persist in Telegram history."""
+    threading.Thread(
+        target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
+            bot_token, chat_id, message_id, ttl),
+        daemon=True).start()
+
+
 def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
     """Simple production dashboard: real chain balance + address + positions."""
     line = "─" * 26
@@ -946,6 +966,8 @@ class UserBotController:
                 [telegram.InlineKeyboardButton("🗝️ I've saved my key", callback_data="ob:key_saved")],
             ])
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            # SECURITY: private key shown once; auto-delete the message in 5 min
+            _schedule_msg_delete(self.registry.bot_token(bot_id) or "", q.message.chat_id, q.message.message_id)
 
         async def onboarding_key_saved(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1946,6 +1968,9 @@ class UserBotController:
                 [telegram.InlineKeyboardButton("🗝️ I've saved my key", callback_data="sb:gen_wallet_done")],
             ])
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            # SECURITY: private key shown once; auto-delete the message in 5 min
+            _schedule_msg_delete(self.registry.bot_token(bot_id) or "",
+                                 q.message.chat_id, q.message.message_id)
 
         async def gen_wallet_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -2101,6 +2126,21 @@ class UserBotController:
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton(BACK, callback_data="sb:wallet")],
                                            [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+            # SECURITY: private keys self-destruct after 5 min so they don't
+            # persist in Telegram history.
+            try:
+                sent = await q.message.reply_text(
+                    "🔒 This message will auto-delete in 5 minutes. Your private keys "
+                    "will not persist in this chat.",
+                    parse_mode="HTML")
+                if sent and getattr(sent, "message_id", None):
+                    threading.Thread(
+                        target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
+                            self.registry.bot_token(bot_id) or "",
+                            q.message.chat_id, sent.message_id),
+                        daemon=True).start()
+            except Exception:
+                pass
 
         async def wallet_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query

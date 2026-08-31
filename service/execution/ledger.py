@@ -168,16 +168,28 @@ class ExecLedger:
 
     def create_order(self, intent, bot_id: int) -> int:
         with self._lock:
-            cur = self._conn.execute(
-                """INSERT INTO exec_orders (idempotency_key, bot_id, chain, venue, symbol, side, qty,
-                                            price, order_type, leverage, stop_loss, take_profit, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?)""",
-                (intent.idempotency_key, bot_id, intent.chain, intent.venue, intent.symbol,
-                 intent.side, intent.qty, intent.limit_price, intent.order_type,
-                 intent.leverage, intent.stop_loss, intent.take_profit, utcnow()),
-            )
-            self._conn.commit()
-            return cur.lastrowid
+            # Atomic duplicate-guard: the UNIQUE(idempotency_key) constraint is
+            # the source of truth. If another thread inserted the same key
+            # between our check and this insert, IntegrityError fires and we
+            # return the EXISTING order id instead of raising (fixes TOCTOU).
+            try:
+                cur = self._conn.execute(
+                    """INSERT INTO exec_orders (idempotency_key, bot_id, chain, venue, symbol, side, qty,
+                                                price, order_type, leverage, stop_loss, take_profit, status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?)""",
+                    (intent.idempotency_key, bot_id, intent.chain, intent.venue, intent.symbol,
+                     intent.side, intent.qty, intent.limit_price, intent.order_type,
+                     intent.leverage, intent.stop_loss, intent.take_profit, utcnow()),
+                )
+                self._conn.commit()
+                return cur.lastrowid
+            except sqlite3.IntegrityError:
+                row = self._conn.execute(
+                    "SELECT id FROM exec_orders WHERE idempotency_key=?",
+                    (intent.idempotency_key,),
+                ).fetchone()
+                self._conn.commit()
+                return row["id"] if row else -1
 
     def set_order_status(self, order_id: int, status: str, venue_order_id: str | None = None) -> None:
         with self._lock:

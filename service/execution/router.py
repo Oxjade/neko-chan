@@ -87,11 +87,17 @@ class VenueRouter:
             return {"ok": False, "order_id": None, "status": "rejected",
                     "error": f"risk: {detail}", "fee": 0.0}
 
-        # ledger: idempotent order row BEFORE hitting any venue
+        # ledger: idempotent order row BEFORE hitting any venue. The pre-check
+        # is a fast-path; the authoritative duplicate guard is create_order's
+        # atomic UNIQUE(idempotency_key) insert (it returns an existing order's
+        # id on IntegrityError, so concurrent duplicates can't slip through).
         if self.ledger.order_exists(intent.idempotency_key):
             return {"ok": False, "order_id": None, "status": "rejected",
                     "error": f"duplicate idempotency_key {intent.idempotency_key}", "fee": 0.0}
         order_id = self.ledger.create_order(intent, bot_id)
+        if order_id is None or order_id < 0:
+            return {"ok": False, "order_id": None, "status": "rejected",
+                    "error": f"duplicate/conflict idempotency_key {intent.idempotency_key}", "fee": 0.0}
 
         # PLATFORM FEE BEFORE THE TRADE: the 0.5% fee is paid UPFRONT (before
         # the order is placed) so it is never deducted from user profit after
