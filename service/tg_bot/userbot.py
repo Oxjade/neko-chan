@@ -1094,12 +1094,24 @@ class UserBotController:
                     for sym in active:
                         row = latest.get(sym.upper())
                         if row:
-                            action = (row.get("action") or "?").upper()
+                            # Display DIRECTION (LONG/SHORT) not the order verb
+                            # (buy/sell/short/cover) - that's what the user
+                            # actually cares about. Hold stays HOLD.
+                            direction = (row.get("direction") or "").upper()
+                            action = (row.get("action") or "").upper()
+                            if direction in ("LONG", "SHORT"):
+                                label = direction
+                            elif action in ("SELL", "COVER"):
+                                label = "EXIT"
+                            elif action in ("BUY", "SHORT"):
+                                label = action
+                            else:
+                                label = action or "?"
                             qty = row.get("quantity") or row.get("qty") or ""
                             price = row.get("price") or ""
                             when = str(row.get("ts") or "")[11:19] or "?"
                             reasoning = (_esc(row.get("reasoning") or "")).strip()
-                            lines.append(f"📊 <b>{_esc(sym.upper())}</b> · {action} · {when} UTC\n"
+                            lines.append(f"📊 <b>{_esc(sym.upper())}</b> · {_esc(label)} · {when} UTC\n"
                                          f"  qty {qty} · price ${price}")
                             if reasoning:
                                 lines.append(f"  Why: {reasoning[:160]}")

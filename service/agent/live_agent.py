@@ -1120,9 +1120,9 @@ def log_decision(row: dict):
         fresh = not LOG_PATH.exists()
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             if fresh:
-                f.write("ts,symbol,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n")
+                f.write("ts,symbol,direction,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n")
             ts = datetime.now(timezone.utc).isoformat()
-            f.write(f"{ts},{row.get('symbol')},{row.get('action')},{row.get('price')},"
+            f.write(f"{ts},{row.get('symbol')},{row.get('direction')},{row.get('action')},{row.get('price')},"
                     f"{row.get('quantity')},{row.get('stop_pct')},{row.get('take_pct')},"
                     f"{row.get('fill_ok')},\"{str(row.get('reasoning','')).replace('\"','\"\"')}\","
                     f"{str(row.get('error','')).replace(',',';')}\n")
@@ -1143,6 +1143,7 @@ def log_decision(row: dict):
         cache[key] = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "symbol": row.get("symbol"),
+            "direction": row.get("direction"),
             "action": row.get("action"),
             "price": row.get("price"),
             "quantity": row.get("quantity"),
@@ -1836,6 +1837,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
         decision = ask_model(prompt)
     action = str(decision.get("action", "hold")).lower()
     symbol = str(decision.get("symbol", "")).upper()
+    # DIRECTION: the LLM's long/short intent (not the order verb). Peek shows
+    # this, so the user sees LONG/SHORT instead of buy/sell/short/cover verbs.
+    direction = str(decision.get("direction", "")).lower()
+    if not direction:
+        direction = {"buy": "long", "short": "short"}.get(action, "")
     qty = float(decision.get("quantity", 0) or 0)
     stop_pct = float(decision.get("stop_loss_pct", 0) or 0)
     take_pct = float(decision.get("take_profit_pct", 0) or 0)
@@ -1846,7 +1852,8 @@ def run_cycle(token: str, dry: bool = False) -> None:
     lev_choice = float(decision.get("leverage") or 0) or LIVE_AGENT_LEVERAGE
     lev_choice = clamp_leverage(symbol, market, lev_choice)
 
-    row = {"symbol": symbol, "action": action, "price": prices.get(symbol, 0),
+    row = {"symbol": symbol, "action": action, "direction": direction,
+           "price": prices.get(symbol, 0),
            "quantity": qty, "stop_pct": stop_pct, "take_pct": take_pct,
            "fill_ok": None, "reasoning": reasoning, "error": ""}
 
