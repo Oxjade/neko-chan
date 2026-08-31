@@ -926,6 +926,18 @@ class UserBotController:
             await q.answer()
             chain = q.data.split(":", 2)[2]
             self.registry.update_bot(bot_id, chain=chain)
+            # DEFAULT WATCHLIST for new users: if the user hasn't picked any
+            # assets yet, seed the watchlist with the chain's default perps so
+            # Peek shows them and the agent analyzes them out of the box.
+            b_now = self.registry.get_bot(bot_id)
+            if not _parse_watchlist((b_now or {}).get("watchlist")):
+                _def_watch = {
+                    "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                    "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                    "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
+                }.get(chain, ["BTC", "ETH"])
+                self.registry.update_bot(bot_id,
+                                         watchlist=",".join(sorted(_def_watch)))
             # Generate the real per-chain wallet (address + private key).
             # Persist EVEN without a gateway so the user's wallet survives
             # restarts and is always recoverable via the Registry.

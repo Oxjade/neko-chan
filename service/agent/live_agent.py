@@ -1605,7 +1605,17 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     best_short = max((s for s in matrix if s.direction == "short"),
                                      key=lambda s: s.conviction, default=None)
                     top = []
+                    # WATCHED FIRST: the user's watched tokens take priority -
+                    # their highest-conviction scenarios lead the LLM's choice.
+                    watched_act = [s for s in actionable if s.symbol in WATCHED]
+                    for s in watched_act:
+                        if len(top) >= 8:
+                            break
+                        if s not in top:
+                            top.append(s)
                     for s in (best_long, best_short):
+                        if len(top) >= 8:
+                            break
                         if s is not None and s not in top:
                             top.append(s)
                     for s in actionable:
