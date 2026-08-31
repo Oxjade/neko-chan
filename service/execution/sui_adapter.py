@@ -29,6 +29,7 @@ log = logging.getLogger("execution")
 
 SUI_MAINNET_RPC = "https://fullnode.mainnet.sui.io:443"
 SUI_TESTNET_RPC = "https://fullnode.testnet.sui.io:443"
+SUI_DEVNET_RPC = "https://fullnode.devnet.sui.io:443"
 
 SUI_COIN_TYPE = "0x2::sui::SUI"
 
@@ -397,7 +398,7 @@ def _ed25519_verify(pub: bytes, message: bytes, signature: bytes) -> bool:
 class SUIAdapter:
     def __init__(self, ledger: ExecLedger, keypair_hex: str,
                  rpc_url: str = SUI_MAINNET_RPC, testnet: bool = False,
-                 usdc_coin_type: str = USDC_MAINNET_COIN_TYPE,
+                 network: str = "", usdc_coin_type: str = USDC_MAINNET_COIN_TYPE,
                  deepbook_package: str | None = None,
                  pool_id: str | None = None,
                  balance_manager: str | None = None,
@@ -405,7 +406,17 @@ class SUIAdapter:
                  bluefin: object | None = None):
         self.ledger = ledger
         self.testnet = testnet
-        self.rpc_url = SUI_TESTNET_RPC if testnet else rpc_url
+        # Explicit network name wins (testnet|devnet|mainnet); the legacy bool
+        # is kept for callers that only know testnet vs not.
+        self.network = (network or ("testnet" if testnet else "mainnet")).strip().lower()
+        if rpc_url and rpc_url != SUI_MAINNET_RPC:
+            self.rpc_url = rpc_url
+        else:
+            self.rpc_url = {
+                "devnet": SUI_DEVNET_RPC,
+                "testnet": SUI_TESTNET_RPC,
+                "mainnet": SUI_MAINNET_RPC,
+            }.get(self.network, SUI_TESTNET_RPC if testnet else rpc_url)
         self.usdc_coin_type = usdc_coin_type
         self.deepbook_package = deepbook_package
         self.pool_id = pool_id
@@ -492,7 +503,7 @@ class SUIAdapter:
 
     def _gql(self, query: str) -> dict:
         """Execute a GraphQL query against the public Sui GraphQL endpoint."""
-        url = self.GQL_URL.format(network="testnet" if self.testnet else "mainnet")
+        url = self.GQL_URL.format(network=self.network)
         try:
             r = requests.post(url, json={"query": query}, timeout=RPC_TIMEOUT)
             if r.status_code != 200:

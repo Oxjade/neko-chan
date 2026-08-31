@@ -93,5 +93,12 @@ acode3 = open("service/agent/live_agent.py").read()
 check("R14 conviction sizing", "CONVICTION-SCALED EXPOSURE" in acode3 and "min(0.45" in acode3 and "MAX_POSITION_PCT = float(os.getenv(\"LIVE_AGENT_MAX_POSITION_PCT\", \"45\"))" in acode3, "sizing still 1%-equity based")
 check("R14 no 1% risk sizing", "eq * 1.0 / 100.0" not in acode3, "1%-of-equity risk sizing still present")
 
+# R15: devnet support — network switcher, balance GraphQL, SUIAdapter network
+ucode3 = open(SRC).read()
+check("R15 devnet switcher", "\"devnet\"" in ucode3 and "set_network:devnet" in ucode3, "devnet not in network switcher")
+check("R15 devnet balance", "graphql.devnet.sui.io" in ucode3, "devnet GraphQL missing in balance detection")
+adap = open("service/execution/sui_adapter.py").read()
+check("R15 devnet adapter", "SUI_DEVNET_RPC" in adap and "self.network" in adap and "\"devnet\": SUI_DEVNET_RPC" in adap, "adapter lacks devnet network")
+
 print(f"\n=== REVIEW REGRESSION: {PASS}/{PASS+FAIL} passed ===")
 print(f"REVIEW CERTAINTY: {round(PASS/max(PASS+FAIL,1)*100, 1)} %")
