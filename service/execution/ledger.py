@@ -243,19 +243,21 @@ class ExecLedger:
                         stop_loss: float | None, take_profit: float | None) -> None:
         now = utcnow()
         with self._lock:
-            self._conn.execute(
-                """INSERT INTO exec_positions (bot_id, chain, symbol, side, qty, entry, leverage,
-                                                liq_price, stop_loss, take_profit, opened_at, synced_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT DO NOTHING""",
-                (bot_id, chain, symbol, side, qty, entry, leverage, liq_price,
-                 stop_loss, take_profit, now, now),
+            cur = self._conn.execute(
+                """UPDATE exec_positions SET qty=?, entry=?, leverage=?, liq_price=?, stop_loss=?,
+                                             take_profit=?, side=?, synced_at=? 
+                   WHERE bot_id=? AND chain=? AND symbol=?""",
+                (qty, entry, leverage, liq_price, stop_loss, take_profit, side, now,
+                 bot_id, chain, symbol),
             )
-            self._conn.execute(
-                """UPDATE exec_positions SET qty=?, entry=?, liq_price=?, stop_loss=?, take_profit=?,
-                                             synced_at=? WHERE bot_id=? AND chain=? AND symbol=?""",
-                (qty, entry, liq_price, stop_loss, take_profit, now, bot_id, chain, symbol),
-            )
+            if cur.rowcount == 0:
+                self._conn.execute(
+                    """INSERT INTO exec_positions (bot_id, chain, symbol, side, qty, entry, leverage,
+                                                    liq_price, stop_loss, take_profit, opened_at, synced_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (bot_id, chain, symbol, side, qty, entry, leverage, liq_price,
+                     stop_loss, take_profit, now, now),
+                )
             self._conn.commit()
 
     def delete_position(self, bot_id: int, chain: str, symbol: str) -> None:

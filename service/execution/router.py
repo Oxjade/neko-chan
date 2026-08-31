@@ -117,6 +117,14 @@ class VenueRouter:
                          or result.get("venue_order_id") or result.get("tx_hash") or "")
             fill_price = float(result.get("avg_px") or result.get("price") or ref_price)
             fill_qty = float(result.get("filled_qty") or intent.qty)
+            # ZERO-FILL GUARD: if the adapter reported ok but the fill is 0
+            # units or 0 price, the order did NOT actually fill - recording a
+            # fabricated row corrupts position/P&L/risk state. Treat as reject.
+            if fill_price <= 0 or fill_qty <= 0:
+                self.ledger.set_order_status(order_id, "rejected")
+                return {"ok": False, "order_id": order_id, "status": "rejected",
+                        "error": f"adapter ok but zero fill (px={fill_price}, qty={fill_qty})",
+                        "fee": 0.0}
             self.ledger.set_order_status(order_id, "submitted", venue_order_id=ven_id[:80] or None)
             fee_venue = float(result.get("fee") or 0.0)
             if fee_venue <= 0:

@@ -123,7 +123,7 @@ class Watcher:
 
     def equity(self) -> float | None:
         try:
-            token = self.registry.bot_token(self.bot_id)
+            token = self.registry.platform_token(self.bot_id)
             if not token:
                 return None
             r = requests.get(f"{self.platform}/api/positions",
@@ -339,7 +339,7 @@ class Watcher:
 
     def _positions(self) -> list[dict]:
         try:
-            token = self.registry.bot_token(self.bot_id)
+            token = self.registry.platform_token(self.bot_id)
             if not token:
                 return []
             r = requests.get(f"{self.platform}/api/positions",

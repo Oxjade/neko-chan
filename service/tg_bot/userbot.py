@@ -1043,6 +1043,7 @@ class UserBotController:
                 # cache is missing. A hold is stored under the "__hold__" key.
                 try:
                     import json as _json
+                    import csv as _csv
                     from pathlib import Path
                     cache_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_cache.json"
                     latest: dict[str, dict] = {}
@@ -1062,7 +1063,7 @@ class UserBotController:
                         log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
                         if log_path.exists():
                             with open(log_path, newline="", encoding="utf-8") as f:
-                                for row in csv.DictReader(f):
+                                for row in _csv.DictReader(f):
                                     sym = (row.get("symbol") or "").upper()
                                     if sym in active_upper:
                                         latest[sym] = row
@@ -1984,6 +1985,8 @@ class UserBotController:
                 return S_AMOUNT
             dest = context.bot_data.get("send_dest", "")
             context.bot_data.pop("send_dest", None)
+            b = self.registry.get_bot(bot_id)
+            chain = (b or {}).get("chain") or "sui"
 
             # Execute the real on-chain transfer via the wallet key.
             warning = ""

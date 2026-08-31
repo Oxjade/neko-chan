@@ -77,7 +77,8 @@ def _bcs_u8(v: int) -> bytes:
 
 
 def _bcs_u16(v: int) -> bytes:
-    return _uleb128(v & 0xFFFF)
+    """BCS u16: fixed 2-byte little-endian (NOT uleb128)."""
+    return (v & 0xFFFF).to_bytes(2, "little")
 
 
 def _bcs_u64(v: int) -> bytes:

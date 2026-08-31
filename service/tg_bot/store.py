@@ -248,6 +248,13 @@ class Registry:
             row = self._conn.execute("SELECT bot_token_enc FROM bots WHERE id = ?", (bot_id,)).fetchone()
             return self.vault.decrypt(row["bot_token_enc"]) if row else None
 
+    def platform_token(self, bot_id: int) -> str | None:
+        """Platform API bearer token for a bot (used by the watcher to read
+        /api/positions). Distinct from the Telegram bot token."""
+        with _LOCK:
+            row = self._conn.execute("SELECT platform_token FROM bots WHERE id = ?", (bot_id,)).fetchone()
+            return row["platform_token"] if row else None
+
     def update_bot(self, bot_id: int, **fields) -> None:
         allowed = {"bot_name", "symbols", "leverage", "interval_sec", "risk_profile",
                    "is_running", "paused", "pid", "last_heartbeat", "last_error",
