@@ -94,13 +94,13 @@ def test_route_real_order_open_attaches_stop_and_tp():
     gw = _gw()
     res = live_agent.route_real_order(
         gw, 7, "BTC", "crypto", "buy", 0.01,
-        stop_pct=5.0, take_pct=10.0, ref_price=80000, leverage=2)
+        stop_pct=5.0, take_pct=10.0, ref_price=80000, leverage=20)
     assert res["ok"] is True
     bot_id, intent, ref = gw.router.last
     assert bot_id == 7 and ref == 80000
     assert isinstance(intent, OrderIntent)
     assert intent.chain == "hyperliquid" and intent.venue == "hl-perp"
-    assert intent.side == "buy" and intent.leverage == 2
+    assert intent.side == "buy" and intent.leverage == 20
     assert intent.stop_loss == pytest.approx(76000.0)
     assert intent.take_profit == pytest.approx(88000.0)
     assert intent.idempotency_key.startswith("agent:TestAgent:BTC:buy:")
@@ -156,8 +156,8 @@ def test_clamp_leverage_asset_caps():
     # SOL caps at 25x on Bluefin (research: Bluefin Pro SOL-PERP IMR=3.8% → 25x)
     assert clamp_leverage("SOL", "crypto", 25) == 25
     assert clamp_leverage("SOL", "crypto", 30) == 25
-    # Unknown symbol defaults to 25x (Bluefin perp default)
-    assert clamp_leverage("ATOM", "crypto", 10) == 10
+    # Unknown symbol defaults to 25x; the 20x minimum floor raises sub-20x
+    assert clamp_leverage("ATOM", "crypto", 10) == 20
     # 1x stays 1x (safe default)
     assert clamp_leverage("BTC", "crypto", 1) == 1
     # non-crypto is always 1x

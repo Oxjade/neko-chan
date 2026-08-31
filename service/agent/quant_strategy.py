@@ -372,8 +372,12 @@ HORIZONS = {
 TREND_EMA_FAST = 12
 TREND_EMA_SLOW = 26
 TREND_HORIZON_PARAMS = {
-    "intraday": {"stop_sigma": 1.5, "target_r": 2.0, "min_r": 1.8},
-    "swing":    {"stop_sigma": 2.5, "target_r": 2.5, "min_r": 2.0},
+    # Take-profit targets are set as ABSOLUTE % so intraday/swing/auto
+    # actually chase 25-30%+ per trade (the operator's requirement), not the
+    # old 1-16% sigma-derived targets. The stop is derived from the target
+    # and the horizon's per-bar sigma, keeping R >= min_r.
+    "intraday": {"target_pct": 25.0, "stop_sigma": 2.0, "min_r": 1.8},
+    "swing":    {"target_pct": 30.0, "stop_sigma": 2.5, "min_r": 2.0},
 }
 
 
@@ -441,19 +445,23 @@ def build_trend_scenarios(symbol: str, closes: list[float], current_price: float
 
     Unlike build_scenarios (which derives every horizon from 5-min closes and
     produced absurd R=6-7 with P(win)~13%), this builds intraday from 1h closes
-    and swing from daily closes, so drift/vol reflect that horizon. Target is a
-    tight ~2R (winners run 2-3x, but the stop is hit far less often than a
-    far-away 7-16R target — that's what makes P(win) real). Trend direction
-    (EMA crossover) is NOT a hard filter here: both sides are returned so the
-    LLM weighs P(win)/EV; the trend flag is surfaced in the prompt.
+    and swing from daily closes, so drift/vol reflect that horizon.
+
+    TAKE-PROFIT is an ABSOLUTE target (intraday 25%, swing 30%) per the
+    operator's requirement: these horizons chase 25-30%+ per trade. The stop is
+    derived from the per-bar sigma (wider for swing so the 30% target has room
+    to breathe) and R is kept >= min_r. Trend direction (EMA crossover) is NOT
+    a hard filter: both sides are returned so the LLM weighs P(win)/EV.
     """
     if not closes or current_price <= 0 or horizon not in TREND_HORIZON_PARAMS:
         return []
     drift, vol = estimate_drift_vol(closes, bars_per_year=bars_per_year)
     params = TREND_HORIZON_PARAMS[horizon]
     per_bar_sigma = (vol / math.sqrt(bars_per_year)) * 100.0 if vol > 0 else 1.0
-    stop = max(0.5, per_bar_sigma * params["stop_sigma"])
-    take = max(stop * params["min_r"], stop * params["target_r"])
+    # ABSOLUTE 25-30%+ take-profit target (the operator's requirement).
+    take = float(params["target_pct"])
+    # Stop = max(vol-based width, target/min_r) so R never drops below min_r.
+    stop = max(per_bar_sigma * params["stop_sigma"], take / params["min_r"])
     scenarios = []
     # LONG
     long_stop = current_price * (1 - stop / 100.0)

@@ -53,21 +53,22 @@ def _env_float(key: str, default: float = 0.0) -> float:
 
 
 def _load_execution_cfg() -> dict:
-    """Build cfg dict for build_adapters() from the execution ledger's encrypted
-    wallet key (never plaintext in .env). Falls back to env var EXEC_SUI_KEYPAIR_HEX
-    for backward compatibility.
+    """Build cfg dict for build_adapters() from env vars + the execution ledger.
 
-    The key is already encrypted in exec_ledger.db (stored by onboarding). This
-    reads it from there, decrypts in-memory, and re-encrypts for the adapter.
+    - Sui/Bluefin: the key is already encrypted in exec_ledger.db (stored by
+      onboarding) - read it from there, decrypt in-memory, re-encrypt for the
+      adapter (never plaintext in .env). Env var EXEC_SUI_KEYPAIR_HEX remains
+      as a backward-compatible fallback.
+    - Hyperliquid / Solana: configured via env vars only.
 
     Returns {} if no keys are configured (safe default).
     """
     import sqlite3 as _sqlite3
-    from pathlib import Path as _Path
 
     vault = ExecVault()
+    cfg = {}
 
-    # Read the encrypted key from the execution ledger (never plaintext).
+    # ---- Sui (Bluefin perps) ----
     _enc_key: str | None = None
     _testnet = _env("EXEC_SUI_TESTNET", "1") != "0"
     try:
@@ -82,30 +83,46 @@ def _load_execution_cfg() -> dict:
             _enc_key = vault.decrypt(_row["key_enc"])
     except Exception:
         pass
-
     if not _enc_key:
         _enc_key = _env("EXEC_SUI_KEYPAIR_HEX")
-    if not _enc_key:
-        return {}
+    if _enc_key:
+        extra = {}
+        for env_name, attr in (
+            ("EXEC_SUI_DEEPBOOK_PACKAGE", "deepbook_package"),
+            ("EXEC_SUI_POOL_ID", "pool_id"),
+            ("EXEC_SUI_BALANCE_MANAGER", "balance_manager"),
+            ("EXEC_BLUEFIN_API_BASE", "bluefin_api_base"),
+        ):
+            v = _env(env_name)
+            if v:
+                extra[attr] = v
+        cfg["sui"] = {
+            "key_enc": vault.encrypt(_enc_key),
+            "rpc_url": _env("EXEC_SUI_RPC_URL", ""),
+            "testnet": _testnet,
+            "network": _env("EXEC_SUI_NETWORK", "testnet" if _testnet else "mainnet").strip().lower(),
+            **extra,
+        }
 
-    cfg = {}
-    extra = {}
-    for env_name, attr in (
-        ("EXEC_SUI_DEEPBOOK_PACKAGE", "deepbook_package"),
-        ("EXEC_SUI_POOL_ID", "pool_id"),
-        ("EXEC_SUI_BALANCE_MANAGER", "balance_manager"),
-        ("EXEC_BLUEFIN_API_BASE", "bluefin_api_base"),
-    ):
-        v = _env(env_name)
-        if v:
-            extra[attr] = v
-    cfg["sui"] = {
-        "key_enc": vault.encrypt(_enc_key),
-        "rpc_url": _env("EXEC_SUI_RPC_URL", ""),
-        "testnet": _testnet,
-        "network": _env("EXEC_SUI_NETWORK", "testnet" if _testnet else "mainnet").strip().lower(),
-        **extra,
-    }
+    # ---- Hyperliquid ----
+    hl_key = _env("EXEC_HL_AGENT_KEY")
+    hl_master = _env("EXEC_HL_MASTER_ADDRESS")
+    if hl_key and hl_master:
+        cfg["hyperliquid"] = {
+            "key_enc": vault.encrypt(hl_key),
+            "master_address": hl_master,
+            "testnet": _env("EXEC_HL_TESTNET", "1") != "0",
+        }
+
+    # ---- Solana ----
+    sol_key = _env("EXEC_SOL_KEYPAIR_HEX")
+    if sol_key:
+        cfg["solana"] = {
+            "key_enc": vault.encrypt(sol_key),
+            "rpc_url": _env("EXEC_SOL_RPC_URL", ""),
+            "testnet": _env("EXEC_SOL_TESTNET", "1") != "0",
+        }
+
     return cfg
 
 
