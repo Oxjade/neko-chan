@@ -88,5 +88,10 @@ check("R12 WAL in adapter", '"WAL": "WAL-PERP"' in badapter, "WAL not in adapter
 # R13: auto-delete uses the MASTER bot token (messages sent by context.bot)
 check("R13 delete uses master token", "self._master_token" in ucode2 and ucode2.count("self._master_token or \"\"") >= 6, "delete not using master token")
 
+# R14: perp sizing scales with conviction, capped at 45% of balance (no 1%-equity risk)
+acode3 = open("service/agent/live_agent.py").read()
+check("R14 conviction sizing", "CONVICTION-SCALED EXPOSURE" in acode3 and "min(0.45" in acode3 and "MAX_POSITION_PCT = float(os.getenv(\"LIVE_AGENT_MAX_POSITION_PCT\", \"45\"))" in acode3, "sizing still 1%-equity based")
+check("R14 no 1% risk sizing", "eq * 1.0 / 100.0" not in acode3, "1%-of-equity risk sizing still present")
+
 print(f"\n=== REVIEW REGRESSION: {PASS}/{PASS+FAIL} passed ===")
 print(f"REVIEW CERTAINTY: {round(PASS/max(PASS+FAIL,1)*100, 1)} %")

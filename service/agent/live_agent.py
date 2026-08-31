@@ -61,7 +61,7 @@ MAX_DAILY_TRADES = int(os.getenv("LIVE_AGENT_MAX_DAILY_TRADES", "12"))
 # Per-user watchlist: comma-separated symbols the user typed "watch <ASSET>" for.
 # These are PREPENDED to the universe so the agent always considers them first.
 WATCHED = [s.strip().upper() for s in os.getenv("LIVE_AGENT_WATCHLIST", "").split(",") if s.strip()]
-MAX_POSITION_PCT = float(os.getenv("LIVE_AGENT_MAX_POSITION_PCT", "30"))
+MAX_POSITION_PCT = float(os.getenv("LIVE_AGENT_MAX_POSITION_PCT", "45"))
 FORCE_STOP_PCT = float(os.getenv("LIVE_AGENT_FORCE_STOP_PCT", "5"))
 # 1 = active scalper mode: hold a position most of the time (long/short), trade often.
 # 0 = conservative mode: cash-preferred, only trade on clear setups.
@@ -346,42 +346,56 @@ def compute_risk_size(equity_val: float, entry_price: float, stop_pct: float,
 
 def balance_aware_size(equity_val: float, cash: float, entry_price: float,
                        stop_pct: float, symbol: str,
-                       market: str = "crypto") -> tuple[float, float, str]:
-    """Balance-aware position sizing + leverage for a perp trade.
+                       market: str = "crypto",
+                       conviction: float = 0.0,
+                       p_win: float = 0.0) -> tuple[float, float, str]:
+    """Conviction-scaled position sizing + leverage for a perp trade.
 
-    Risk-based sizing (risk 1% of equity / stop distance) tells us HOW MANY
-    UNITS. Leverage is then chosen so the margin required (notional/lev) fits
-    comfortably inside the real cash balance - small balance uses more of the
-    5x-100x range, big balance stays low - and is clamped to the venue's per-
-    market max (Bluefin: BTC 40x, others 25x).
+    PERP SIZING MODEL (not stock-style equity risk):
+      - The AMOUNT scales with conviction: higher conviction = larger position.
+        Base exposure = 15% of balance; every doubling of conviction above the
+        floor adds exposure up to the hard 45% cap.
+      - The LEVERAGE scales with confidence (LLM decides 20-40x; clamped to the
+        venue/asset max: BTC 40x, others 25x).
+      - Hard caps: notional NEVER exceeds 45% of the total balance, and the
+        margin required (notional/lev) must fit inside the wallet cash.
 
     Returns (units, leverage, attribution).
     """
-    stop_pct = float(stop_pct or FORCE_STOP_PCT or 0.5)
-    units, why = compute_risk_size(equity_val, entry_price, stop_pct, stop_pct * 3)
-    if units <= 0 or entry_price <= 0:
-        return 0.0, 1.0, why
-    notional = units * entry_price
-    usable_cash = max(float(cash or 0), 0.0) * 0.95  # leave a fee buffer
-    # leverage so margin fits the balance: lev = notional / (cash x margin_use)
-    # margin_use target ~ 20% of usable cash so the book stays liquid.
-    margin_use = max(0.05, min(0.5, 0.20))
-    if usable_cash > 0:
-        lev = notional / (usable_cash * margin_use)
+    balance = max(float(cash or 0), float(equity_val or 0), 0.0)
+    if entry_price <= 0 or balance <= 0:
+        return 0.0, 1.0, "no balance or price"
+    # CONVICTION-SCALED EXPOSURE: base 15% at the floor; +15% per conviction
+    # doubling (floor 0.0008 -> 15%, 0.0016 -> 30%, 0.0032+ -> 45% cap).
+    floor = max(CONVICTION_FLOOR, 0.0008)
+    if conviction > 0:
+        doubling = max(0.0, min(2.0, abs(conviction) / floor))
+        exposure = min(0.45, 0.15 * (1.0 + doubling))
     else:
-        lev = LIVE_AGENT_LEVERAGE
+        # No conviction supplied (cooldown/deterministic path): use p_win as a
+        # weak proxy - higher win probability gets more size, capped at 45%.
+        if p_win > 0:
+            exposure = min(0.45, 0.15 + max(0.0, p_win - 0.30) * 2.0)
+        else:
+            exposure = 0.15
+    notional = balance * exposure
+    units = notional / entry_price
+    # leverage: fit margin into the balance, floor 20x, clamp to venue/asset cap
+    margin_use = max(0.05, min(0.5, 0.20))
+    lev = notional / (balance * margin_use) if balance > 0 else LIVE_AGENT_LEVERAGE
     lev = max(20.0, min(lev, 100.0))                # min 20x (Bluefin floor), max 100x
     lev = clamp_leverage(symbol, market, lev)       # venue/asset cap
-    # final notional must never exceed the balance at ANY leverage
-    if lev > 1 and notional > usable_cash * lev:
-        units = (usable_cash * lev) / entry_price
+    # hard cap: margin must fit the balance at ANY leverage
+    if lev > 1 and notional > balance * 0.95 * lev:
+        units = (balance * 0.95 * lev) / entry_price
         notional = units * entry_price
-    # hard cap: notional <= 30% of equity (momentum book cap)
-    if equity_val > 0 and notional > equity_val * MAX_POSITION_PCT / 100.0:
-        units = (equity_val * MAX_POSITION_PCT / 100.0) / entry_price
+    # hard cap: notional <= 45% of total balance (MAX_POSITION_PCT = 45)
+    if notional > balance * MAX_POSITION_PCT / 100.0:
+        units = (balance * MAX_POSITION_PCT / 100.0) / entry_price
         notional = units * entry_price
-    return units, lev, (f"balance-size {units:.6f}u (~${notional:,.0f} notional @ "
-                        f"{lev:g}x, margin fits cash {why.split('->')[-1].strip()})")
+    return units, lev, (f"conviction-size {units:.6f}u (~${notional:,.0f} notional = "
+                        f"{exposure*100:.0f}% of ${balance:,.0f} balance @ "
+                        f"{lev:g}x, conviction={conviction:.4f})")
 
 
 def market_stats(symbol: str, market: str) -> dict:
@@ -1627,7 +1641,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         take_pct = abs(best.target - best.entry) / best.entry * 100
                         qty, lev, why = balance_aware_size(
                             eq, portfolio.get('cash', eq), best.entry, stop_pct,
-                            best.symbol)
+                            best.symbol, conviction=best.conviction, p_win=best.p_win)
                         decision = {"action": side, "symbol": best.symbol,
                                     "quantity": qty,
                                     "stop_loss_pct": round(stop_pct, 2),
@@ -1758,11 +1772,25 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             else:
                                 stop_pct = (abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100) \
                                     if _last_scenario is not None else 0.3
-                                risk_notional = eq * 1.0 / 100.0 / (stop_pct / 100.0)
-                                # cap at 30% of equity AND ~95% of available cash (leave
-                                # a fee buffer so margin + fee always fits)
-                                cap_notional = min(eq * 0.30, portfolio.get('cash', eq) * 0.95)
-                                max_qty = min(risk_notional, cap_notional) / prices[llm_sym]
+                                # PERP SIZING: amount scales with conviction
+                                # (base 15% of balance, +15% per conviction
+                                # doubling above the floor), hard-capped at 45%
+                                # of the total balance. No 1%-of-equity risk
+                                # sizing - conviction IS the risk control.
+                                bal = max(float(portfolio.get('cash', eq) or 0),
+                                          float(eq or 0), 0.0)
+                                _floor = max(CONVICTION_FLOOR, 0.0008)
+                                _conv = _last_scenario.conviction if _last_scenario else 0.0
+                                if _conv > 0:
+                                    _dbl = max(0.0, min(2.0, abs(_conv) / _floor))
+                                    _expo = min(0.45, 0.15 * (1.0 + _dbl))
+                                elif _last_scenario is not None and _last_scenario.p_win > 0:
+                                    _expo = min(0.45, 0.15 + max(0.0, _last_scenario.p_win - 0.30) * 2.0)
+                                else:
+                                    _expo = 0.15
+                                max_notional = min(bal * 0.45, bal * 0.95)
+                                max_qty = (bal * _expo) / prices[llm_sym] if prices.get(llm_sym, 0) > 0 else 0.0
+                                max_qty = min(max_qty, max_notional / max(prices[llm_sym], 1e-9))
                                 qty = min(qty, max_qty)
                         if not rejected:
                             if _last_scenario is not None:
@@ -1817,7 +1845,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         take_pct = abs(best.target - best.entry) / best.entry * 100
                         qty, lev, why = balance_aware_size(
                             eq, portfolio.get('cash', eq), best.entry, stop_pct,
-                            best.symbol)
+                            best.symbol, conviction=best.conviction, p_win=best.p_win)
                         decision = {"action": side, "symbol": best.symbol,
                                     "quantity": qty,
                                     "stop_loss_pct": round(stop_pct, 2),
