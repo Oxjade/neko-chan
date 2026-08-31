@@ -1791,7 +1791,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 max_notional = min(bal * 0.45, bal * 0.95)
                                 max_qty = (bal * _expo) / prices[llm_sym] if prices.get(llm_sym, 0) > 0 else 0.0
                                 max_qty = min(max_qty, max_notional / max(prices[llm_sym], 1e-9))
-                                qty = min(qty, max_qty)
+                                # CONVICTION SIZE WINS: the sizing engine sets the
+                                # amount (scaled by conviction, 45% cap). The LLM's
+                                # freeform quantity is only an upper bound veto.
+                                qty = max_qty
                         if not rejected:
                             if _last_scenario is not None:
                                 stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
