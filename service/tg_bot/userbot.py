@@ -268,6 +268,8 @@ class UserBotController:
         self.gateway = gateway  # ExecGateway (on-chain execution) or None
         self._apps: dict[int, Application] = {}
         self._lock = threading.Lock()
+        import tg_config as _cfg
+        self._master_token = _cfg.MASTER_BOT_TOKEN or ""
 
     # ---------------- on-chain execution helpers ----------------
 
@@ -967,7 +969,7 @@ class UserBotController:
             ])
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
             # SECURITY: private key shown once; auto-delete the message in 5 min
-            _schedule_msg_delete(self.registry.bot_token(bot_id) or "", q.message.chat_id, q.message.message_id)
+            _schedule_msg_delete(self._master_token or "", q.message.chat_id, q.message.message_id)
 
         async def onboarding_key_saved(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1295,7 +1297,7 @@ class UserBotController:
                     if sent and sent.message_id:
                         threading.Thread(
                             target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
-                                self.registry.bot_token(bot_id) or "",
+                                self._master_token or "",
                                 q.message.chat_id, sent.message_id),
                             daemon=True).start()
                 except Exception:
@@ -1786,10 +1788,11 @@ class UserBotController:
         def _is_perp_tradeable(chain: str, asset: str) -> bool:
             """Check if an asset has a perp market on the venue for this chain.
             Only assets with an active perp market can be priced and traded."""
-            # Bluefin perp symbols on Sui (from live_agent.py BLUEFIN_MARKET_SYMBOLS)
+            # Live Bluefin perp markets on Sui (2026-08-31): SUI, BTC, DEEP,
+            # HYPE, GOLD, ETH, WAL, SOL. IKA/ARB/etc are chain tokens but have
+            # NO active perp market on Bluefin -> not tradeable.
             _perp_syms = {
-                "sui": {"BTC", "ETH", "SOL", "SUI", "ARB", "AVAX", "BNB", "DOGE",
-                        "LINK", "LTC", "OP", "MATIC", "SEI"},
+                "sui": {"SUI", "BTC", "ETH", "SOL", "DEEP", "HYPE", "GOLD", "WAL"},
                 "solana": {"BTC", "ETH", "SOL", "SUI", "DOGE"},
                 "hyperliquid": {"HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
                                 "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"},
@@ -1962,7 +1965,7 @@ class UserBotController:
                     if sent and getattr(sent, "message_id", None):
                         threading.Thread(
                             target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
-                                self.registry.bot_token(bot_id) or "",
+                                self._master_token or "",
                                 q.message.chat_id, sent.message_id),
                             daemon=True).start()
                     import os as _os
@@ -1994,7 +1997,7 @@ class UserBotController:
             ])
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
             # SECURITY: private key shown once; auto-delete the message in 5 min
-            _schedule_msg_delete(self.registry.bot_token(bot_id) or "",
+            _schedule_msg_delete(self._master_token or "",
                                  q.message.chat_id, q.message.message_id)
 
         async def gen_wallet_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2072,7 +2075,7 @@ class UserBotController:
             if sent and getattr(sent, "message_id", None):
                 threading.Thread(
                     target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
-                        self.registry.bot_token(bot_id) or "",
+                        self._master_token or "",
                         update.message.chat_id, sent.message_id),
                     daemon=True).start()
             return ConversationHandler.END
@@ -2161,7 +2164,7 @@ class UserBotController:
                 if sent and getattr(sent, "message_id", None):
                     threading.Thread(
                         target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
-                            self.registry.bot_token(bot_id) or "",
+                            self._master_token or "",
                             q.message.chat_id, sent.message_id),
                         daemon=True).start()
             except Exception:

@@ -59,10 +59,8 @@ API_STAGING_MARKET = "https://api.sui-staging.bluefin.io"
 # Bluefin Pro perp market symbols (v2.1).
 MARKET_SYMBOLS: dict[str, str] = {
     "BTC": "BTC-PERP", "ETH": "ETH-PERP", "SOL": "SOL-PERP",
-    "SUI": "SUI-PERP", "ARB": "ARB-PERP", "AVAX": "AVAX-PERP",
-    "BNB": "BNB-PERP", "DOGE": "DOGE-PERP", "LINK": "LINK-PERP",
-    "LTC": "LTC-PERP", "OP": "OP-PERP", "MATIC": "MATIC-PERP",
-    "SEI": "SEI-PERP",
+    "SUI": "SUI-PERP", "DEEP": "DEEP-PERP", "HYPE": "HYPE-PERP",
+    "GOLD": "GOLD-PERP", "WAL": "WAL-PERP",
 }
 
 # e9 scale: Bluefin v2.1 uses 10^9 for price/quantity/leverage.

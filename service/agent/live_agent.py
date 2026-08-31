@@ -179,9 +179,7 @@ BLUEFIN_PROD_API = "https://dapi.api.sui-prod.bluefin.io"
 BLUEFIN_STAGING_API = "https://stg-api.bluefin.io"
 BLUEFIN_MARKET_SYMBOLS = {
     "BTC": "BTC-PERP", "ETH": "ETH-PERP", "SOL": "SOL-PERP", "SUI": "SUI-PERP",
-    "ARB": "ARB-PERP", "AVAX": "AVAX-PERP", "BNB": "BNB-PERP", "DOGE": "DOGE-PERP",
-    "LINK": "LINK-PERP", "LTC": "LTC-PERP", "OP": "OP-PERP", "MATIC": "MATIC-PERP",
-    "SEI": "SEI-PERP",
+    "DEEP": "DEEP-PERP", "HYPE": "HYPE-PERP", "GOLD": "GOLD-PERP", "WAL": "WAL-PERP",
 }
 
 
