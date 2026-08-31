@@ -125,7 +125,8 @@ def start_bot_cleanup(registry: Registry, userbot: UserBotController,
                 return
             import requests as _r
             _r.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={"chat_id": bot["tg_id"], "text": message}, timeout=15)
+                    json={"chat_id": bot["tg_id"], "text": message,
+                          "parse_mode": "HTML"}, timeout=15)
         except Exception:
             pass
 

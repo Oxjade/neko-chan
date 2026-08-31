@@ -67,7 +67,7 @@ class Notifier:
     def _send(self, bot_token: str, chat_id: int, text: str,
               buttons: list[list[str]] | None = None) -> bool:
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text}
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
         markup = _normalize_buttons(buttons)
         if markup:
             payload["reply_markup"] = markup
