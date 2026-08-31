@@ -1222,6 +1222,19 @@ class UserBotController:
             open_pnl = sum(float(p.get("pnl") or p.get("unrealized_pnl") or 0) for p in positions)
             total_pnl = float(bal.get("realized_pnl", 0)) + open_pnl
 
+            # No active P&L: no open position and no realized profit -> show an
+            # honest empty state instead of generating a meaningless card.
+            if not positions and abs(total_pnl) < 0.005:
+                await q.message.edit_text(
+                    "📭 <b>No active P&L yet</b>\n\n"
+                    "No open positions and no realized profit so far.\n"
+                    "Once the agent opens a trade, your P&L card will appear here.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
+                          telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+
             # Build the card PNG; fall back to a text panel if the renderer fails.
             try:
                 from cards.generator import generate_pnl_card, random_avatar

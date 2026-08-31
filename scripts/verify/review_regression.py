@@ -74,5 +74,8 @@ check("R9 trailing_high persisted", "TRAILING_HIGH_PATH" in acode and "trailing_
 ucode = open(SRC).read()
 check("R10 private keys auto-delete", "_schedule_msg_delete" in ucode and ucode.count("_schedule_msg_delete(") >= 3, "private key messages not auto-deleted")
 
+# R11: P&L card shows empty state when no active position and no realized P&L
+check("R11 PnL empty-state guard", "No active P&L yet" in ucode and "not positions and abs(total_pnl) < 0.005" in ucode, "P&L card still generated with no active P&L")
+
 print(f"\n=== REVIEW REGRESSION: {PASS}/{PASS+FAIL} passed ===")
 print(f"REVIEW CERTAINTY: {round(PASS/max(PASS+FAIL,1)*100, 1)} %")
