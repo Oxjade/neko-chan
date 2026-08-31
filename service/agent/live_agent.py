@@ -88,7 +88,7 @@ SCENARIO_5M_HOURS = int(os.getenv("LIVE_AGENT_SCENARIO_5M_HOURS", "6"))
 # (P(win) * EV) clears this bar. Below it the move is noise - we hold cash
 # instead of posting a low-conviction decision. Only ONE best trade is ever
 # posted per cycle (across all watched tokens), picked from the floor-crossers.
-CONVICTION_FLOOR = float(os.getenv("LIVE_AGENT_CONVICTION_FLOOR", "0.015"))
+CONVICTION_FLOOR = float(os.getenv("LIVE_AGENT_CONVICTION_FLOOR", "0.0008"))
 # Peak-price tracker for trailing stops (persisted to disk so it survives
 # agent restarts — without this a restart resets the tracker and a winning
 # position that was up 20% loses its peak, potentially missing the trail exit).

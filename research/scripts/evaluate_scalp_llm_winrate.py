@@ -37,7 +37,7 @@ from quant_strategy import RSI_ENTRY_THRESHOLD, momentum_confirmed
 from live_agent import balance_aware_size, _provider_completion
 
 SYMBOLS = ["BTC", "ETH", "SOL", "SUI", "HYPE", "SEI", "NEAR", "ATOM"]
-CONVICTION_FLOOR = 0.015
+CONVICTION_FLOOR = 0.0008
 FEE_RT = 0.0009
 BARS_PER_YEAR_5M = 288 * 365
 LOOKBACK = 60
