@@ -242,8 +242,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 leverage = float(data.leverage)
             except Exception:
                 raise HTTPException(status_code=400, detail='Invalid leverage')
-            if not math.isfinite(leverage) or not (1 <= leverage <= 10):
-                raise HTTPException(status_code=400, detail='Leverage must be between 1 and 10')
+            if not math.isfinite(leverage) or not (1 <= leverage <= 100):
+                raise HTTPException(status_code=400, detail='Leverage must be between 1 and 100')
         if data.stop_loss_pct is not None or data.take_profit_pct is not None:
             if market == 'polymarket':
                 raise HTTPException(

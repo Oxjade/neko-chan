@@ -757,11 +757,36 @@ def daily_trade_count() -> int:
             if not line.startswith(today):
                 continue
             parts = line.split(",")
-            action = parts[2] if len(parts) > 2 else ""
-            fill_ok = parts[7] if len(parts) > 7 else ""
+            action = parts[3] if len(parts) > 3 else (parts[2] if len(parts) > 2 else "")
+            fill_ok = parts[8] if len(parts) > 8 else (parts[7] if len(parts) > 7 else "")
             if action in ("buy", "sell", "short", "cover") and fill_ok.strip() == "True":
                 count += 1
     return count
+
+
+def traded_symbols_today() -> set[str]:
+    """Symbols that already got a FILLED trade today (either direction).
+
+    One trade per token per day: after the bot opens AND fills a position on a
+    symbol, that symbol is off-limits until tomorrow - the agent moves on to
+    the next watched token instead of flipping direction on the same token.
+    """
+    traded: set[str] = set()
+    if not LOG_PATH.exists():
+        return traded
+    today = datetime.now(timezone.utc).date().isoformat()
+    with open(LOG_PATH, encoding="utf-8") as f:
+        next(f, None)  # header
+        for line in f:
+            if not line.startswith(today):
+                continue
+            parts = line.split(",")
+            symbol = (parts[1] if len(parts) > 1 else "").strip().upper()
+            action = parts[3] if len(parts) > 3 else (parts[2] if len(parts) > 2 else "")
+            fill_ok = parts[8] if len(parts) > 8 else (parts[7] if len(parts) > 7 else "")
+            if symbol and action in ("buy", "sell", "short", "cover") and fill_ok.strip() == "True":
+                traded.add(symbol)
+    return traded
 
 
 def equity(portfolio: dict, prices: dict) -> float:
@@ -1583,6 +1608,17 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 print(f"[quant] holding on {len(skipped)} open position(s) "
                                       f"({', '.join(skipped)}) - not re-analyzing until they resolve "
                                       f"(override: watch <ASSET>)")
+                        # ONE TRADE PER TOKEN PER DAY: drop symbols already
+                        # filled today so the agent moves on to the next watched
+                        # token instead of flipping direction on the same one.
+                        _traded_today = traded_symbols_today()
+                        if _traded_today:
+                            _skipped_today = sorted(s for s in _traded_today
+                                                    if any(s == sc.symbol for sc in matrix))
+                            matrix = [s for s in matrix if s.symbol not in _traded_today]
+                            if _skipped_today:
+                                print(f"[quant] already traded today: {', '.join(_skipped_today)} "
+                                      f"- moving to next token")
                     # top candidates the LLM will choose among (ranked by conviction).
                     # Watched assets (user said "watch <ASSET>") are prioritized so
                     # the agent focuses reasoning + trades on them first.
@@ -1909,6 +1945,14 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"; row["error"] = "non-positive quantity"
         elif used >= MAX_DAILY_TRADES:
             row["action"] = "hold"; row["error"] = "daily trade limit reached"
+        elif action in ("buy", "short") and symbol in traded_symbols_today():
+            # ONE TRADE PER TOKEN PER DAY: if the bot already opened + filled a
+            # position on this symbol today (long OR short), it does NOT flip
+            # direction on the same token - it moves on to the next watched
+            # token instead.
+            row["action"] = "hold"
+            row["error"] = (f"already traded {symbol} today - one trade per "
+                            f"token per day, moving to the next")
         elif action in ("buy", "short") and qty * prices.get(symbol, 1e9) > eq * MAX_POSITION_PCT / 100:
             row["action"] = "hold"; row["error"] = "position size cap exceeded"
         elif action in ("buy", "short") and stop_pct == 0 and FORCE_STOP_PCT > 0:
