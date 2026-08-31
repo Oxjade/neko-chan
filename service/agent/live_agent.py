@@ -815,6 +815,7 @@ def _get_exec_gateway():
             is_testnet = _network != "mainnet"
             for _chain_var in ("HL", "SOL", "SUI"):
                 os.environ[f"EXEC_{_chain_var}_TESTNET"] = "1" if is_testnet else "0"
+            os.environ["EXEC_SUI_NETWORK"] = _network
             from gateway import ExecGateway
             gw = ExecGateway.build()
             if gw.ready:

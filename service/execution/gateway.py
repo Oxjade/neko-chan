@@ -103,6 +103,7 @@ def _load_execution_cfg() -> dict:
         "key_enc": vault.encrypt(_enc_key),
         "rpc_url": _env("EXEC_SUI_RPC_URL", ""),
         "testnet": _testnet,
+        "network": _env("EXEC_SUI_NETWORK", "testnet" if _testnet else "mainnet").strip().lower(),
         **extra,
     }
     return cfg

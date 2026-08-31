@@ -40,5 +40,6 @@ def build_adapters(ledger, vault, cfg: dict) -> dict:
         adapters["sui"] = SUIAdapter(ledger, key_hex,
                                      rpc_url=c.get("rpc_url", ""),
                                      testnet=testnet,
+                                     network=c.get("network", ""),
                                      bluefin=bluefin)
     return adapters
