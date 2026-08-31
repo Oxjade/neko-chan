@@ -89,6 +89,12 @@ SCENARIO_5M_HOURS = int(os.getenv("LIVE_AGENT_SCENARIO_5M_HOURS", "6"))
 # instead of posting a low-conviction decision. Only ONE best trade is ever
 # posted per cycle (across all watched tokens), picked from the floor-crossers.
 CONVICTION_FLOOR = float(os.getenv("LIVE_AGENT_CONVICTION_FLOOR", "0.0008"))
+# LIMIT-ENTRY OFFSET (basis points): entry is placed this far inside the
+# current market so the fill happens immediately even if price moved since the
+# LLM built the scenario, and the resting portion gets maker pricing. Top-of-
+# book spread on liquid perps is ~0.5-2 bps; 2 bps is a safe immediate-fill
+# offset that still avoids most of the taker spread cost (web research).
+ENTRY_OFFSET_BPS = float(os.getenv("LIVE_AGENT_ENTRY_OFFSET_BPS", "2"))
 # Peak-price tracker for trailing stops (persisted to disk so it survives
 # agent restarts — without this a restart resets the tracker and a winning
 # position that was up 20% loses its peak, potentially missing the trail exit).
@@ -947,16 +953,31 @@ def get_real_portfolio(gw, bot_id: int) -> dict:
 def route_real_order(gw, bot_id: int, symbol: str, market: str, action: str,
                      qty: float, stop_pct: float, take_pct: float,
                      ref_price: float, leverage: float) -> dict:
-    """Route one agent decision through the execution gateway (real venue)."""
+    """Route one agent decision through the execution gateway (real venue).
+
+    ENTRY IS A LIMIT ORDER at a small offset inside the current market so the
+    fill happens immediately (and gets maker priority + maker fee when it
+    rests). Research: limit entries avoid the bid-ask spread cost entirely and
+    often qualify for reduced maker fees (professional traders default to
+    limits on entries). The offset is ~ENTRY_OFFSET_BPS below/above the
+    reference price - small enough to fill instantly, but it no longer depends
+    on the exact price the LLM saw (BTC may have moved since the scenario).
+    """
     resolved = _resolve_real_venue(symbol, market, gw)
     if not resolved:
         return {"ok": False, "error": f"no real venue for {symbol} [{market}]"}
     chain, venue = resolved
     side = "buy" if action in ("buy", "cover") else "sell"
     lev = clamp_leverage(symbol, market, leverage)
+    # LIMIT ENTRY OFFSET (math-backed): top-of-book spread on liquid perps is
+    # ~0.5-2 bps; placing the entry ~2 bps inside the market fills immediately
+    # while earning maker pricing on the portion that rests.
+    _entry_off = ENTRY_OFFSET_BPS / 10000.0
     intent_kw = dict(
         chain=chain, venue=venue, symbol=symbol, side=side, qty=qty,
-        order_type="market",
+        order_type="limit",
+        limit_price=round(ref_price * (1 - _entry_off) if side == "buy"
+                          else ref_price * (1 + _entry_off), 6),
         # closes (sell/cover) are always 1x with no stop/target re-armed
         leverage=lev if action in ("buy", "short") else 1.0,
         idempotency_key=(

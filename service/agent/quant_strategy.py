@@ -372,13 +372,17 @@ HORIZONS = {
 TREND_EMA_FAST = 12
 TREND_EMA_SLOW = 26
 TREND_HORIZON_PARAMS = {
-    # Take-profit targets are set as ABSOLUTE % so intraday/swing/auto
-    # actually chase 25-30%+ per trade (the operator's requirement), not the
-    # old 1-16% sigma-derived targets. The stop is derived from the target
-    # and the horizon's per-bar sigma, keeping R >= min_r.
-    "intraday": {"target_pct": 25.0, "stop_sigma": 2.0, "min_r": 1.8},
-    "swing":    {"target_pct": 30.0, "stop_sigma": 2.5, "min_r": 2.0},
+    # Take-profit targets AIM for 100% per trade (operator requirement: "aim
+    # for 100%"). A 25% partial-profit point banks half the position early
+    # (PARTIAL_PROFIT_PCT), the rest runs toward the 100% target. The stop is
+    # derived from the target and the horizon's per-bar sigma, keeping R sane.
+    "intraday": {"target_pct": 100.0, "stop_sigma": 2.0, "min_r": 1.8},
+    "swing":    {"target_pct": 100.0, "stop_sigma": 2.5, "min_r": 2.0},
 }
+
+# Bank HALF the position at this % profit, let the rest run to the 100% aim
+# (proven scale-out technique: lock profit early, keep upside).
+PARTIAL_PROFIT_PCT = 25.0
 
 
 def _ema(closes: list[float], period: int) -> float:
@@ -733,14 +737,13 @@ def trail_check(positions: list[dict], prices: dict) -> list[QuantDecision]:
 
 def partial_profit_check(positions: list[dict], prices: dict,
                          target_pct: float | None = None) -> list[QuantDecision]:
-    """Proven retail technique: sell HALF at the target, move stop to breakeven,
-    let the rest run (scale out). This banks profit early while keeping upside.
+    """Proven retail technique: sell HALF at the partial-profit bank point,
+    move stop to breakeven, let the rest run to the full target (scale out).
 
-    When a position reaches its take-profit, instead of closing the whole thing
-    we sell half and keep the remainder with a breakeven stop. The platform
-    supports partial quantity sells, so this returns a 'sell' for half the qty.
-
-    Returns SELL decisions with qty = half the position when target is reached.
+    Bank point = the position's take_profit OR PARTIAL_PROFIT_PCT (25%) of the
+    entry, whichever comes first - so half the position locks a guaranteed 25%
+    while the remainder rides toward the 100% aim. Returns SELL decisions with
+    qty = half the position when the bank point is reached.
     """
     partial = []
     for p in positions:
@@ -755,13 +758,17 @@ def partial_profit_check(positions: list[dict], prices: dict,
             continue
         if target <= 0:
             continue
-        # reached target? sell half
-        if (qty > 0 and cur >= target) or (qty < 0 and cur <= target):
+        # BANK POINT: 25% of entry (guaranteed partial) OR the full target.
+        bank_long = entry * (1 + PARTIAL_PROFIT_PCT / 100.0)
+        bank_short = entry * (1 - PARTIAL_PROFIT_PCT / 100.0)
+        bank_target = max(target, bank_long) if qty > 0 else min(target, bank_short)
+        # reached bank point? sell half
+        if (qty > 0 and cur >= bank_target) or (qty < 0 and cur <= bank_target):
             half = abs(qty) / 2.0
             partial.append(QuantDecision(
                 "sell" if qty > 0 else "cover", symbol, half, 0.0, 0.0,
-                f"scale out: half at target ${target:.2f}, banked {half:.4f}u, "
-                f"rest trails to breakeven"))
+                f"scale out: half at {PARTIAL_PROFIT_PCT:.0f}% bank ${bank_target:,.2f}, "
+                f"banked {half:.4f}u, rest trails to target ${target:,.2f}"))
     return partial
 
 
