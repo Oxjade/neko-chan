@@ -46,15 +46,18 @@ from order_model import OrderIntent
 log = logging.getLogger("execution")
 
 # Bluefin env (Sui). Current API (v2.1, from the official SDK config):
-#   auth  = auth.api.sui-prod.bluefin.io
-#   trade = trade.api.sui-prod.bluefin.io
-#   market = api.sui-prod.bluefin.io
+#   mainnet: api.sui-prod.bluefin.io
+#   testnet (staging): api.sui-staging.bluefin.io
+#   devnet: api.sui-dev.bluefin.io
 API_TRADE = "https://trade.api.sui-prod.bluefin.io"
 API_AUTH = "https://auth.api.sui-prod.bluefin.io"
 API_MARKET = "https://api.sui-prod.bluefin.io"
 API_STAGING_TRADE = "https://trade.api.sui-staging.bluefin.io"
 API_STAGING_AUTH = "https://auth.api.sui-staging.bluefin.io"
 API_STAGING_MARKET = "https://api.sui-staging.bluefin.io"
+API_DEVNET_TRADE = "https://trade.api.sui-dev.bluefin.io"
+API_DEVNET_AUTH = "https://auth.api.sui-dev.bluefin.io"
+API_DEVNET_MARKET = "https://api.sui-dev.bluefin.io"
 
 # Bluefin Pro perp market symbols (v2.1).
 MARKET_SYMBOLS: dict[str, str] = {
@@ -141,18 +144,27 @@ class BluefinAdapter:
     """Thin failure-tolerant Bluefin Pro (v2.1) REST client with local signing."""
 
     def __init__(self, ledger: ExecLedger, seed32: bytes, pubkey32: bytes, address: str,
-                 testnet: bool = True, api_base: str | None = None):
+                 testnet: bool = True, api_base: str | None = None,
+                 network: str = ""):
         self.ledger = ledger
         self.seed = seed32
         self.pubkey = pubkey32
         self.address = address if address.startswith("0x") else f"0x{address}"
-        self.trade_api = (api_base or (API_STAGING_TRADE if testnet else API_TRADE)).rstrip("/")
-        self.auth_api = (API_STAGING_AUTH if testnet else API_AUTH).rstrip("/")
-        self.market_api = (API_STAGING_MARKET if testnet else API_MARKET).rstrip("/")
+        self.network = (network or ("testnet" if testnet else "mainnet")).strip().lower()
+        # API selection matches the official SDK's environment config
+        # (mainnet=prod, testnet=staging, devnet=sui-dev).
+        _hosts = {
+            "mainnet": (API_TRADE, API_AUTH, API_MARKET),
+            "testnet": (API_STAGING_TRADE, API_STAGING_AUTH, API_STAGING_MARKET),
+            "devnet": (API_DEVNET_TRADE, API_DEVNET_AUTH, API_DEVNET_MARKET),
+        }.get(self.network, (API_STAGING_TRADE, API_STAGING_AUTH, API_STAGING_MARKET))
+        self.trade_api = (api_base or _hosts[0]).rstrip("/")
+        self.auth_api = _hosts[1].rstrip("/")
+        self.market_api = _hosts[2].rstrip("/")
         self._token: str | None = None
         self._token_at = 0.0
         self._ids_id: str | None = None
-        log.info("[bluefin] adapter ready env=%s addr=%s", "staging" if testnet else "prod", self.address)
+        log.info("[bluefin] adapter ready env=%s addr=%s", self.network, self.address)
 
     # ---------------------------------------------------------------- helpers
 
@@ -359,7 +371,7 @@ class BluefinAdapter:
 
 
 def build_bluefin(ledger: ExecLedger, keypair_hex: str, testnet: bool = True,
-                  api_base: str | None = None) -> BluefinAdapter:
+                  api_base: str | None = None, network: str = "") -> BluefinAdapter:
     """Factory: derive adapter from a Sui seed (raw hex or bech32 keystring)."""
     if keypair_hex.startswith("suiprivkey"):
         from pysui.sui.sui_crypto import SuiKeyPair
@@ -375,4 +387,5 @@ def build_bluefin(ledger: ExecLedger, keypair_hex: str, testnet: bool = True,
         from sui_adapter import _ed25519_pubkey
         pub = _ed25519_pubkey(seed)
         addr = "0x" + hashlib.blake2b(b"\x00" + pub, digest_size=32).hexdigest()
-    return BluefinAdapter(ledger, seed, pub, addr, testnet=testnet, api_base=api_base)
+    return BluefinAdapter(ledger, seed, pub, addr, testnet=testnet,
+                          api_base=api_base, network=network)
