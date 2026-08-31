@@ -130,7 +130,7 @@ def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
         f"{status} · {_chain_label(chain)}\n\n"
         f"<b>💰 BALANCE</b>\n"
         f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
-        f"{f'  native {native:,.4f}' if native else ''}\n"
+        f"{f'  SUI <code>{native:,.4f}</code>' if native else ''}\n"
         f"{f'  realized {_money(realized)}' if realized else ''}\n\n"
         f"{('<b>🔗 ADDRESS</b>\n  <code>' + _esc(addr) + '</code>') if addr else ''}\n"
         f"<b>📡 POSITIONS ({len(positions)})</b>\n" + "\n".join(pos_lines) + "\n"
