@@ -42,28 +42,45 @@ from order_model import OrderIntent
 
 log = logging.getLogger("execution")
 
-# Aftermath API base (mainnet production).
-API_BASE = "https://aftermath.finance/api"
+# Aftermath API bases by network.
+#   mainnet (production): https://aftermath.finance
+#   testnet:              https://testnet.aftermath.finance
+#   devnet:               NOT AVAILABLE (Aftermath runs mainnet + testnet only)
+API_MAINNET = "https://aftermath.finance/api"
+API_TESTNET = "https://testnet.aftermath.finance/api"
 
 # Default USDC coin type on Sui mainnet.
-USDC_COIN_TYPE = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+USDC_MAINNET_COIN_TYPE = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+# Default USDC coin type on Sui testnet (well-known testnet deployment).
+USDC_TESTNET_COIN_TYPE = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
 
 # RPC timeout for API calls.
 RPC_TIMEOUT = 20
 
 # Aftermath perp market symbols (base -> symbol mapping, populated from /api/ccxt/markets).
-# Static fallback used when the API is unreachable.
+# Static fallback used when the API is unreachable. MAINNET list (verified from
+# /api/perpetuals/all-markets, 2026-09-01): BTC/ETH/SOL/XAUT 20x, all others 5-10x.
 MARKET_SYMBOLS: dict[str, str] = {
     "BTC": "BTC/USD:USDC", "ETH": "ETH/USD:USDC", "SOL": "SOL/USD:USDC",
     "SUI": "SUI/USD:USDC", "HYPE": "HYPE/USD:USDC", "XRP": "XRP/USD:USDC",
     "UNI": "UNI/USD:USDC", "XMR": "XMR/USD:USDC", "ZEC": "ZEC/USD:USDC",
-    "MON": "MON/USD:USDC", "DEEP": "DEEP/USD:USDC",
+    "MON": "MON/USD:USDC", "XAUT": "XAUT/USD:USDC", "XAG": "XAG/USD:USDC",
+    "WTI": "WTI/USD:USDC", "US500": "US500/USD:USDC", "GOOGL": "GOOGL/USD:USDC",
+    "NVDA": "NVDA/USD:USDC", "TSLA": "TSLA/USD:USDC", "INTC": "INTC/USD:USDC",
+    "MU": "MU/USD:USDC", "MRVL": "MRVL/USD:USDC", "SNDK": "SNDK/USD:USDC",
+    "AMC": "AMC/USD:USDC", "DRAM": "DRAM/USD:USDC", "LLY": "LLY/USD:USDC",
+    "IOVA": "IOVA/USD:USDC", "SPCX": "SPCX/USD:USDC", "PUMP": "PUMP/USD:USDC",
+    "CHIP": "CHIP/USD:USDC", "LIT": "LIT/USD:USDC",
 }
 
-# Aftermath max leverage per market (from market-specifications.md).
+# Aftermath max leverage per market, VERIFIED from /api/perpetuals/all-markets
+# marginRatioInitial (maxLev = 1/IMR), 2026-09-01.
 MARKET_MAX_LEVERAGE: dict[str, int] = {
-    "BTC": 20, "ETH": 20, "SOL": 20, "SUI": 10, "HYPE": 10, "XRP": 10,
-    "UNI": 10, "XMR": 10, "ZEC": 10, "MON": 10, "DEEP": 10,
+    "BTC": 20, "ETH": 20, "SOL": 20, "XAUT": 20,
+    "SUI": 10, "HYPE": 10, "XRP": 10, "UNI": 10, "XMR": 10, "ZEC": 10,
+    "MON": 10, "XAG": 10, "US500": 10, "GOOGL": 10, "NVDA": 10, "TSLA": 10,
+    "INTC": 10, "MU": 10, "MRVL": 10, "PUMP": 10, "SPCX": 10, "LIT": 10,
+    "WTI": 5, "AMC": 5, "DRAM": 5, "LLY": 5, "IOVA": 5, "SNDK": 5, "CHIP": 5,
 }
 
 
@@ -121,18 +138,28 @@ class AftermathAdapter:
     """Aftermath Perps (Sui) adapter using CCXT build/sign/submit + native reads."""
 
     def __init__(self, ledger: ExecLedger, seed32: bytes, pubkey32: bytes, address: str,
-                 api_base: str = API_BASE):
+                 api_base: str | None = None, testnet: bool = False,
+                 network: str = ""):
         self.ledger = ledger
         self.seed = seed32
         self.pubkey = pubkey32
         self.address = address if address.startswith("0x") else f"0x{address}"
-        self.api_base = api_base.rstrip("/")
+        # Explicit network name wins (mainnet|testnet); legacy bool kept for
+        # callers that only know testnet vs not. Aftermath has NO devnet.
+        self.network = (network or ("testnet" if testnet else "mainnet")).strip().lower()
+        if self.network not in ("mainnet", "testnet"):
+            log.warning("[aftermath] unknown network %r, defaulting to mainnet", self.network)
+            self.network = "mainnet"
+        default_base = API_TESTNET if self.network == "testnet" else API_MAINNET
+        self.api_base = (api_base or default_base).rstrip("/")
+        self.usdc_coin_type = (USDC_TESTNET_COIN_TYPE if self.network == "testnet"
+                               else USDC_MAINNET_COIN_TYPE)
         self._markets_cache: dict[str, dict] = {}
         self._account_cap: dict | None = None
         self._account_number: int | None = None
         self._terms_auth: tuple[str, str] | None = None
         self._last_account_check = 0.0
-        log.info("[aftermath] adapter ready addr=%s", self.address)
+        log.info("[aftermath] adapter ready net=%s addr=%s", self.network, self.address)
 
     # ---------------------------------------------------------------- helpers
 
@@ -193,7 +220,7 @@ class AftermathAdapter:
         log.info("[aftermath] no account found — creating one for %s", self.address[:12])
         create_body = {
             "walletAddress": self.address,
-            "collateralCoinType": USDC_COIN_TYPE,
+            "collateralCoinType": self.usdc_coin_type,
         }
         resp = self._req_post("/ccxt/build/createAccount", create_body)
         if not resp.get("ok"):
@@ -492,8 +519,12 @@ class AftermathAdapter:
 
 
 def build_aftermath(ledger: ExecLedger, keypair_hex: str,
-                    api_base: str | None = None) -> AftermathAdapter:
-    """Factory: derive adapter from a Sui seed (raw hex or bech32 keystring)."""
+                    api_base: str | None = None, testnet: bool = False,
+                    network: str = "") -> AftermathAdapter:
+    """Factory: derive adapter from a Sui seed (raw hex or bech32 keystring).
+
+    testnet/network select the Aftermath API base (mainnet vs testnet) and the
+    matching USDC coin type. Aftermath has no devnet."""
     if keypair_hex.startswith("suiprivkey"):
         from pysui.sui.sui_crypto import SuiKeyPair
         kp = SuiKeyPair.from_bech32(keypair_hex)
@@ -509,4 +540,4 @@ def build_aftermath(ledger: ExecLedger, keypair_hex: str,
         pub = _ed25519_pubkey(seed)
         addr = "0x" + hashlib.blake2b(b"\x00" + pub, digest_size=32).hexdigest()
     return AftermathAdapter(ledger, seed, pub, addr,
-                            api_base=api_base or API_BASE)
+                            api_base=api_base, testnet=testnet, network=network)

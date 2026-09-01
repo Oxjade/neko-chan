@@ -36,7 +36,9 @@ def build_adapters(ledger, vault, cfg: dict) -> dict:
         testnet = bool(c.get("testnet"))
         aftermath_api = c.get("aftermath_api_base", "")
         aftermath = build_aftermath(ledger, key_hex,
-                                    api_base=aftermath_api or None)
+                                    api_base=aftermath_api or None,
+                                    testnet=testnet,
+                                    network=c.get("network", ""))
         adapters["sui"] = SUIAdapter(ledger, key_hex,
                                      rpc_url=c.get("rpc_url", ""),
                                      testnet=testnet,

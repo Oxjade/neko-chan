@@ -112,13 +112,17 @@ LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
 LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "20"))
-# Max leverage is PER ASSET, per venue. Verified from Aftermath's
-# market-specifications (2026): BTC/ETH/SOL max 20x, SUI/HYPE/XRP max 10x. The
-# bot clamps any user-selected leverage (5x-100x range) to the venue/asset max
-# so it never submits a leverage the venue rejects.
+# Max leverage is PER ASSET, per venue. VERIFIED from Aftermath
+# /api/perpetuals/all-markets marginRatioInitial (maxLev = 1/IMR), 2026-09-01:
+# BTC/ETH/SOL/XAUT 20x, most crypto+equity 10x, commodities/small 5x. The bot
+# clamps any user-selected leverage to the venue/asset max so it never submits
+# a leverage the venue rejects.
 AFTERMATH_MAX_LEVERAGE = {
-    "BTC": 20, "ETH": 20, "SOL": 20, "SUI": 10, "HYPE": 10, "XRP": 10,
-    "UNI": 10, "XMR": 10, "ZEC": 10, "MON": 10, "DEEP": 10,
+    "BTC": 20, "ETH": 20, "SOL": 20, "XAUT": 20,
+    "SUI": 10, "HYPE": 10, "XRP": 10, "UNI": 10, "XMR": 10, "ZEC": 10,
+    "MON": 10, "XAG": 10, "US500": 10, "GOOGL": 10, "NVDA": 10, "TSLA": 10,
+    "INTC": 10, "MU": 10, "MRVL": 10, "PUMP": 10, "SPCX": 10, "LIT": 10,
+    "WTI": 5, "AMC": 5, "DRAM": 5, "LLY": 5, "IOVA": 5, "SNDK": 5, "CHIP": 5,
 }
 
 
@@ -185,10 +189,18 @@ def get_price(token: str, symbol: str, market: str) -> float:
 # price Sui-based perp analysis/trades directly from the venue's own book
 # instead of routing through Hyperliquid.
 AFTERMATH_API = "https://aftermath.finance/api"
+AFTERMATH_TESTNET_API = "https://testnet.aftermath.finance/api"
 AFTERMATH_MARKET_SYMBOLS = {
     "BTC": "BTC/USD:USDC", "ETH": "ETH/USD:USDC", "SOL": "SOL/USD:USDC",
-    "SUI": "SUI/USD:USDC", "DEEP": "DEEP/USD:USDC", "HYPE": "HYPE/USD:USDC",
-    "XRP": "XRP/USD:USDC", "UNI": "UNI/USD:USDC",
+    "SUI": "SUI/USD:USDC", "HYPE": "HYPE/USD:USDC", "XRP": "XRP/USD:USDC",
+    "UNI": "UNI/USD:USDC", "XMR": "XMR/USD:USDC", "ZEC": "ZEC/USD:USDC",
+    "MON": "MON/USD:USDC", "XAUT": "XAUT/USD:USDC", "XAG": "XAG/USD:USDC",
+    "WTI": "WTI/USD:USDC", "US500": "US500/USD:USDC", "GOOGL": "GOOGL/USD:USDC",
+    "NVDA": "NVDA/USD:USDC", "TSLA": "TSLA/USD:USDC", "INTC": "INTC/USD:USDC",
+    "MU": "MU/USD:USDC", "MRVL": "MRVL/USD:USDC", "SNDK": "SNDK/USD:USDC",
+    "AMC": "AMC/USD:USDC", "DRAM": "DRAM/USD:USDC", "LLY": "LLY/USD:USDC",
+    "IOVA": "IOVA/USD:USDC", "SPCX": "SPCX/USD:USDC", "PUMP": "PUMP/USD:USDC",
+    "CHIP": "CHIP/USD:USDC", "LIT": "LIT/USD:USDC",
 }
 
 
