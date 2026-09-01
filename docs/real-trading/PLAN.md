@@ -18,8 +18,8 @@ real-trading-execution (G1, G10)
 ├── leaf-3  solana adapter (Jupiter + xStocks)→ G6
 │   ├── sol_adapter.py     Jupiter Swap/LO/Perps, xStocks tokens
 │   └── scripts/sol_devnet_check.py
-├── leaf-4  sui adapter (DeepBook/Bluefin)    → G7
-│   ├── sui_adapter.py     DeepBook spot/margin, Bluefin perps
+├── leaf-4  sui adapter (DeepBook/Aftermath)    → G7
+│   ├── sui_adapter.py     DeepBook spot/margin, Aftermath perps
 │   └── scripts/sui_testnet_check.py
 └── leaf-5  user bot integration              → G11, G12
     ├── wallet screens (balance/positions/kill-switch per chain)

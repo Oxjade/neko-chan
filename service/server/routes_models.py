@@ -63,6 +63,7 @@ class RealtimeSignalRequest(BaseModel):
     stop_loss_pct: Optional[float] = None
     take_profit_pct: Optional[float] = None
     leverage: Optional[float] = None
+    limit_price: Optional[float] = None
 
 
 class StrategyRequest(BaseModel):

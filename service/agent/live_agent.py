@@ -112,27 +112,30 @@ LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
 LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "20"))
-# Max leverage is PER ASSET, per venue. Verified live from Bluefin Pro's
-# /exchange/info (2026-08-29): BTC-PERP max 40x, ETH/SOL/SUI 25x. The bot
-# clamps any user-selected leverage (5x-100x range) to the venue/asset max so
-# it never submits a leverage the venue rejects.
-BLUEFIN_MAX_LEVERAGE = {
-    "BTC": 40, "ETH": 25, "SOL": 25, "SUI": 25, "HYPE": 25, "DEEP": 25,
-    "WAL": 25, "GOLD": 25,
+# Max leverage is PER ASSET, per venue. Verified from Aftermath's
+# market-specifications (2026): BTC/ETH/SOL max 20x, SUI/HYPE/XRP max 10x. The
+# bot clamps any user-selected leverage (5x-100x range) to the venue/asset max
+# so it never submits a leverage the venue rejects.
+AFTERMATH_MAX_LEVERAGE = {
+    "BTC": 20, "ETH": 20, "SOL": 20, "SUI": 10, "HYPE": 10, "XRP": 10,
+    "UNI": 10, "XMR": 10, "ZEC": 10, "MON": 10, "DEEP": 10,
 }
 
 
 def clamp_leverage(symbol: str, market: str, lev: float) -> float:
     """Clamp requested leverage to the venue/asset max. 1x if market not a perp.
     Enforces a 20x FLOOR for crypto perps: the bot never trades below 20x
-    (Bluefin supports up to 40x/100x - our cap was the problem, not the venue)."""
+    (Aftermath supports up to 20x/10x - our cap was the problem, not the venue)."""
     if market != "crypto":
         return 1.0
     if lev <= 1:
         return lev
-    # Bluefin is the live Sui venue - use its real per-market max.
-    cap = BLUEFIN_MAX_LEVERAGE.get(symbol.upper(), 25)
-    return min(max(lev, 20.0), cap)
+    # Aftermath is the live Sui venue - use its real per-market max.
+    cap = AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)
+    # The floor must never exceed the venue/asset cap, otherwise every request
+    # for a capped asset would be forced to (and clamped to) the max.
+    floor = min(20.0, cap)
+    return min(max(lev, floor), cap)
 # Real execution through the chain adapters (execution gateway). Requires
 # REAL_TRADING_ENABLED=1 AND per-chain keys in the gateway env. Default off:
 # the agent stays paper-only on the platform. When on, orders route through
@@ -178,44 +181,46 @@ def get_price(token: str, symbol: str, market: str) -> float:
     return float(r.json()["price"])
 
 
-# Bluefin public perp CLOB orderbook (no API key required for reads). Used to
+# Aftermath public perp CLOB orderbook (no API key required for reads). Used to
 # price Sui-based perp analysis/trades directly from the venue's own book
 # instead of routing through Hyperliquid.
-BLUEFIN_PROD_API = "https://dapi.api.sui-prod.bluefin.io"
-BLUEFIN_STAGING_API = "https://stg-api.bluefin.io"
-BLUEFIN_MARKET_SYMBOLS = {
-    "BTC": "BTC-PERP", "ETH": "ETH-PERP", "SOL": "SOL-PERP", "SUI": "SUI-PERP",
-    "DEEP": "DEEP-PERP", "HYPE": "HYPE-PERP", "GOLD": "GOLD-PERP", "WAL": "WAL-PERP",
+AFTERMATH_API = "https://aftermath.finance/api"
+AFTERMATH_MARKET_SYMBOLS = {
+    "BTC": "BTC/USD:USDC", "ETH": "ETH/USD:USDC", "SOL": "SOL/USD:USDC",
+    "SUI": "SUI/USD:USDC", "DEEP": "DEEP/USD:USDC", "HYPE": "HYPE/USD:USDC",
+    "XRP": "XRP/USD:USDC", "UNI": "UNI/USD:USDC",
 }
 
 
-def fetch_bluefin_price(symbol: str) -> float | None:
-    """Mid price from Bluefin's public orderbook for a perp base symbol.
+def fetch_aftermath_price(symbol: str) -> float | None:
+    """Mid price from Aftermath's public orderbook for a perp base symbol.
 
     Returns None when the market is unknown or the venue is unreachable, so
     the caller can fall back to the platform/Hyperliquid price.
     """
-    market = BLUEFIN_MARKET_SYMBOLS.get((symbol or "").upper())
-    if not market:
-        return None
-    api = (BLUEFIN_STAGING_API
-           if os.getenv("EXEC_HL_TESTNET", "1") in {"1", "true", "yes", "on"}
-           else BLUEFIN_PROD_API)
+    base = (symbol or "").upper()
     try:
         import requests as _r
-        r = _r.get(f"{api}/order/book/{market}", timeout=10)
+        # Resolve the market id (chId) from the CCXT markets catalog.
+        r = _r.get(f"{AFTERMATH_API}/ccxt/markets", timeout=10)
+        if r.status_code != 200:
+            return None
+        markets = r.json()
+        ch_id = None
+        for m in markets if isinstance(markets, list) else []:
+            if str(m.get("base") or "").upper() == base and m.get("swap"):
+                ch_id = m.get("id")
+                break
+        if not ch_id:
+            return None
+        r = _r.post(f"{AFTERMATH_API}/ccxt/orderbook", json={"chId": ch_id}, timeout=10)
         if r.status_code != 200:
             return None
         data = r.json()
         bids = data.get("bids") or []
         asks = data.get("asks") or []
-        def _px(level) -> float | None:
-            try:
-                return float(level.get("price") or level.get("p") or 0) / 1e6
-            except Exception:
-                return None
-        best_bid = max((_px(x) for x in bids if _px(x) is not None), default=None)
-        best_ask = min((_px(x) for x in asks if _px(x) is not None), default=None)
+        best_bid = max((float(x[0]) for x in bids if x and len(x) > 1), default=None)
+        best_ask = min((float(x[0]) for x in asks if x and len(x) > 1), default=None)
         if best_bid is not None and best_ask is not None:
             return (best_bid + best_ask) / 2.0
         if best_bid is not None:
@@ -266,13 +271,23 @@ def get_history(symbol: str, market: str, days: int = 30) -> pd.DataFrame:
 
 
 def execute_trade(token: str, symbol: str, market: str, action: str, quantity: float,
-                  stop_loss_pct=None, take_profit_pct=None, leverage=None) -> dict:
+                  stop_loss_pct=None, take_profit_pct=None, leverage=None,
+                  ref_price: float = 0.0) -> dict:
     payload = {
         "market": market, "symbol": symbol, "action": action,
         "quantity": quantity, "price": 0, "executed_at": "now",
     }
     if leverage:
         payload["leverage"] = leverage
+    # PAPER LIMIT-FILL SIMULATION: opens (buy/short) carry the same 2bps
+    # inside-market limit price the real path uses (see ENTRY_OFFSET_BPS), so
+    # the paper engine fills at the better maker price instead of the spread.
+    # The limit is computed from the reference price the agent saw; the server
+    # clamps it against the live fetched price (never worse than market).
+    if action in ("buy", "short") and ref_price > 0:
+        payload["limit_price"] = round(
+            ref_price * (1 - ENTRY_OFFSET_BPS / 10000.0) if action == "buy"
+            else ref_price * (1 + ENTRY_OFFSET_BPS / 10000.0), 8)
     # stop/take are OPEN-side params only: the platform rejects them on closes
     # (routes_signals.py: "can only be set when opening (buy/short)"). Do not
     # forward them on sell/cover or the close is rejected and the position
@@ -389,7 +404,7 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
     # leverage: fit margin into the balance, floor 20x, clamp to venue/asset cap
     margin_use = max(0.05, min(0.5, 0.20))
     lev = notional / (balance * margin_use) if balance > 0 else LIVE_AGENT_LEVERAGE
-    lev = max(20.0, min(lev, 100.0))                # min 20x (Bluefin floor), max 100x
+    lev = max(20.0, min(lev, 100.0))                # min 20x (Aftermath floor), max 100x
     lev = clamp_leverage(symbol, market, lev)       # venue/asset cap
     # hard cap: margin must fit the balance at ANY leverage
     if lev > 1 and notional > balance * 0.95 * lev:
@@ -863,19 +878,20 @@ def _get_exec_gateway():
 
 
 def _expand_universe_from_gateway(gw) -> None:
-    """When the active perp venue is Sui/Bluefin, watch that chain's top 5
+    """When the active perp venue is Sui/Aftermath, watch that chain's top 5
     assets (long + short) so the agent analyzes tokens actually available on
     the user's chosen chain. Best-effort: any failure leaves the configured
     universe untouched."""
     try:
         chain = os.getenv("LIVE_AGENT_CHAIN", "sui").strip().lower()
         if "sui" not in gw.adapters and chain == "sui":
-            # gateway not ready; fall back to the default Bluefin top-5
+            # gateway not ready; fall back to the default Aftermath top-5
             return
-        bluefin = getattr(gw.adapters.get("sui"), "bluefin", None)
+        aftermath = getattr(gw.adapters.get("sui"), "aftermath", None)
         listed = []
-        if bluefin is not None:
-            listed = bluefin.markets() or []
+        if aftermath is not None:
+            listed = [m.get("base", "").upper() for m in aftermath.markets() if m.get("base")]
+            listed = [s for s in listed if s][:10]
         if not listed:
             # static fallback for the chain's known perp markets
             listed = {
@@ -911,8 +927,8 @@ def _resolve_real_venue(symbol: str, market: str, gw) -> tuple[str, str] | None:
             return "hyperliquid", "hl-perp"
         if "solana" in adapters:
             return "solana", "jup-perp"
-        if "sui" in adapters and getattr(adapters["sui"], "bluefin", None) is not None:
-            return "sui", "bluefin-perp"
+        if "sui" in adapters and getattr(adapters["sui"], "aftermath", None) is not None:
+            return "sui", "aftermath-perp"
         return None
     if market == "us-stock":
         if "solana" in adapters:
@@ -1367,14 +1383,14 @@ def run_cycle(token: str, dry: bool = False) -> None:
     for sym, market in UNIVERSE:
         try:
             px = get_price(token, sym, market)
-            # Override with Bluefin pricing when trading Sui perps: the
+            # Override with Aftermath pricing when trading Sui perps: the
             # platform's price_fetcher uses Hyperliquid for all crypto, but
-            # Sui trades should use Bluefin's own orderbook for accurate
+            # Sui trades should use Aftermath's own orderbook for accurate
             # entry/exit analysis on that venue.
             if _chain == "sui" and market == "crypto":
-                bf = fetch_bluefin_price(sym)
-                if bf is not None and bf > 0:
-                    px = bf
+                af = fetch_aftermath_price(sym)
+                if af is not None and af > 0:
+                    px = af
             prices[sym] = px
             hist = get_history(sym, market, 30)
             closes_by_symbol[sym] = [float(c) for c in hist["Close"].tolist()]
@@ -1572,11 +1588,24 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         # consider symbols whose RSI confirms direction. Longs
                         # need RSI > threshold, shorts need RSI < 100-threshold.
                         # RSI is read on the SAME 5m series the matrix was built on.
+                        # MOMENTUM CONFIRMATION IS A HARD ENTRY GATE (2026-09 win
+                        # -rate pass): the EMA8>EMA21 scalp momentum confirmation
+                        # converts the ~36% GBM coin-flip into the measured
+                        # 45%+ win rate (test_winrate.py). Only scalp scenarios
+                        # whose direction is already confirmed by 5m momentum pass;
+                        # trend scenarios (intraday/swing) keep their own
+                        # trend_confirmed gate below.
                         matrix = [
                             s for s in matrix
                             if not scenario_closes.get(s.symbol) or
                             (s.direction == "long" and _rsi_fn(scenario_closes[s.symbol]) >= RSI_ENTRY_THRESHOLD) or
                             (s.direction == "short" and _rsi_fn(scenario_closes[s.symbol]) <= 100 - RSI_ENTRY_THRESHOLD)
+                        ]
+                        matrix = [
+                            s for s in matrix
+                            if s.horizon != "scalp"
+                            or (scenario_closes.get(s.symbol)
+                                and momentum_confirmed(scenario_closes[s.symbol], s.direction))
                         ]
                         # ---- TREND-FOLLOWING MODEL (intraday / swing) ----
                         # Separate from the 5m scalp engine: built on each
@@ -2068,7 +2097,8 @@ def run_cycle(token: str, dry: bool = False) -> None:
                          stop_pct, take_pct, lev_choice,
                          reasoning=f"[LLM+quant] {reasoning}")
             fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
-                     leverage=lev_choice if action in ("buy", "short") else 1.0)
+                     leverage=lev_choice if action in ("buy", "short") else 1.0,
+                     ref_price=row["price"] or prices.get(symbol, 0) or 0)
             row["fill_ok"] = fill["ok"]
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])
@@ -2174,10 +2204,24 @@ def main():
                             qty = d.get("quantity", 0) or 0
                             if qty <= 0:
                                 qty = abs(next((p["quantity"] for p in positions if p["symbol"] == pick.symbol), 0))
-                            fill = execute_trade(token, pick.symbol,
-                                                 dict(UNIVERSE).get(pick.symbol, "crypto"),
-                                                 side, qty,
-                                                 leverage=clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE))
+                            # REAL MODE: route the exit through the execution
+                            # gateway (same path as entries) so the Aftermath
+                            # position is actually closed. The exit is a market
+                            # order (no 2bps maker offset - it must fill).
+                            if gw is not None:
+                                fill = route_real_order(
+                                    gw, EXEC_BOT_ID, pick.symbol,
+                                    dict(UNIVERSE).get(pick.symbol, "crypto"),
+                                    side, qty, None, None,
+                                    prices.get(pick.symbol) or 0,
+                                    clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE),
+                                )
+                            else:
+                                fill = execute_trade(token, pick.symbol,
+                                                     dict(UNIVERSE).get(pick.symbol, "crypto"),
+                                                     side, qty,
+                                                     leverage=clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE),
+                                                     ref_price=prices.get(pick.symbol) or 0)
                             if fill.get("ok"):
                                 print(f"[exit] {label}: {pick.symbol} - {pick.reasoning[:80]}")
                             else:

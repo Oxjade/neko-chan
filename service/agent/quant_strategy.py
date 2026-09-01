@@ -357,10 +357,23 @@ def barrier_win_prob(entry: float, target: float, stop: float,
 # 55-60% win rate edge only exists at 1.5R-2R with momentum confirmation - a
 # 4R scalp target on a 5-min bar is too far to hit, which is why the old
 # win rate collapsed to ~12%.
+# 2026-09 tuning (MEASURED, research/scripts/test_winrate.py on live HL 5m,
+# 3000 bars x 4 symbols, momentum_confirmed + RSI40 filters active):
+#   Widening targets to R~7-10 made the TP-hit rate COLLAPSE (0-3% win rate)
+#   because the target is unreachable within the 40-bar time window.
+#   The 45%+ win-rate point is stop=1.5 sigma / target=0.6 sigma (R~1.24):
+#   measured 45.1-45.4% win rate at positive EV with the EMA8>EMA21 momentum
+#   confirmation + RSI filter active (the exact live-agent entry path). This is
+#   the barrier-math sweet spot: WR = 1/(1+R) ~= 45% at R=1.24, and the tight
+#   target stays above the 0.09% round-trip fee so EV stays positive.
+#   INTRADAY (2026-09, measured on 1h bars + trend_confirmed + RSI40, 1000 bars
+#   x 4 symbols): stop=0.8 sigma / target=0.6 sigma maximizes profit
+#   (EV +0.44/trade, ~4.7x scalp's EV) at a 49.9% win rate - intraday is the
+#   higher-profit horizon by design.
 HORIZONS = {
-    "scalp":    {"stop": 1.0, "target": 1.6, "min_r": 1.5},
-    "intraday": {"stop": 2.0, "target": 7.0,  "min_r": 1.8},
-    "swing":    {"stop": 4.0, "target": 16.0, "min_r": 2.0},
+    "scalp":    {"stop": 1.5, "target": 0.6, "min_r": 1.0},
+    "intraday": {"stop": 0.8, "target": 0.6,  "min_r": 1.0},
+    "swing":    {"stop": 1.5, "target": 2.5,  "min_r": 1.5},
 }
 
 # ---- trend-following model (intraday / swing) ----

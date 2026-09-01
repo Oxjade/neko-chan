@@ -16,7 +16,7 @@ from exec_vault import ExecVault
 from order_model import OrderIntent
 
 # --- G16: OrderIntent validates for a real perp trade ---
-intent = OrderIntent(chain="sui", venue="bluefin-perp", symbol="BTC", side="buy", qty=0.001,
+intent = OrderIntent(chain="sui", venue="aftermath-perp", symbol="BTC", side="buy", qty=0.001,
                      order_type="market", stop_loss=70000.0, take_profit=90000.0,
                      leverage=20.0, idempotency_key="verify:btc:buy:1")
 errs = intent.validate(78000.0)
@@ -33,13 +33,13 @@ key = ExecVault().decrypt(w["key_enc"])
 assert key.startswith("suiprivkey1"), "invalid sui key"
 print("key: OK", key[:14] + "...")
 
-from bluefin_adapter import _sign_personal_message, build_bluefin
+from aftermath_adapter import _sign_terms_message, build_aftermath
 from ledger import ExecLedger
 
 ledger = ExecLedger(os.path.join(REPO, "exec_ledger.db"))
-adapter = build_bluefin(ledger, key, testnet=True)
+adapter = build_aftermath(ledger, key)
 print("adapter addr:", adapter.address[:16] + "...")
-sig = _sign_personal_message(adapter.seed, adapter.pubkey, b"verify")
+bytes_b64, sig = _sign_terms_message(adapter.seed, adapter.pubkey)
 assert len(sig) > 50, "signature too short"
 print("signature:", str(sig)[:24] + "...")
 print("SIGN ORDER: PASS")

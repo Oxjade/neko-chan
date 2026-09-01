@@ -10,7 +10,7 @@ Neko is a self-contained AI trading platform in three layers:
 
 1. **Paper-trading platform** — real market data (Hyperliquid, yfinance, Alpha Vantage, Polymarket) with simulated capital, fees, stops, leverage, funding, and honest statistics (F1, bootstrap CIs, walk-forward).
 2. **Telegram bot network** — users bring their own bot token (BotFather) and AI API key; the master bot onboards them in minutes and their bot becomes a live dashboard with push notifications.
-3. **Real-trading execution gateway** — the same AI decision engine routes orders to real venues: **Hyperliquid** (perps via non-custodial agent wallets), **Solana** (**Jupiter** swap/limit/perps + **xStocks** tokenized US stocks), and **Sui** (**DeepBook** spot/margin, **Bluefin** perps).
+3. **Real-trading execution gateway** — the same AI decision engine routes orders to real venues: **Hyperliquid** (perps via non-custodial agent wallets), **Solana** (**Jupiter** swap/limit/perps + **xStocks** tokenized US stocks), and **Sui** (**DeepBook** spot/margin, **Aftermath** perps).
 
 ---
 

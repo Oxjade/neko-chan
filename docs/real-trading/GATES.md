@@ -2,7 +2,7 @@
 
 OWNS: service/execution/**, tests/execution/**, docs/real-trading/**
 
-Scope: Real on-chain execution gateway behind the AI decision engine: Hyperliquid (API-wallet perps), Sui DeepBook/Bluefin, Solana Jupiter + xStocks. Non-custodial delegated keys, hard risk guards, phased testnet→mainnet rollout. Forex is COMING-SOON on all chains (no FX gate in v1).
+Scope: Real on-chain execution gateway behind the AI decision engine: Hyperliquid (API-wallet perps), Sui DeepBook/Aftermath, Solana Jupiter + xStocks. Non-custodial delegated keys, hard risk guards, phased testnet→mainnet rollout. Forex is COMING-SOON on all chains (no FX gate in v1).
 
 - [x] G1: design document covers all 3 chains, delegation model, order schema, risk guard, and phased rollout
   CHECK: python -c "import pathlib; t=pathlib.Path('docs/real-trading/system-design.md').read_text(); assert all(s in t for s in ('Hyperliquid','DeepBook','Jupiter','xStocks','risk_guard','API wallet','COMING-SOON','Phased')); print('real-trading design verification passed')"

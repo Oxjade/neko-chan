@@ -185,7 +185,7 @@ USERBOT = {
                            "when the operator activates on-chain execution."),
     "live_badge": "🔐 LIVE",
     "paper_badge": "🧪 SIM",
-    # Release status: Sui (Bluefin perps) is live; every other chain/instrument
+    # Release status: Sui (Aftermath perps) is live; every other chain/instrument
     # carries this until it is validated and released slowly.
     "release_live": "code is live neko-chan is working to make it better",
 }
@@ -231,9 +231,9 @@ ONBOARD = {
                     "volatility or drawdown rises."),
     "chain": ("⛓ <b>Which chain will you trade on?</b>\n\n"
               "This is where your orders execute."),
-    "chain_sui": ("⛓ <b>Sui</b> (Bluefin perps)\n\n"
-                  "Low fees, up to 25x leverage, 13+ perp markets "
-                  "(BTC, ETH, SOL, SUI, ARB, DOGE, LINK and more).\n"
+    "chain_sui": ("⛓ <b>Sui</b> (Aftermath perps)\n\n"
+                  "Fully on-chain, low fees, 20+ perp markets "
+                  "(BTC, ETH, SOL, SUI, XRP, HYPE and more).\n"
                   "Live now."),
     "chain_solana": ("⛓ <b>Solana</b> (Jupiter perps)\n\n"
                      "Up to 100x leverage, wide market selection.\n"

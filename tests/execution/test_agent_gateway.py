@@ -150,14 +150,16 @@ def test_gateway_none_when_execution_disabled():
 
 def test_clamp_leverage_asset_caps():
     from live_agent import clamp_leverage
-    # BTC caps at 40x on Bluefin
-    assert clamp_leverage("BTC", "crypto", 50) == 40
+    # BTC caps at 20x on Aftermath
+    assert clamp_leverage("BTC", "crypto", 50) == 20
     assert clamp_leverage("BTC", "crypto", 20) == 20
-    # SOL caps at 25x on Bluefin (research: Bluefin Pro SOL-PERP IMR=3.8% → 25x)
-    assert clamp_leverage("SOL", "crypto", 25) == 25
-    assert clamp_leverage("SOL", "crypto", 30) == 25
-    # Unknown symbol defaults to 25x; the 20x minimum floor raises sub-20x
-    assert clamp_leverage("ATOM", "crypto", 10) == 20
+    # SOL caps at 20x on Aftermath (market-specifications: SOL max 20x)
+    assert clamp_leverage("SOL", "crypto", 25) == 20
+    assert clamp_leverage("SOL", "crypto", 30) == 20
+    # Unknown symbol defaults to 10x cap; the floor is bounded by the cap so
+    # it never forces leverage above what the venue allows.
+    assert clamp_leverage("ATOM", "crypto", 10) == 10
+    assert clamp_leverage("ATOM", "crypto", 15) == 10
     # 1x stays 1x (safe default)
     assert clamp_leverage("BTC", "crypto", 1) == 1
     # non-crypto is always 1x

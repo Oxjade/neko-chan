@@ -33,7 +33,7 @@ S_ADDR, S_AMOUNT = range(2)
 
 
 def _chain_label(chain: str) -> str:
-    return {"sui": "Sui (Bluefin)", "solana": "Solana (Jupiter)", "hyperliquid": "Hyperliquid"}.get(
+    return {"sui": "Sui (Aftermath)", "solana": "Solana (Jupiter)", "hyperliquid": "Hyperliquid"}.get(
         chain, chain.title())
 
 
@@ -311,7 +311,7 @@ class UserBotController:
         return wallets, chain_state
 
     def _real_close_position(self, bot_id: int, chain: str, symbol: str) -> dict:
-        """Close a position on the real execution gateway (Bluefin), not paper.
+        """Close a position on the real execution gateway (Aftermath), not paper.
 
         Reads the live position, builds a market reduce-only OrderIntent for the
         opposite side, and routes it through the gateway (which enforces risk +
@@ -336,7 +336,7 @@ class UserBotController:
             # reduce-only market order on the opposite side
             from order_model import OrderIntent
             intent = OrderIntent(
-                chain=chain, venue="bluefin-perp", symbol=symbol,
+                chain=chain, venue="aftermath-perp", symbol=symbol,
                 side="sell" if side == "long" else "buy",
                 qty=qty, order_type="market", leverage=1.0,
                 idempotency_key=f"manual-close:{bot_id}:{symbol}:{int(time.time() * 1000)}",
@@ -439,10 +439,10 @@ class UserBotController:
             logging.getLogger("tg_bot").warning("wallet gen failed: %s", exc)
             return None
 
-    # Native Circle USDC on Sui mainnet (from Bluefin exchange info, 2026).
+    # Native Circle USDC on Sui mainnet (canonical coin type, 2026).
     # The old wUSDC (0x5d4b3025...::coin::COIN) is deprecated.
     SUI_USDC_MAINNET = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
-    # Testnet (Bluefin staging) USDC — from api.sui-staging.bluefin.io exchange info.
+    # Testnet USDC on Sui.
     SUI_USDC_TESTNET = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
 
     def _sui_transfer(self, bot_id: int, chain: str, dest: str, amount: float) -> dict:
@@ -1690,7 +1690,7 @@ class UserBotController:
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             # Check the asset is a known token on the chain (not just the venue's
-            # perp markets - e.g. IKA is a native Sui token even though Bluefin
+            # perp markets - e.g. IKA is a native Sui token even though Aftermath
             # doesn't list an IKA perp market).
             supported = _chain_supported_assets(chain)
             if supported is not None and asset not in supported:
@@ -1700,7 +1700,7 @@ class UserBotController:
                 return
             # Check the asset is available as a perp on the venue. Not all chain
             # tokens have a perp market - e.g. IKA is a native Sui token but
-            # Bluefin doesn't list IKA-PERP. If there's no perp market, the
+            # Aftermath doesn't list IKA-PERP. If there's no perp market, the
             # agent can't fetch a price or build scenarios, so reject early.
             if not _is_perp_tradeable(chain, asset):
                 await _respond(
@@ -1823,11 +1823,11 @@ class UserBotController:
         def _is_perp_tradeable(chain: str, asset: str) -> bool:
             """Check if an asset has a perp market on the venue for this chain.
             Only assets with an active perp market can be priced and traded."""
-            # Live Bluefin perp markets on Sui (2026-08-31): SUI, BTC, DEEP,
-            # HYPE, GOLD, ETH, WAL, SOL. IKA/ARB/etc are chain tokens but have
-            # NO active perp market on Bluefin -> not tradeable.
+            # Live Aftermath perp markets on Sui (2026): BTC, ETH, SOL, SUI,
+            # HYPE, XRP, UNI, XMR, ZEC, MON. IKA/ARB/etc are chain tokens but have
+            # NO active perp market on Aftermath -> not tradeable.
             _perp_syms = {
-                "sui": {"SUI", "BTC", "ETH", "SOL", "DEEP", "HYPE", "GOLD", "WAL"},
+                "sui": {"SUI", "BTC", "ETH", "SOL", "HYPE", "XRP", "UNI", "XMR", "ZEC", "MON", "DEEP"},
                 "solana": {"BTC", "ETH", "SOL", "SUI", "DOGE"},
                 "hyperliquid": {"HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
                                 "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"},
@@ -2144,7 +2144,7 @@ class UserBotController:
                 text = (
                     f"{_chain_label(target)}\n\n"
                     f"{USERBOT['release_live']}\n\n"
-                    f"Only Sui (Bluefin) is live right now. "
+                    f"Only Sui (Aftermath) is live right now. "
                     f"Switch back to Sui to trade."
                 )
                 await q.message.edit_text(text, parse_mode="HTML",
@@ -2397,7 +2397,7 @@ class UserBotController:
             if q.data == f"sb:close_yes:{symbol}":
                 chain = (self.registry.get_bot(bot_id) or {}).get("chain") or "sui"
                 if self._exec_ready():
-                    # Real execution: close on Bluefin via the gateway.
+                    # Real execution: close on Aftermath via the gateway.
                     res = self._real_close_position(bot_id, chain, symbol)
                     if res.get("ok"):
                         await q.message.edit_text(

@@ -1,4 +1,4 @@
-"""Gate G1+G2: build the execution gateway + Bluefin adapter from the encrypted ledger key."""
+"""Gate G1+G2: build the execution gateway + Aftermath adapter from the encrypted ledger key."""
 import os
 import sys
 
@@ -22,10 +22,10 @@ print("adapters:", list(gw.adapters.keys()))
 assert gw.ready, "gateway not ready"
 assert "sui" in gw.adapters, "sui adapter missing"
 
-# Verify the Bluefin adapter inside the SUIAdapter
+# Verify the Aftermath adapter inside the SUIAdapter
 sui_adapter = gw.adapters["sui"]
-bf = getattr(sui_adapter, "bluefin", None)
-assert bf is not None, "no Bluefin adapter wired"
-print("bluefin:", type(bf).__name__)
-print("address:", bf.address[:16] + "...")
+af = getattr(sui_adapter, "aftermath", None)
+assert af is not None, "no Aftermath adapter wired"
+print("aftermath:", type(af).__name__)
+print("address:", af.address[:16] + "...")
 print("GATEWAY+ADAPTER: PASS")

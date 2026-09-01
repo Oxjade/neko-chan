@@ -5,8 +5,8 @@ The router is the execution entry point that makes all chains consistent:
   1. Validate the intent (order_model.validate).
   2. Build WalletState from the ledger (balances, exposure, positions, today PnL).
   3. RiskGuard.check BEFORE any signing (hard caps, not model-overridable).
-  4. Resolve the adapter by venue (hl_adapter / sui_adapter / bluefin_adapter /
-     sol_adapter). A venue that is NOT configured (Bluefin prod API down,
+  4. Resolve the adapter by venue (hl_adapter / sui_adapter / sol_adapter).
+     A venue that is NOT configured (Aftermath API down,
      DeepBook without package addresses, no exec key) returns
      {"ok": False, "error": "... not configured"} — the router reports that as
      a rejected order, never a silent success.
@@ -103,8 +103,8 @@ class VenueRouter:
         # the order is placed) so it is never deducted from user profit after
         # the trade. Best-effort: if the sweep fails the order is still routed
         # (never blocks a trade), but the ledger fee is recorded at entry time.
-        # Venue fees (e.g. 2.5bps) are Bluefin's own and already paid at the
-        # venue - we do not charge those again.
+        # Venue fees (e.g. 4.5bps for Aftermath) are the venue's own and already
+        # paid at the venue - we do not charge those again.
         self._sweep_fee(bot_id, chain, ref_price, intent.qty, intent.symbol)
 
         # call the adapter
@@ -134,7 +134,7 @@ class VenueRouter:
             self.ledger.set_order_status(order_id, "submitted", venue_order_id=ven_id[:80] or None)
             fee_venue = float(result.get("fee") or 0.0)
             if fee_venue <= 0:
-                # Adapter did not report a venue fee (HL/Sui/Bluefin do not) -
+                # Adapter did not report a venue fee (HL/Sui/Aftermath do not) -
                 # fall back to the venue's taker basis so P&L is truthful.
                 fee_venue = round(intent.notional(ref_price) * VENUE_FEE_BPS.get(venue, 0.0) / 10000, 6)
             self.ledger.record_fill(order_id, price=fill_price, qty=fill_qty,
@@ -149,12 +149,12 @@ class VenueRouter:
                    fill_qty: float, symbol: str) -> None:
         """Transfer the 0.5% platform fee to the operator's fee wallet.
 
-        Reads BLUEFIN_FEE_ADDR (set in .env). Skips when unset. Builds a temp
+        Reads AFTERMATH_FEE_ADDR (set in .env). Skips when unset. Builds a temp
         SUIAdapter from the trader's wallet key and calls transfer_asset() with
         the exact fee. Best-effort - never blocks the trade."""
         if chain != "sui":
             return
-        fee_addr = os.environ.get("BLUEFIN_FEE_ADDR", "").strip()
+        fee_addr = os.environ.get("AFTERMATH_FEE_ADDR", "").strip()
         if not fee_addr:
             return
         from ledger import PLATFORM_FEE_BPS

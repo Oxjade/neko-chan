@@ -15,7 +15,7 @@ three chains:
 | Chain | Venue | Markets | Status |
 |---|---|---|---|
 | **Hyperliquid** | Hyperliquid perp DEX | crypto perps (BTC/ETH/SOL…, up to 50x), FX/indices perps | ✅ available |
-| **Sui** | DeepBookV3 (spot + margin ≤10x); Bluefin (true perps) | SUI/USDC spot, margin, crypto perps | ✅ available |
+| **Sui** | DeepBookV3 (spot + margin ≤10x); Aftermath (true perps) | SUI/USDC spot, margin, crypto perps | ✅ available |
 | **Solana** | Jupiter (Swap, Limit/DCA, Perps) + **xStocks** (AAPLx, NVDAx, TSLAx, SPYx…) | spot tokens, perps ≤100x, tokenized US stocks | ✅ available |
 | **Forex** | — | FX pairs on every chain | 🔜 **COMING-SOON** (per owner) |
 
@@ -68,13 +68,14 @@ three chains:
 - ⚠️ Geofenced for US/Ontario/sanctioned; MAS lists it unlicensed — surfaced in
   onboarding, user confirms jurisdiction eligibility.
 
-### 2.2 Sui — DeepBookV3 (+ Bluefin for true perps)
+### 2.2 Sui — DeepBookV3 (+ Aftermath for true perps)
 - **DeepBookV3**: on-chain CLOB for **spot** and **margin** (≤10x, isolated
   pools, real-time liquidation). Shared objects: Balance Manager, Pool
   Registry, per-pair pools. Settles <400ms. TS SDK (`@mysten/sui` +
   DeepBook client ext), Rust SDK also exists. $17B+ cumulative volume, audited.
-- **Bluefin** (Sui): the perp CLOB for Sui (orders off-chain, settlement
-  on-chain, ~510ms; v3 ~400ms). Use for true perps; DeepBook margin for
+- **Aftermath** (Sui): fully on-chain perp DEX (orders, cancellation, and
+  settlement all execute on-chain via Sui PTBs). Trades, liquidations, and
+  settlement are auditable on-chain. Use for true perps; DeepBook margin for
   leveraged spot.
 - Automation: dedicated Sui trading wallet (created by us, user funds it), or
   zkLogin later. Gas ~negligible.
@@ -103,7 +104,7 @@ three chains:
 ┌──────────────────────  EXECUTION GATEWAY (new)  ──────────────────────┐
 │  chain/                one adapter per venue, one order model          │
 │  ├─ hl_adapter.py      Hyperliquid REST+WS  (agent wallet)            │
-│  ├─ sui_adapter.py     DeepBook/Bluefin via Sui TS/RPC (trading wallet)│
+│  ├─ sui_adapter.py     DeepBook/Aftermath via Sui TS/RPC (trading wallet)│
 │  └─ sol_adapter.py     Jupiter API + xStocks (SOL trading wallet)     │
 │                                                                       │
 │  execution.py          intent → venue order: market/limit/stop/TP      │
@@ -146,7 +147,7 @@ three chains:
 ```json
 {
   "chain": "hyperliquid|sui|solana",
-  "venue": "hl-perp|deepbook-spot|deepbook-margin|bluefin-perp|jup-perp|xstocks",
+  "venue": "hl-perp|deepbook-spot|deepbook-margin|aftermath-perp|jup-perp|xstocks",
   "symbol": "BTC|SUI|AAPLx",
   "side": "buy|sell",
   "qty": 0.01,
@@ -175,7 +176,7 @@ three chains:
 | **P1** | Testnet orders (HL testnet, Sui testnet, Solana devnet) | 20 test orders settle |
 | **P2** | Mainnet SMALL: $50–$500 caps, 1 chain (Hyperliquid) | 50 trades, 0 risk-guard bypass |
 | **P3** | Mainnet: Solana (Jupiter + xStocks), Sui (DeepBook spot/margin) | 100 trades/chain |
-| **P4** | True perps everywhere (Bluefin, HL leveraged stocks/FX) | telemetry parity |
+| **P4** | True perps everywhere (Aftermath, HL leveraged stocks/FX) | telemetry parity |
 | **P5** | Forex across chains | 🔜 COMING-SOON (owner decision) |
 
 ---

@@ -55,7 +55,7 @@ def _env_float(key: str, default: float = 0.0) -> float:
 def _load_execution_cfg() -> dict:
     """Build cfg dict for build_adapters() from env vars + the execution ledger.
 
-    - Sui/Bluefin: the key is already encrypted in exec_ledger.db (stored by
+    - Sui/Aftermath: the key is already encrypted in exec_ledger.db (stored by
       onboarding) - read it from there, decrypt in-memory, re-encrypt for the
       adapter (never plaintext in .env). Env var EXEC_SUI_KEYPAIR_HEX remains
       as a backward-compatible fallback.
@@ -68,7 +68,7 @@ def _load_execution_cfg() -> dict:
     vault = ExecVault()
     cfg = {}
 
-    # ---- Sui (Bluefin perps) ----
+    # ---- Sui (Aftermath perps) ----
     _enc_key: str | None = None
     _testnet = _env("EXEC_SUI_TESTNET", "1") != "0"
     try:
@@ -91,11 +91,14 @@ def _load_execution_cfg() -> dict:
             ("EXEC_SUI_DEEPBOOK_PACKAGE", "deepbook_package"),
             ("EXEC_SUI_POOL_ID", "pool_id"),
             ("EXEC_SUI_BALANCE_MANAGER", "balance_manager"),
-            ("EXEC_BLUEFIN_API_BASE", "bluefin_api_base"),
         ):
             v = _env(env_name)
             if v:
                 extra[attr] = v
+        # Aftermath API base override (env var EXEC_AFTERMATH_API_BASE).
+        _af = _env("EXEC_AFTERMATH_API_BASE")
+        if _af:
+            extra["aftermath_api_base"] = _af
         cfg["sui"] = {
             "key_enc": vault.encrypt(_enc_key),
             "rpc_url": _env("EXEC_SUI_RPC_URL", ""),

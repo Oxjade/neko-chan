@@ -5,7 +5,7 @@ from exec_vault import ExecVault
 
 CHAIN_LABELS = {"hyperliquid": "🔗 Hyperliquid", "solana": "🔗 Solana", "sui": "🔗 Sui"}
 
-# Release plan: Sui (Bluefin perps) is live now; every other chain carries the
+# Release plan: Sui (Aftermath perps) is live now; every other chain carries the
 # "code is live, Neko is working hard to make it better for you" status until
 # it is fully validated and released slowly.
 LIVE_CHAINS = {"sui"}

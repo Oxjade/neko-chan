@@ -77,13 +77,13 @@ check("R10 private keys auto-delete", "_schedule_msg_delete" in ucode and ucode.
 # R11: P&L card shows empty state when no active position and no realized P&L
 check("R11 PnL empty-state guard", "No active P&L yet" in ucode and "not positions and abs(total_pnl) < 0.005" in ucode, "P&L card still generated with no active P&L")
 
-# R12: WAL/DEEP/HYPE/GOLD are valid perp markets everywhere (userbot watch, agent, adapter)
+# R12: DEEP/HYPE/XRP/UNI etc are valid perp markets everywhere (userbot watch, agent, adapter)
 ucode2 = open(SRC).read()
-check("R12 WAL watchable", '"sui": {"SUI", "BTC", "ETH", "SOL", "DEEP", "HYPE", "GOLD", "WAL"}' in ucode2, "WAL not in userbot perp list")
+check("R12 DEEP watchable", '"sui": {"SUI", "BTC", "ETH", "SOL", "HYPE", "XRP", "UNI", "XMR", "ZEC", "MON", "DEEP"}' in ucode2, "DEEP not in userbot perp list")
 acode2 = open("service/agent/live_agent.py").read()
-check("R12 WAL in agent markets", '"WAL": "WAL-PERP"' in acode2, "WAL not in agent BLUEFIN_MARKET_SYMBOLS")
-badapter = open("service/execution/bluefin_adapter.py").read()
-check("R12 WAL in adapter", '"WAL": "WAL-PERP"' in badapter, "WAL not in adapter MARKET_SYMBOLS")
+check("R12 DEEP in agent markets", '"DEEP": "DEEP/USD:USDC"' in acode2, "DEEP not in agent AFTERMATH_MARKET_SYMBOLS")
+badapter = open("service/execution/aftermath_adapter.py").read()
+check("R12 DEEP in adapter", '"DEEP": "DEEP/USD:USDC"' in badapter, "DEEP not in adapter MARKET_SYMBOLS")
 
 # R13: auto-delete uses the MASTER bot token (messages sent by context.bot)
 check("R13 delete uses master token", "self._master_token" in ucode2 and ucode2.count("self._master_token or \"\"") >= 6, "delete not using master token")

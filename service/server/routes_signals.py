@@ -232,6 +232,25 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         if price > 10_000_000:
             raise HTTPException(status_code=400, detail='Price too large')
 
+        # PAPER LIMIT-FILL SIMULATION: when the agent sends a limit_price on an
+        # open (buy/short), the paper engine fills at the more-favorable of the
+        # fetched market price and the limit price. This mirrors the real venue
+        # maker entry (2bps inside the market) so paper reflects the better
+        # entry price instead of always paying the spread at the mid/market.
+        if data.limit_price is not None and action_lower in ('buy', 'short'):
+            try:
+                limit_price = float(data.limit_price)
+            except Exception:
+                raise HTTPException(status_code=400, detail='Invalid limit_price')
+            if not math.isfinite(limit_price) or limit_price <= 0:
+                raise HTTPException(status_code=400, detail='Invalid limit_price')
+            if action_lower == 'buy':
+                price = min(price, limit_price)   # never pay more than the limit
+            else:  # short: never sell below the limit
+                price = max(price, limit_price)
+            if not math.isfinite(price) or price <= 0:
+                raise HTTPException(status_code=400, detail='Invalid price after limit fill')
+
         stop_loss = None
         take_profit = None
         leverage = 1.0

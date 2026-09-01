@@ -133,9 +133,9 @@ def s7_sign_real_order():
     led.close()
     key = ExecVault().decrypt(w["key_enc"])
     from ledger import ExecLedger
-    from bluefin_adapter import build_bluefin, _sign_personal_message
-    adapter = build_bluefin(ExecLedger(EXEC_DB), key, testnet=True)
-    sig = _sign_personal_message(adapter.seed, adapter.pubkey, b"user-scenario")
+    from aftermath_adapter import build_aftermath, _sign_terms_message
+    adapter = build_aftermath(ExecLedger(EXEC_DB), key)
+    _, sig = _sign_terms_message(adapter.seed, adapter.pubkey)
     assert len(sig) > 50, "signature too short"
 
 

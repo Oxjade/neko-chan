@@ -38,14 +38,16 @@ SUI_COIN_TYPE = "0x2::sui::SUI"
 USDC_MAINNET_COIN_TYPE = (
     "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
 )
-# Testnet (Bluefin staging) USDC — from api.sui-staging.bluefin.io exchange info.
+# Testnet USDC on Sui — default Circle USDC type is mainnet; testnet uses the
+# well-known testnet USDC deployment.
 USDC_TESTNET_COIN_TYPE = (
     "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
 )
 
 DEEPBOOK_MODULE = "deepbook"
 DEEPBOOK_DECIMALS = 6  # DeepBook prices/quantities are u64 with 6 decimals
-BLUEFIN_PRICE_SCALE = 1e6  # Bluefin perp prices on Sui are u64 scaled by 1e6
+# Aftermath perp prices on Sui are raw float from the CCXT API.
+AFTERMATH_PRICE_SCALE = 1.0
 GAS_MIN_BALANCE = 1_000_000_000  # require at least 1 SUI for gas in v1
 RPC_TIMEOUT = 20
 
@@ -403,7 +405,7 @@ class SUIAdapter:
                  pool_id: str | None = None,
                  balance_manager: str | None = None,
                  pool_coin_types: list[str] | None = None,
-                 bluefin: object | None = None):
+                 aftermath: object | None = None):
         self.ledger = ledger
         self.testnet = testnet
         # Explicit network name wins (testnet|devnet|mainnet); the legacy bool
@@ -422,7 +424,7 @@ class SUIAdapter:
         self.pool_id = pool_id
         self.balance_manager = balance_manager
         self.pool_coin_types = pool_coin_types or [SUI_COIN_TYPE, usdc_coin_type]
-        self.bluefin = bluefin  # optional BluefinAdapter for bluefin-perp venue
+        self.aftermath = aftermath  # optional AftermathAdapter for aftermath-perp venue
         self._shared_cache: dict = {}
         self._rpc_seq = 0
 
@@ -574,22 +576,22 @@ class SUIAdapter:
             return 0.0
 
     def get_positions(self) -> list[dict]:
-        """Open perp positions. DeepBook margin is not indexed (v1); Bluefin
-        perp positions come from the off-chain dapi when a Bluefin adapter is
+        """Open perp positions. DeepBook margin is not indexed (v1); Aftermath
+        perp positions come from the CCXT API when an Aftermath adapter is
         attached. Returns normalized rows: {symbol, side, qty, entry, pnl}."""
-        if self.bluefin is not None:
-            return self._bluefin_positions()
+        if self.aftermath is not None:
+            return self._aftermath_positions()
         return []
 
-    def _bluefin_positions(self) -> list[dict]:
-        """Normalized positions from the Bluefin dapi /accounts/positions."""
+    def _aftermath_positions(self) -> list[dict]:
+        """Normalized positions from the Aftermath CCXT positions endpoint."""
         try:
-            resp = self.bluefin.positions()
-        except Exception as exc:  # noqa: BLE001
-            log.warning("[sui] bluefin positions failed: %s", exc)
+            resp = self.aftermath.positions()
+        except Exception as exc:
+            log.warning("[sui] aftermath positions failed: %s", exc)
             return []
         if not resp.get("ok"):
-            log.warning("[sui] bluefin positions error: %s", resp.get("error"))
+            log.warning("[sui] aftermath positions error: %s", resp.get("error"))
             return []
         rows = resp.get("data")
         if not isinstance(rows, list):
@@ -598,18 +600,18 @@ class SUIAdapter:
         for p in rows:
             if not isinstance(p, dict):
                 continue
-            symbol = str(p.get("symbol") or p.get("market") or "")
-            qty_raw = float(p.get("quantity") or p.get("position") or 0.0)
+            symbol = str(p.get("symbol") or "")
+            qty_raw = float(p.get("contracts") or p.get("baseAssetAmount") or 0.0)
             if not symbol or qty_raw == 0:
                 continue
             side = "long" if qty_raw > 0 else "short"
             out.append({
-                "symbol": symbol.split("-")[0],
+                "symbol": symbol.split("/")[0].split(":")[0],
                 "side": side,
                 "qty": abs(qty_raw),
-                "entry": float(p.get("entryPrice") or p.get("avgEntryPrice") or 0.0) / BLUEFIN_PRICE_SCALE,
-                "pnl": float(p.get("unrealizedPnl") or p.get("pnl") or 0.0) / BLUEFIN_PRICE_SCALE,
-                "venue": "bluefin",
+                "entry": float(p.get("entryPrice") or 0.0),
+                "pnl": float(p.get("unrealizedPnl") or 0.0),
+                "venue": "aftermath",
             })
         return out
 
@@ -905,13 +907,13 @@ class SUIAdapter:
         errors = intent.validate(ref_price)
         if errors:
             return {"ok": False, "error": "; ".join(errors)}
-        if intent.venue == "bluefin-perp":
-            if self.bluefin is None:
-                return {"ok": False, "error": "bluefin-perp venue requested but no Bluefin adapter configured"}
+        if intent.venue == "aftermath-perp":
+            if self.aftermath is None:
+                return {"ok": False, "error": "aftermath-perp venue requested but no Aftermath adapter configured"}
             try:
-                return self.bluefin.place_order(intent, ref_price)
-            except Exception as exc:  # noqa: BLE001
-                log.exception("bluefin place_order failed for %s", intent.idempotency_key)
+                return self.aftermath.place_order(intent, ref_price)
+            except Exception as exc:
+                log.exception("aftermath place_order failed for %s", intent.idempotency_key)
                 return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
         try:
             built = self.build_spot_order_tx(intent, ref_price)
@@ -938,8 +940,8 @@ class SUIAdapter:
     # ------------------------------------------------------------ killswitch hooks
 
     def cancel_all(self, bot_id) -> dict:
-        """Killswitch cancel: cancels DeepBook orders (on-chain) and Bluefin
-        orders (off-chain dapi) when the respective venue is configured.
+        """Killswitch cancel: cancels DeepBook orders (on-chain) and Aftermath
+        orders (CCXT REST) when the respective venue is configured.
         Best-effort per venue; returns a merged result."""
         merged = {"ok": True, "cancelled": [], "errors": []}
         if self.deepbook_package and self.pool_id and self.balance_manager:
@@ -957,43 +959,43 @@ class SUIAdapter:
                 gas = self._dry_run(_json_kind(call_args, command))
                 out = self._broadcast(call_args, command, gas["gas_price"], gas["budget"])
                 merged["cancelled"].append({"venue": "deepbook", "tx_hash": out["digest"]})
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.exception("deepbook cancel_all failed for bot %s", bot_id)
                 merged["errors"].append(f"deepbook: {exc}"[:200])
                 merged["ok"] = False
-        if self.bluefin is not None:
+        if self.aftermath is not None:
             try:
-                res = self.bluefin.cancel_all()
-                merged["cancelled"].append({"venue": "bluefin", "ok": bool(res.get("ok"))})
+                res = self.aftermath.cancel_all()
+                merged["cancelled"].append({"venue": "aftermath", "ok": bool(res.get("ok"))})
                 if not res.get("ok"):
-                    merged["errors"].append(f"bluefin: {res.get('error')}"[:200])
+                    merged["errors"].append(f"aftermath: {res.get('error')}"[:200])
                     merged["ok"] = False
-            except Exception as exc:  # noqa: BLE001
-                log.exception("bluefin cancel_all failed for bot %s", bot_id)
-                merged["errors"].append(f"bluefin: {exc}"[:200])
+            except Exception as exc:
+                log.exception("aftermath cancel_all failed for bot %s", bot_id)
+                merged["errors"].append(f"aftermath: {exc}"[:200])
                 merged["ok"] = False
         if not merged["cancelled"]:
             return {
                 "ok": False,
-                "error": "no venue configured (need deepbook package/pool/balance_manager or Bluefin adapter)",
+                "error": "no venue configured (need deepbook package/pool/balance_manager or Aftermath adapter)",
             }
         return merged
 
     def flat_and_cancel(self, bot_id) -> dict:
         """Killswitch hook: cancels open orders and closes open positions.
-        Bluefin perp positions are flattened via the off-chain dapi; DeepBook
+        Aftermath perp positions are flattened via the CCXT API; DeepBook
         margin positions are not indexed in v1 (best-effort cancel only)."""
         result = self.cancel_all(bot_id)
         result["closed"] = []
-        if self.bluefin is not None:
+        if self.aftermath is not None:
             try:
-                bf = self.bluefin.flat_and_cancel(bot_id)
-                result["closed"].extend(bf.get("closed") or [])
-                result["flat"] = f"bluefin flattened {len(bf.get('closed') or [])} positions"
-            except Exception as exc:  # noqa: BLE001
-                log.exception("bluefin flat failed for bot %s", bot_id)
-                result["errors"].append(f"bluefin-flat: {exc}"[:200])
+                af = self.aftermath.flat_and_cancel(bot_id)
+                result["closed"].extend(af.get("closed") or [])
+                result["flat"] = f"aftermath flattened {len(af.get('closed') or [])} positions"
+            except Exception as exc:
+                log.exception("aftermath flat failed for bot %s", bot_id)
+                result["errors"].append(f"aftermath-flat: {exc}"[:200])
                 result["ok"] = False
         else:
-            result["flat"] = "v1 stub: no bluefin adapter (DeepBook margin not indexed)"
+            result["flat"] = "v1 stub: no aftermath adapter (DeepBook margin not indexed)"
         return result
