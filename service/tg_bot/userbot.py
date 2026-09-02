@@ -1816,11 +1816,12 @@ class UserBotController:
         def _is_perp_tradeable(chain: str, asset: str) -> bool:
             """Check if an asset has a perp market on the venue for this chain.
             Only assets with an active perp market can be priced and traded."""
-            # Live Aftermath perp markets on Sui (2026): BTC, ETH, SOL, SUI,
-            # HYPE, XRP, UNI, XMR, ZEC, MON. IKA/ARB/etc are chain tokens but have
-            # NO active perp market on Aftermath -> not tradeable.
+            # All 29 Aftermath Perps mainnet markets (verified from /api/ccxt/markets, 2026-09).
             _perp_syms = {
-                "sui": {"SUI", "BTC", "ETH", "SOL", "HYPE", "XRP", "UNI", "XMR", "ZEC", "MON", "DEEP"},
+                "sui": {"BTC", "ETH", "SOL", "XAUT", "SUI", "HYPE", "XRP", "UNI",
+                        "XMR", "ZEC", "MON", "XAG", "WTI", "US500", "GOOGL",
+                        "NVDA", "TSLA", "INTC", "MU", "MRVL", "SNDK", "AMC",
+                        "DRAM", "LLY", "IOVA", "SPCX", "PUMP", "CHIP", "LIT"},
                 "solana": {"BTC", "ETH", "SOL", "SUI", "DOGE"},
                 "hyperliquid": {"HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
                                 "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"},
