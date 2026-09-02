@@ -11,6 +11,14 @@ regime** — the opposite of the directional-momentum short, which the live test
 > "funding", "basis", "cash-and-carry", or "carry" strategy on this platform (and
 > for the paper/live plumbing in `service/agent/funding_carry.py`). Deviation from
 > any frozen parameter below requires re-running the validation ladder in §5.
+>
+> **PRODUCTION REALITY (2026-09-01):** carry signals are surfaced to the live
+> agent's decision layer, but all real executions go through the **execution
+> gateway → Aftermath Perps** (mainnet/testnet; paper mode removed). Aftermath
+> funding streams are visible via `/api/perpetuals/market/funding-history` and
+> the WebSocket (`/api/perpetuals/ws/updates`); `estimatedFundingRate` is on
+> each market. The after-fee edge math in this spec must use Aftermath fees
+> (taker 0.045% / maker -0.005% rebate), not Hyperliquid's.
 
 ---
 

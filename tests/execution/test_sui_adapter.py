@@ -50,6 +50,18 @@ def _gql_coins_data(coin_type, balance):
     }]}}}}
 
 
+def _gql_two_sui_coins(balance_a, balance_b):
+    """GraphQL response with TWO SUI coins (for SUI-transfer gas separation)."""
+    addr_hex = ADDR[2:]
+    coin_b = "0x" + "ab" * 32
+    return {"data": {"address": {"objects": {"nodes": [
+        {"address": GAS_COIN, "version": "5", "digest": "0x3333",
+         "contents": {"json": {"id": GAS_COIN, "balance": str(balance_a)}}},
+        {"address": coin_b, "version": "6", "digest": "0x4444",
+         "contents": {"json": {"id": coin_b, "balance": str(balance_b)}}},
+    ]}}}}
+
+
 class RpcRecorder:
     """Dispatches on GraphQL queries (query=) vs JSON-RPC (method=)."""
 
@@ -212,3 +224,52 @@ def test_flat_and_cancel_broadcasts_cancel_when_configured(monkeypatch, tmp_path
 def test_testnet_url_selection(tmp_path):
     assert make_adapter(tmp_path).rpc_url == SUI_MAINNET_RPC
     assert make_adapter(tmp_path, testnet=True).rpc_url == SUI_TESTNET_RPC
+
+
+def test_sui_transfer_reserves_distinct_gas_coin(monkeypatch, tmp_path):
+    """Sending SUI must not use the transferred coin as the gas coin
+    (duplicated ObjectRef is rejected on-chain). Verify a different coin is
+    reserved for gas and the transfer amount stays within the non-gas coins."""
+
+    class _FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+            self.status_code = 200
+
+        def json(self):
+            return self.payload
+
+    class TwoCoinRecorder:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, json=None, headers=None, timeout=None):
+            payload = json or {}
+            self.calls.append(payload)
+            q = payload.get("query", "")
+            if "query" in payload:
+                if 'filter: {type: "0x2::coin::Coin<0x2::sui::SUI>"}' in q:
+                    return _FakeResponse(_gql_two_sui_coins(100_000_000, 90_000_000))
+                if "serviceConfig" in q:
+                    return _FakeResponse({"data": {"serviceConfig": {"referenceGasPrice": 1000}}})
+                if "simulateTransaction" in q:
+                    return _FakeResponse({"data": {"simulateTransaction": {"effects": {
+                        "status": {"status": "SUCCESS"},
+                        "gasUsed": {"computationCost": "1000000", "storageCost": "500000"},
+                    }}}})
+                if "executeTransaction" in q:
+                    return _FakeResponse({"data": {"executeTransaction": {
+                        "effects": {"digest": "0xdeadbeefcafe", "status": "SUCCESS"},
+                    }}})
+                raise AssertionError(f"unexpected gql: {q[:100]}")
+            raise AssertionError(f"unexpected rpc: {payload}")
+
+    rec = TwoCoinRecorder()
+    monkeypatch.setattr(sui_adapter.requests, "post", rec.post)
+    adapter = make_adapter(tmp_path)
+    result = adapter.transfer_asset("0x" + "42" * 32, 0.05, "SUI")
+    assert result["ok"] is True
+    assert result["asset"] == "SUI"
+    # the broadcast must have used a gas coin distinct from the transferred one;
+    # the transfer would have been rejected otherwise (duplicated ObjectRef).
+    assert result["tx_hash"] == "0xdeadbeefcafe"

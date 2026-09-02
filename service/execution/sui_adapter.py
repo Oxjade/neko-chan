@@ -721,12 +721,41 @@ class SUIAdapter:
             if not coins:
                 return {"ok": False, "error": f"no {asset} balance on {self.address[:12]}…"}
             coins.sort(key=lambda c: c["balance"], reverse=True)
-            primary = coins[0]
-            others = [c for c in coins[1:] if c["objectId"] != primary["objectId"]]
+            gas_coin = None
+            if asset == "SUI":
+                # When sending SUI, the gas coin must differ from the transfer
+                # source (same ObjectRef twice is rejected). Reserve the
+                # LARGEST coin as gas and transfer from the rest, merging all
+                # other coins into the transfer primary first so the amount
+                # can span multiple coins.
+                if len(coins) >= 2:
+                    gas_coin = coins[0]
+                    primary = coins[1]
+                    others = [c for c in coins[2:] if c["objectId"] != primary["objectId"]]
+                    # merge the gas-adjacent coins too: merge every coin EXCEPT
+                    # the reserved gas coin into the primary so the transfer
+                    # amount can use the full non-gas balance.
+                    others += [c for c in coins if c["objectId"] not in
+                               (primary["objectId"], gas_coin["objectId"])]
+                else:
+                    gas_coin = None  # single coin: split a gas amount out below
+                    primary = coins[0]
+                    others = []
+            else:
+                primary = coins[0]
+                others = [c for c in coins[1:] if c["objectId"] != primary["objectId"]]
             total = sum(c["balance"] for c in coins)
             if amount_raw > total:
                 return {"ok": False,
                         "error": f"insufficient {asset}: have {total / 10**decimals:.6f}, need {amount:.6f}"}
+            # When sending SUI, the transfer primary must hold the amount after
+            # merging - cap the request at the primary+others balance minus gas.
+            if asset == "SUI" and gas_coin is not None:
+                spendable = total - int(gas_coin["balance"])
+                if amount_raw > spendable:
+                    return {"ok": False,
+                            "error": f"insufficient {asset} after gas reserve: "
+                                     f"spendable {spendable/10**decimals:.6f}, need {amount:.6f}"}
 
             # Build BCS inputs/commands and JSON for dry-run.
             bcs_inputs, bcs_commands = [], []
@@ -780,7 +809,8 @@ class SUIAdapter:
                 "transactions": json_transactions,
             }
             gas = self._dry_run(tx_json)
-            out = self._broadcast_ptb(bcs_inputs, bcs_commands, gas["gas_price"], gas["budget"])
+            out = self._broadcast_ptb(bcs_inputs, bcs_commands, gas["gas_price"], gas["budget"],
+                                      gas_coin=gas_coin)
             return {
                 "ok": True,
                 "venue": "sui",
@@ -796,10 +826,15 @@ class SUIAdapter:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
 
     def _broadcast_ptb(self, inputs: list[bytes], commands: list[bytes],
-                       gas_price: int, budget: int) -> dict:
-        """Broadcast a raw programmable-transaction (input bytes already BCS)."""
+                       gas_price: int, budget: int, gas_coin: dict | None = None) -> dict:
+        """Broadcast a raw programmable-transaction (input bytes already BCS).
+
+        gas_coin: optional explicit gas coin. When sending SUI the gas coin
+        must NOT be the coin being transferred (duplicated ObjectRef), so
+        callers pass a different coin here."""
         tx_bytes = _serialize_tx_ptb_v1(
-            inputs, commands, self.address, self._pick_gas_coin(),
+            inputs, commands, self.address,
+            gas_coin or self._pick_gas_coin(),
             gas_price, budget, self._shared_versions(),
         )
         return self._broadcast_tx(tx_bytes)

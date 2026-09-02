@@ -10,6 +10,17 @@ validation, regime gating, cost accounting, and live-monitoring guards.
 > you must re-run the validation ladder below and record the deviation — otherwise
 > the strategy is under-documented and its results are not comparable.
 
+> **PRODUCTION REALITY (2026-09-01):** the live Neko agent
+> (`service/agent/live_agent.py` + `quant_strategy.py`) implements the scalp /
+> intraday / swing horizon engine (EMA8>21 momentum confirmation + RSI gate as
+> hard entry filters). HORIZONS were tuned on live Hyperliquid 5m/1h data
+> (`research/scripts/test_winrate.py`): scalp stop=1.5σ/target=0.6σ
+> (~45% WR), intraday stop=0.8σ/target=0.6σ (49.9% WR, +0.44 EV/trade).
+> Orders execute on **Aftermath Perps** (mainnet/testnet) through the execution
+> gateway — paper mode was removed. Wins are small-and-frequent; a 2%+ price
+> target per trade is only reachable on intraday/swing horizons at lower win
+> rates (the barrier math: WR ≈ 1/(1+R)).
+
 ---
 
 ## 1. Evidence base (what we actually know)

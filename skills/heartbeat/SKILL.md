@@ -16,6 +16,14 @@ periodically call the heartbeat API to receive messages and tasks.
 > (poll interval, one example). This version adds the reliability contract that
 > makes a polling agent production-safe: bounded backoff, idempotency, dedup
 > state, drain loop on `has_more_*`, and the read-only/write safety split.
+>
+> **PRODUCTION REALITY (2026-09-01):** the Neko live agent (`service/agent/
+> live_agent.py`) polls the platform heartbeat for messages, but its TRADING
+> decisions execute through the **execution gateway → Aftermath Perps**
+> (mainnet/testnet). Paper mode was removed: without a ready gateway the agent
+> HOLDS. Exit checks (time/partial/trailing) run on the gateway in real mode.
+> The killswitch (flatten + cancel-all) is the safety net when a bot is paused
+> or halted.
 
 ---
 

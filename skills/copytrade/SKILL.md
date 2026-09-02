@@ -17,6 +17,14 @@ Follow top traders and automatically copy their positions. No manual trading nee
 > afford the leader's drawdown, do not copy at 1:1. Everything below the core
 > API is the risk framework that separates robust copy systems from follower
 > blowups.
+>
+> **PRODUCTION REALITY (2026-09-01):** platform copy trading consumes published
+> signals (paper layer). The Neko user bots that EXECUTE real money trade via
+> the **execution gateway → Aftermath Perps** (mainnet/testnet, no devnet, no
+> paper). Any copy/execution logic for real accounts must route through the
+> gateway with the client-side risk guards (notional/exposure caps, leverage
+> caps, mandatory stops, daily-loss halt, killswitch) — the same hard caps the
+> live agent enforces before signing.
 
 ---
 

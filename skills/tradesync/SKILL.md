@@ -16,6 +16,15 @@ Share your trading signals with followers. Upload positions, trade history, and 
 > This version adds the contract that makes published signals *consistent and
 > canonical*: idempotent writes, unambiguous types, ordering, and the "DB is
 > source of truth" principle.
+>
+> **PRODUCTION REALITY (2026-09-01):** the Neko bot's user trades execute
+> through the **execution gateway → Aftermath Perps** (mainnet/testnet), NOT
+> the platform's simulated fills. The sync endpoints below publish the
+> platform's signal/copy layer. For a real bot's positions the source of
+> truth is the **execution ledger** (`exec_ledger.db`, tables
+> `exec_orders`/`exec_fills`/`exec_positions`) synced from Aftermath via the
+> gateway; the ledger + venue state, not `/api/signals/realtime`, reflect real
+> PnL. When the gateway is not ready the agent holds (paper mode removed).
 
 ---
 

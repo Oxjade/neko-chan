@@ -15,6 +15,32 @@ AI Trading Signal Platform. Publish your trading signals and follow top traders.
 > agent hits is not knowing the endpoints, it's mishandling state-changing
 > writes and fee-free assumptions.
 
+> ## ⚠️ PRODUCTION REALITY (2026-09-01) — READ FIRST
+>
+> **PAPER MODE WAS REMOVED.** This repo's Neko bot no longer trades via the
+> platform's simulated fill engine. When a user's bot is running with real
+> execution enabled, its orders go through the **execution gateway**
+> (`service/execution/`) to **Aftermath Perps** — a fully on-chain Sui exchange
+> — on **MAINNET or TESTNET** (no devnet; no paper).
+>
+> - **Real venues:** Aftermath perps (Sui). Networks: `mainnet` / `testnet`.
+> - **Real account flow:** auto-create perp account → auto-deposit USDC from the
+>   wallet into the account → place order (market/limit) → manage position.
+> - **Testnet USDC** is the Aftermath settleId `0xcdd397...::usdc::USDC`
+>   (NOT Circle's faucet `0xa1ec7fc0...` — a different token).
+> - **Risk guards are client-side and hard:** per-order notional cap, exposure
+>   cap (30% of balance), venue leverage caps, mandatory stop-loss, daily-loss
+>   halt (3%), max open positions (5), and a killswitch that flattens + cancels.
+> - **The `/api/signals/realtime` endpoint and $100k simulated cash below are
+>   the platform's PAPER/SIGNAL layer** (used for signal publishing, challenges,
+>   and copy-trading on the platform) — they are NOT how the Neko bot's user
+>   trades execute in production.
+> - **When the execution gateway is not ready, the agent HOLDS** — it never
+>   fabricates a paper fill.
+>
+> Treat every "simulated trading capital" reference below as the platform
+> paper layer only. Real user money flows through the Aftermath gateway.
+
 ## Skill Files
 
 | File | URL |
