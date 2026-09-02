@@ -321,65 +321,45 @@ class AftermathAdapter:
         """Deposit collateral (USDC) from the wallet into the Aftermath account.
 
         The wallet's on-chain USDC is separate from the perp account - funds
-        must be deposited before trading. Native REST flow: ask the API to
-        build the deposit txKind (cap/account/registry inputs), then append
-        the USDC coin as input 3 (the deposit MoveCall args are
-        (account, cap, registry, coin) = inputs 1,0,2,3), then wrap+sign+submit."""
+        must be deposited before trading. Uses the native REST ByAmount flow
+        (depositAmount as a BigInt "n" string), which handles the wallet's
+        address balance as well as Coin objects."""
         acc_num = self.account_number()
         if acc_num is None:
             return {"ok": False, "error": "no aftermatch account number"}
-        coin = self._find_usdc_coin()
-        if coin is None:
-            return {"ok": False, "error": "no USDC coin object found on wallet"}
-        import base58 as _b58
-        from sui_adapter import _uleb128 as _uleb
-
-        def _uleb_read(buf: bytes, pos: int) -> tuple[int, int]:
-            n = 0
-            shift = 0
-            while True:
-                x = buf[pos]
-                pos += 1
-                n |= (x & 0x7F) << shift
-                shift += 7
-                if not x & 0x80:
-                    return n, pos
-
-        # 1. API-built base txKind (cap, account, registry = inputs 0,1,2)
+        amount_raw = f"{int(round(amount * 1_000_000))}n"
         body = {
             "walletAddress": self.address,
             "accountId": f"{acc_num}n",
             "collateralCoinType": self.usdc_coin_type,
-            "depositCoinArg": {"Input": 3},
+            "depositAmount": amount_raw,
         }
         resp = self._req_post("/perpetuals/account/transactions/deposit-collateral", body)
         if not resp.get("ok"):
             return {"ok": False, "error": f"deposit build failed: {resp.get('error')}"}
-        tk0 = base64.b64decode((resp.get("data") or {}).get("txKind") or "")
-        if not tk0:
+        tx_kind_b64 = (resp.get("data") or {}).get("txKind")
+        if not tx_kind_b64:
             return {"ok": False, "error": "no txKind in deposit response"}
-
-        # 2. parse input section length, append the coin as input 3
-        i = 1
-        n_inp0, i = _uleb_read(tk0, i)
-        for _k in range(n_inp0):
-            tag = tk0[i]; i += 1
-            if tag == 1:
-                otag = tk0[i]; i += 1
-                if otag == 0:
-                    i += 32 + 8
-                    _dl, i = _uleb_read(tk0, i); i += _dl
-                elif otag == 1:
-                    i += 32 + 8 + 1
-            elif tag == 0:
-                ln, i = _uleb_read(tk0, i); i += ln
-        cmd_start = i
-        call_arg = (b"\x01\x00" + bytes.fromhex(coin["objectId"][2:])
-                    + int(coin["version"]).to_bytes(8, "little")
-                    + _uleb(len(coin["digest_bytes"])) + coin["digest_bytes"])
-        new_inputs = _uleb(n_inp0 + 1) + tk0[2:cmd_start] + call_arg
-        tx_kind_b64 = base64.b64encode(b"\x00" + new_inputs + tk0[cmd_start:]).decode()
         return self._submit_native_tx(tx_kind_b64)
+
+    def allocate(self, market_id: str, amount: float) -> dict:
+        """Allocate collateral to a specific market.
+
+        Aftermath requires deposit → allocate → trade. The allocate step
+        assigns margin to a market so it can be used for positions."""
+        body = {
+            "accountId": f"{self.account_number()}n",
+            "marketId": market_id,
+            "allocateAmount": f"{int(round(amount * 1_000_000))}n",
+            "walletAddress": self.address,
+        }
+        resp = self._req_post("/perpetuals/account/transactions/allocate-collateral", body)
+        if not resp.get("ok"):
+            return {"ok": False, "error": f"allocate build failed: {resp.get('error')}"}
+        tk = (resp.get("data") or {}).get("txKind")
+        if not tk:
+            return {"ok": False, "error": "no txKind in allocate response"}
+        return self._submit_native_tx(tk)
 
     def _find_usdc_coin(self) -> dict | None:
         """Locate the wallet's USDC coin object (id, version, digest bytes).
