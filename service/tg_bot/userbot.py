@@ -1799,11 +1799,16 @@ class UserBotController:
             the chain is not recognized (meaning any asset is allowed)."""
             known = {
                 # Sui native tokens (from Suiscan / DeFi ecosystem)
-                "sui": ["SUI", "BTC", "ETH", "SOL", "ARB", "DOGE", "LINK", "SEI", "OP",
+                "sui": ["SUI", "BTC", "ETH", "SOL", "XAUT", "HYPE", "XRP", "UNI",
+                        "XMR", "ZEC", "MON", "XAG", "WTI", "US500", "GOOGL",
+                        "NVDA", "TSLA", "INTC", "MU", "MRVL", "SNDK", "AMC",
+                        "DRAM", "LLY", "IOVA", "SPCX", "PUMP", "CHIP", "LIT",
+                        # Sui native tokens (from Suiscan / DeFi ecosystem)
+                        "ARB", "DOGE", "LINK", "SEI", "OP",
                         "BNB", "AVAX", "LTC", "MATIC", "DEEP", "IKA", "NS", "SEND",
                         "BLUE", "CETUS", "SCA", "AFSUI", "HASUI", "FUD", "SPAM",
                         "TURBOS", "NS", "WAL", "PEPE", "SHIB", "APT", "ATOM", "AAVE",
-                        "UNI", "MOVE", "USDC", "USDT", "WETH", "WBTC"],
+                        "MOVE", "USDC", "USDT", "WETH", "WBTC"],
                 # Solana tokens (from Jupiter / Solana ecosystem)
                 "solana": ["SOL", "BTC", "ETH", "SUI", "DOGE", "BONK", "WIF", "JUP",
                            "PYTH", "JTO", "RENDER"],
