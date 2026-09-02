@@ -49,10 +49,13 @@ log = logging.getLogger("execution")
 API_MAINNET = "https://aftermath.finance/api"
 API_TESTNET = "https://testnet.aftermath.finance/api"
 
-# Default USDC coin type on Sui mainnet.
+# Default USDC coin type on Sui mainnet (Aftermath mainnet settleId).
 USDC_MAINNET_COIN_TYPE = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
-# Default USDC coin type on Sui testnet (well-known testnet deployment).
-USDC_TESTNET_COIN_TYPE = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
+# Aftermath TESTNET settleId USDC (what the perp account settles in and what
+# deposits must be). This is NOT the same as the generic testnet faucet USDC
+# (0xa1ec7fc0...::usdc::USDC) - sending the wrong type leaves the account
+# unfundable. Verified from Market.settleId on testnet, 2026-09-01.
+USDC_TESTNET_COIN_TYPE = "0xcdd397f2cffb7f5d439f56fc01afe5585c5f06e3bcd2ee3a21753c566de313d9::usdc::USDC"
 
 # RPC timeout for API calls.
 RPC_TIMEOUT = 20
@@ -187,6 +190,22 @@ class AftermathAdapter:
 
     # ---------------------------------------------------------------- account
 
+    def _resolve_settle_id(self) -> str:
+        """Settlement currency id for CCXT createAccount.
+
+        Read from the market catalog (Market.settleId) - the honest source.
+        Falls back to the configured USDC coin type when the catalog is
+        unreachable (they match on Aftermath: settle = USDC)."""
+        try:
+            resp = self._req("GET", "/ccxt/markets", public=True)
+            if resp.get("ok") and isinstance(resp.get("data"), list):
+                for m in resp["data"]:
+                    if isinstance(m, dict) and m.get("swap") and m.get("settleId"):
+                        return str(m["settleId"])
+        except Exception as exc:
+            log.warning("[aftermath] settleId resolve failed (%s); using USDC type", exc)
+        return self.usdc_coin_type
+
     def _ensure_account(self) -> dict | None:
         """Find or create an Aftermath perpetuals account for this wallet.
 
@@ -217,10 +236,16 @@ class AftermathAdapter:
             return cap
 
         # No account found — create one. Build tx, sign, submit.
+        # CCXT createAccount schema (both mainnet and testnet):
+        #   {settleId, metadata} where settleId is the settlement currency id
+        #   (read from Market.settleId - USDC on both networks) and metadata
+        #   requires {sender}. This is NOT {walletAddress, collateralCoinType}
+        #   (that is the native REST shape; the CCXT builder rejects it).
         log.info("[aftermath] no account found — creating one for %s", self.address[:12])
+        settle_id = self._resolve_settle_id()
         create_body = {
-            "walletAddress": self.address,
-            "collateralCoinType": self.usdc_coin_type,
+            "settleId": settle_id,
+            "metadata": {"sender": self.address, "gasFromAddressBalance": True},
         }
         resp = self._req_post("/ccxt/build/createAccount", create_body)
         if not resp.get("ok"):
@@ -267,6 +292,224 @@ class AftermathAdapter:
         if cap:
             return cap.get("id")
         return None
+
+    def accounts(self) -> list[dict]:
+        """Raw CCXT accounts for this wallet (collateral per account)."""
+        resp = self._req_post("/ccxt/accounts", {"address": self.address})
+        if resp.get("ok") and isinstance(resp.get("data"), list):
+            return resp["data"]
+        return []
+
+    def collateral(self) -> float:
+        """Free collateral currently inside the Aftermath account (USDC).
+
+        Read from the native accounts/owned endpoint (collateral is the raw
+        u64 as a '123n' string). Returns 0.0 when the account has none."""
+        resp = self._req_post("/perpetuals/accounts/owned", {"walletAddress": self.address})
+        if not resp.get("ok"):
+            return 0.0
+        caps = (resp.get("data") or {}).get("accountCaps") or []
+        for c in caps:
+            raw = str(c.get("collateral") or "0n")
+            try:
+                return float(raw.rstrip("n")) / 1e6
+            except Exception:
+                continue
+        return 0.0
+
+    def deposit(self, amount: float) -> dict:
+        """Deposit collateral (USDC) from the wallet into the Aftermath account.
+
+        The wallet's on-chain USDC is separate from the perp account - funds
+        must be deposited before trading. Native REST flow: ask the API to
+        build the deposit txKind (cap/account/registry inputs), then append
+        the USDC coin as input 3 (the deposit MoveCall args are
+        (account, cap, registry, coin) = inputs 1,0,2,3), then wrap+sign+submit."""
+        acc_num = self.account_number()
+        if acc_num is None:
+            return {"ok": False, "error": "no aftermatch account number"}
+        coin = self._find_usdc_coin()
+        if coin is None:
+            return {"ok": False, "error": "no USDC coin object found on wallet"}
+        import base58 as _b58
+        from sui_adapter import _uleb128 as _uleb
+
+        def _uleb_read(buf: bytes, pos: int) -> tuple[int, int]:
+            n = 0
+            shift = 0
+            while True:
+                x = buf[pos]
+                pos += 1
+                n |= (x & 0x7F) << shift
+                shift += 7
+                if not x & 0x80:
+                    return n, pos
+
+        # 1. API-built base txKind (cap, account, registry = inputs 0,1,2)
+        body = {
+            "walletAddress": self.address,
+            "accountId": f"{acc_num}n",
+            "collateralCoinType": self.usdc_coin_type,
+            "depositCoinArg": {"Input": 3},
+        }
+        resp = self._req_post("/perpetuals/account/transactions/deposit-collateral", body)
+        if not resp.get("ok"):
+            return {"ok": False, "error": f"deposit build failed: {resp.get('error')}"}
+        tk0 = base64.b64decode((resp.get("data") or {}).get("txKind") or "")
+        if not tk0:
+            return {"ok": False, "error": "no txKind in deposit response"}
+
+        # 2. parse input section length, append the coin as input 3
+        i = 1
+        n_inp0, i = _uleb_read(tk0, i)
+        for _k in range(n_inp0):
+            tag = tk0[i]; i += 1
+            if tag == 1:
+                otag = tk0[i]; i += 1
+                if otag == 0:
+                    i += 32 + 8
+                    _dl, i = _uleb_read(tk0, i); i += _dl
+                elif otag == 1:
+                    i += 32 + 8 + 1
+            elif tag == 0:
+                ln, i = _uleb_read(tk0, i); i += ln
+        cmd_start = i
+        call_arg = (b"\x01\x00" + bytes.fromhex(coin["objectId"][2:])
+                    + int(coin["version"]).to_bytes(8, "little")
+                    + _uleb(len(coin["digest_bytes"])) + coin["digest_bytes"])
+        new_inputs = _uleb(n_inp0 + 1) + tk0[2:cmd_start] + call_arg
+        tx_kind_b64 = base64.b64encode(b"\x00" + new_inputs + tk0[cmd_start:]).decode()
+        return self._submit_native_tx(tx_kind_b64)
+
+    def _find_usdc_coin(self) -> dict | None:
+        """Locate the wallet's USDC coin object (id, version, digest bytes).
+
+        The coin must be of the SETTLE ID type (the USDC Aftermath settles in),
+        which is what the deposit MoveCall's Coin<> type argument expects."""
+        settle_id = self._resolve_settle_id()
+        import requests as _r
+        gql_url = "https://graphql.testnet.sui.io/graphql" if self.network == "testnet" \
+            else "https://graphql.mainnet.sui.io/graphql"
+        q = ('{ address(address: "' + self.address + '") {'
+             '  objects(first: 20, filter: {type: "0x2::coin::Coin<'
+             + settle_id + '>"}) { nodes {'
+             '    address version digest contents { json } } } } }')
+        try:
+            r = _r.post(gql_url, json={"query": q}, timeout=20)
+            data = r.json().get("data") or {}
+            nodes = (((data.get("address") or {}).get("objects") or {}).get("nodes") or [])
+            for o in nodes:
+                try:
+                    bal = int(((o.get("contents") or {}).get("json") or {}).get("balance") or 0)
+                except Exception:
+                    continue
+                if bal > 0:
+                    import base58 as _b58
+                    return {
+                        "objectId": o.get("address"),
+                        "version": int(o.get("version", 0)),
+                        "digest": o.get("digest", ""),
+                        "digest_bytes": _b58.b58decode(o.get("digest", "")),
+                    }
+        except Exception as exc:
+            log.warning("[aftermath] usdc coin lookup failed: %s", exc)
+        return None
+
+    def _wallet_usdc_balance(self) -> float:
+        """Wallet's on-chain USDC of the settle type (usable for deposits)."""
+        coin = self._find_usdc_coin()
+        if coin is None:
+            return 0.0
+        import requests as _r
+        gql_url = "https://graphql.testnet.sui.io/graphql" if self.network == "testnet" \
+            else "https://graphql.mainnet.sui.io/graphql"
+        q = ('{ object(address: "' + coin["objectId"] + '") { '
+             '  asMoveObject { contents { json } } } }')
+        try:
+            r = _r.post(gql_url, json={"query": q}, timeout=20)
+            data = r.json().get("data") or {}
+            obj = (data.get("object") or {}).get("asMoveObject") or {}
+            bal = ((obj.get("contents") or {}).get("json") or {}).get("balance") or 0
+            return float(bal) / 1e6
+        except Exception as exc:
+            log.warning("[aftermath] wallet usdc balance failed: %s", exc)
+            return 0.0
+
+    def _submit_native_tx(self, tx_kind_b64: str) -> dict:
+        """Wrap a base64 TransactionKind in TransactionData::V1, sign, submit.
+
+        txKind from the native REST is a BCS TransactionKind. We build
+        TransactionData::V1 { kind, sender, gas_data, expiration } using the
+        same BCS primitives the Sui adapter uses, then broadcast via the Sui
+        GraphQL executeTransaction."""
+        import hashlib as _hl
+        import base58 as _b58
+        from sui_adapter import (_bcs_addr, _bcs_u64, _ed25519_sign,
+                                 _bcs_object_ref, _bcs_vec, _uleb128)
+
+        tx_kind = base64.b64decode(tx_kind_b64)
+        now_ms = int(time.time() * 1000)
+        # 1. gas coin + price + budget via Sui GraphQL (same as SUIAdapter)
+        import requests as _r
+        gql_url = "https://graphql.testnet.sui.io/graphql" if self.network == "testnet" \
+            else "https://graphql.mainnet.sui.io/graphql"
+        q_coin = ('{ address(address: "' + self.address + '") {'
+                  '  objects(first: 20, filter: {type: "0x2::coin::Coin<0x2::sui::SUI>"}) { nodes {'
+                  '    address version digest'
+                  '    contents { json } } } } }')
+        r = _r.post(gql_url, json={"query": q_coin}, timeout=20)
+        data = r.json().get("data") or {}
+        addr_node = data.get("address") or {}
+        objs = ((addr_node.get("objects") or {}).get("nodes") or [])
+        gas_coin = None
+        for o in objs:
+            try:
+                bal = int(((o.get("contents") or {}).get("json") or {}).get("balance") or 0)
+            except Exception:
+                continue
+            if bal >= 50_000_000:  # 0.05 SUI min for gas
+                gas_coin = {"objectId": o.get("address"), "version": int(o.get("version", 0)),
+                            "digest": o.get("digest", "")}
+                break
+        if gas_coin is None:
+            return {"ok": False, "error": "no SUI gas coin >= 0.05 SUI on testnet wallet"}
+        # Sui digests are base58 - convert to hex for the BCS object ref.
+        digest_hex = _b58.b58decode(gas_coin["digest"]).hex()
+        gas_coin["digest"] = "0x" + digest_hex
+        # gas price
+        q_gp = "{ serviceConfig { referenceGasPrice } }"
+        r2 = _r.post(gql_url, json={"query": q_gp}, timeout=20)
+        gas_price = int(((r2.json().get("data") or {}).get("serviceConfig") or {}).get("referenceGasPrice") or 1000)
+        # budget: a single deposit PTB costs ~0.001-0.01 SUI; use 0.02 SUI to stay
+        # well under the 0.1-0.186 SUI gas coins available on testnet.
+        budget = 20_000_000
+
+        # 2. TransactionData::V1 = 0x00 || kind || sender || gas_data || 0x00
+        gas_data = (
+            _bcs_vec([_bcs_object_ref(gas_coin["objectId"], gas_coin["version"], gas_coin["digest"])])
+            + _bcs_addr(self.address) + _bcs_u64(gas_price) + _bcs_u64(budget)
+        )
+        tx_bytes = b"\x00" + tx_kind + _bcs_addr(self.address) + gas_data + b"\x00"
+
+        # 3. sign intent hash and submit via GraphQL
+        intent_msg = _hl.blake2b(b"\x00\x00\x00" + tx_bytes, digest_size=32).digest()
+        sig = _ed25519_sign(self.seed, intent_msg)
+        signature = base64.b64encode(b"\x00" + sig + self.pubkey).decode()
+        tx_b64 = base64.b64encode(tx_bytes).decode()
+        q_sub = ('mutation { executeTransaction(transactionDataBcs: "' + tx_b64 +
+                 '", signatures: ["' + signature + '"]) { '
+                 'effects { digest status executionError { message abortCode } } } }')
+        r3 = _r.post(gql_url, json={"query": q_sub}, timeout=60)
+        d3 = r3.json()
+        if d3.get("errors"):
+            return {"ok": False, "error": f"submit failed: {d3['errors'][0].get('message','')[:200]}"}
+        exec_res = (d3.get("data") or {}).get("executeTransaction") or {}
+        effects = exec_res.get("effects") or {}
+        status = str(effects.get("status") or "")
+        if status != "SUCCESS":
+            err = str(effects.get("executionError") or effects.get("status") or "unknown")
+            return {"ok": False, "error": f"tx failed: {err}"[:300]}
+        return {"ok": True, "tx_hash": effects.get("digest", ""), "digest": effects.get("digest", "")}
 
     # ---------------------------------------------------------------- market
 
@@ -339,13 +582,37 @@ class AftermathAdapter:
     # ---------------------------------------------------------------- orders
 
     def place_order(self, intent: OrderIntent, ref_price: float) -> dict:
-        """Place a market or limit order via CCXT build/sign/submit."""
+        """Place a market or limit order via CCXT build/sign/submit.
+
+        AUTO-DEPOSIT: if the Aftermath account holds less collateral than the
+        order needs and the wallet holds USDC, deposit the shortfall first so
+        the order can actually be covered (the wallet USDC is not usable until
+        it is inside the account)."""
         acc_id = self.account_cap_id()
         if not acc_id:
             return {"ok": False, "error": "no aftermatch account cap available"}
         ch_id = self.market_ch_id(intent.symbol)
         if not ch_id:
             return {"ok": False, "error": f"unsupported aftermatch market {intent.symbol}"}
+
+        # AUTO-DEPOSIT: ensure the account can cover this order.
+        needed = intent.notional(ref_price) / max(intent.leverage, 1)
+        have = self.collateral()
+        if have < needed:
+            wallet_usdc = self._wallet_usdc_balance()
+            if wallet_usdc > 0:
+                to_deposit = min(wallet_usdc, needed * 1.5)
+                log.info("[aftermath] collateral %.2f < needed %.2f - auto-depositing %.2f USDC",
+                         have, needed, to_deposit)
+                dep = self.deposit(to_deposit)
+                if not dep.get("ok"):
+                    return {"ok": False, "error": f"auto-deposit failed: {dep.get('error')}"}
+                time.sleep(2)
+                have = self.collateral()
+            if have < needed:
+                return {"ok": False, "error": (
+                    f"insufficient collateral: account {have:.2f} < needed {needed:.2f} USDC "
+                    f"(fund the wallet with the Aftermath testnet USDC type)")}
 
         side = "sell" if intent.side == "sell" else "buy"
         order_type = "market" if intent.order_type == "market" else "limit"

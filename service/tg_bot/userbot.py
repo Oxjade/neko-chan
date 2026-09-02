@@ -442,8 +442,10 @@ class UserBotController:
     # Native Circle USDC on Sui mainnet (canonical coin type, 2026).
     # The old wUSDC (0x5d4b3025...::coin::COIN) is deprecated.
     SUI_USDC_MAINNET = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
-    # Testnet USDC on Sui.
-    SUI_USDC_TESTNET = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
+    # Testnet USDC = the Aftermath testnet settleId (what the perp account
+    # settles in; the generic faucet USDC 0xa1ec7fc0... is a DIFFERENT token
+    # and cannot be deposited or traded).
+    SUI_USDC_TESTNET = "0xcdd397f2cffb7f5d439f56fc01afe5585c5f06e3bcd2ee3a21753c566de313d9::usdc::USDC"
 
     def _sui_transfer(self, bot_id: int, chain: str, dest: str, amount: float) -> dict:
         """Execute a real on-chain USDC transfer from the bot's wallet.
@@ -475,9 +477,6 @@ class UserBotController:
             if network == "mainnet":
                 usdc_coin = self.SUI_USDC_MAINNET
                 rpc_url = "https://fullnode.mainnet.sui.io:443"
-            elif network == "devnet":
-                usdc_coin = self.SUI_USDC_TESTNET
-                rpc_url = "https://fullnode.devnet.sui.io:443"
             else:
                 usdc_coin = self.SUI_USDC_TESTNET
                 rpc_url = "https://fullnode.testnet.sui.io:443"
@@ -511,14 +510,11 @@ class UserBotController:
             network = (b.get("network") or "testnet").strip().lower()
             import requests
             if chain == "sui":
-                # network -> GraphQL endpoint + USDC coin type (devnet shares
-                # the testnet USDC deployment on current Sui tooling).
+                # network -> GraphQL endpoint + USDC coin type (mainnet uses
+                # canonical Circle USDC; testnet uses the Aftermath settleId).
                 if network == "mainnet":
                     gql = "https://graphql.mainnet.sui.io/graphql"
                     usdc_type = self.SUI_USDC_MAINNET
-                elif network == "devnet":
-                    gql = "https://graphql.devnet.sui.io/graphql"
-                    usdc_type = self.SUI_USDC_TESTNET
                 else:
                     gql = "https://graphql.testnet.sui.io/graphql"
                     usdc_type = self.SUI_USDC_TESTNET
@@ -1530,11 +1526,10 @@ class UserBotController:
             b = self.registry.get_bot(bot_id)
             if q.data.startswith("sb:set_network"):
                 net = q.data.rsplit(":", 1)[1]
-                if net not in ("mainnet", "testnet", "devnet"):
+                if net not in ("mainnet", "testnet"):
                     net = "testnet"
                 self.registry.update_bot(bot_id, network=net)
-                label = {"mainnet": "🌐 mainnet", "testnet": "🧪 testnet",
-                         "devnet": "🛠 devnet"}.get(net, net)
+                label = {"mainnet": "🌐 mainnet", "testnet": "🧪 testnet"}.get(net, net)
                 await q.message.edit_text(f"✅ Network set to: <b>{label}</b>\n\n"
                                           f"⚠️ This affects which endpoints your orders hit. "
                                           f"Restart your bot for it to take effect.",
@@ -1578,8 +1573,7 @@ class UserBotController:
             ttype_label = f"{icons.get(current_ttype, '❓')} {current_ttype.upper()}"
             current_chain = b.get("chain") or "sui"
             current_network = b.get("network") or "testnet"
-            _net_label = {"mainnet": "🌐 mainnet", "testnet": "🧪 testnet",
-                          "devnet": "🛠 devnet"}.get(current_network, current_network)
+            _net_label = {"mainnet": "🌐 mainnet", "testnet": "🧪 testnet"}.get(current_network, current_network)
             text = (f"⚙️ Settings - {b['bot_name']}\n\n"
                     f"Chain:     {_chain_label(current_chain)}\n"
                     f"Network:   {_net_label}\n"
@@ -1590,9 +1584,8 @@ class UserBotController:
                     f"AI key:    {'set ✓' if self.registry.get_active_key(tg_id) else 'not set'}")
             kb = [
                 [telegram.InlineKeyboardButton(f"⛓ Chain: {_chain_label(current_chain)}", callback_data="sb:chain")],
-                [telegram.InlineKeyboardButton(f"🌐 Network: {'🌐 mainnet' if current_network == 'mainnet' else ('🧪 testnet' if current_network == 'testnet' else '🛠 devnet')}", callback_data="sb:set_network:mainnet"),
-                 telegram.InlineKeyboardButton("testnet", callback_data="sb:set_network:testnet"),
-                 telegram.InlineKeyboardButton("devnet", callback_data="sb:set_network:devnet")],
+                [telegram.InlineKeyboardButton(f"🌐 Network: {'🌐 mainnet' if current_network == 'mainnet' else '🧪 testnet'}", callback_data="sb:set_network:mainnet"),
+                 telegram.InlineKeyboardButton("testnet", callback_data="sb:set_network:testnet")],
                 [telegram.InlineKeyboardButton(f"⏱ Interval: {b['interval_sec']}s", callback_data="sb:set_interval:120"),
                  telegram.InlineKeyboardButton("60s", callback_data="sb:set_interval:60"),
                  telegram.InlineKeyboardButton("5m", callback_data="sb:set_interval:300")],

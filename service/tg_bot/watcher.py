@@ -353,7 +353,9 @@ class Watcher:
     # ---- deposit detection (Sui GraphQL balance-delta watch) ----
     # Native Circle USDC on Sui mainnet (canonical coin type, 2026).
     SUI_USDC_MAINNET = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
-    SUI_USDC_TESTNET = "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
+    # Testnet USDC = the Aftermath testnet settleId (only this type can fund
+    # the perp account).
+    SUI_USDC_TESTNET = "0xcdd397f2cffb7f5d439f56fc01afe5585c5f06e3bcd2ee3a21753c566de313d9::usdc::USDC"
 
     def _wallet_balances(self) -> tuple[float, float] | None:
         """(USDC, SUI) on-chain balance for the bot's wallet via Sui GraphQL

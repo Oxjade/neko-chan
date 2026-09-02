@@ -29,7 +29,6 @@ log = logging.getLogger("execution")
 
 SUI_MAINNET_RPC = "https://fullnode.mainnet.sui.io:443"
 SUI_TESTNET_RPC = "https://fullnode.testnet.sui.io:443"
-SUI_DEVNET_RPC = "https://fullnode.devnet.sui.io:443"
 
 SUI_COIN_TYPE = "0x2::sui::SUI"
 
@@ -38,17 +37,17 @@ SUI_COIN_TYPE = "0x2::sui::SUI"
 USDC_MAINNET_COIN_TYPE = (
     "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
 )
-# Testnet USDC on Sui — default Circle USDC type is mainnet; testnet uses the
-# well-known testnet USDC deployment.
+# Testnet USDC = the Aftermath testnet settleId (only this type can fund the
+# Aftermath perp account; the generic faucet USDC is a different token).
 USDC_TESTNET_COIN_TYPE = (
-    "0x1a67b3b13e8774bd5b746ac5a4acbcc15ed41010096fe642a1abf2e6f6e2285b::coin::COIN"
+    "0xcdd397f2cffb7f5d439f56fc01afe5585c5f06e3bcd2ee3a21753c566de313d9::usdc::USDC"
 )
 
 DEEPBOOK_MODULE = "deepbook"
 DEEPBOOK_DECIMALS = 6  # DeepBook prices/quantities are u64 with 6 decimals
 # Aftermath perp prices on Sui are raw float from the CCXT API.
 AFTERMATH_PRICE_SCALE = 1.0
-GAS_MIN_BALANCE = 1_000_000_000  # require at least 1 SUI for gas in v1
+GAS_MIN_BALANCE = 50_000_000  # require at least 0.05 SUI for gas (testnet faucets are small)
 RPC_TIMEOUT = 20
 
 
@@ -395,12 +394,26 @@ def _ed25519_verify(pub: bytes, message: bytes, signature: bytes) -> bool:
     return lhs == rhs
 
 
+def _digest_to_hex(digest: str) -> str:
+    """Sui object digests are base58 in GraphQL responses; the BCS object ref
+    needs the raw 32 bytes as hex. Converts base58 -> '0x' + hex."""
+    if not digest:
+        return ""
+    if digest.startswith("0x") and len(digest) == 66:
+        return digest
+    try:
+        import base58 as _b58
+        return "0x" + _b58.b58decode(digest).hex()
+    except Exception:
+        return digest
+
+
 # ---------------------------------------------------------------- Adapter
 
 class SUIAdapter:
     def __init__(self, ledger: ExecLedger, keypair_hex: str,
                  rpc_url: str = SUI_MAINNET_RPC, testnet: bool = False,
-                 network: str = "", usdc_coin_type: str = USDC_MAINNET_COIN_TYPE,
+                 network: str = "", usdc_coin_type: str | None = None,
                  deepbook_package: str | None = None,
                  pool_id: str | None = None,
                  balance_manager: str | None = None,
@@ -408,22 +421,23 @@ class SUIAdapter:
                  aftermath: object | None = None):
         self.ledger = ledger
         self.testnet = testnet
-        # Explicit network name wins (testnet|devnet|mainnet); the legacy bool
-        # is kept for callers that only know testnet vs not.
+        # Explicit network name wins (mainnet|testnet); Aftermath has no devnet.
         self.network = (network or ("testnet" if testnet else "mainnet")).strip().lower()
+        if self.network not in ("mainnet", "testnet"):
+            self.network = "testnet" if testnet else "mainnet"
         if rpc_url and rpc_url != SUI_MAINNET_RPC:
             self.rpc_url = rpc_url
         else:
             self.rpc_url = {
-                "devnet": SUI_DEVNET_RPC,
                 "testnet": SUI_TESTNET_RPC,
                 "mainnet": SUI_MAINNET_RPC,
             }.get(self.network, SUI_TESTNET_RPC if testnet else rpc_url)
-        self.usdc_coin_type = usdc_coin_type
+        self.usdc_coin_type = usdc_coin_type or (
+            USDC_TESTNET_COIN_TYPE if self.network == "testnet" else USDC_MAINNET_COIN_TYPE)
         self.deepbook_package = deepbook_package
         self.pool_id = pool_id
         self.balance_manager = balance_manager
-        self.pool_coin_types = pool_coin_types or [SUI_COIN_TYPE, usdc_coin_type]
+        self.pool_coin_types = pool_coin_types or [SUI_COIN_TYPE, self.usdc_coin_type]
         self.aftermath = aftermath  # optional AftermathAdapter for aftermath-perp venue
         self._shared_cache: dict = {}
         self._rpc_seq = 0
@@ -518,11 +532,15 @@ class SUIAdapter:
             raise SuiRpcError("graphql", f"transport error: {exc}") from exc
 
     def _gql_coins(self, coin_type: str) -> list[dict]:
-        """Owned coin objects via GraphQL (JSON-RPC suix_getCoins is deprecated)."""
+        """Owned coin objects via GraphQL (JSON-RPC suix_getCoins is deprecated).
+
+        The objects filter requires the full `0x2::coin::Coin<...>` type (the
+        raw coin type alone matches nothing), and the true balance is in
+        `contents.json.balance` (raw u64) - the per-object balance field
+        returns 0 on current GraphQL."""
         addr = self.address[2:] if self.address.startswith("0x") else self.address
-        # Query: get MoveObject nodes (which ARE the coin objects) owned by the
-        # address, filtered by the coin's Move type. The balance field needs the
-        # coinType argument.
+        if not coin_type.startswith("0x2::coin::Coin<"):
+            coin_type = f"0x2::coin::Coin<{coin_type}>"
         q = (
             '{ address(address: "0x' + addr + '") {'
             '  objects(first: 50, filter: {type: "' + coin_type + '"}) {'
@@ -530,7 +548,7 @@ class SUIAdapter:
             '      address'
             '      version'
             '      digest'
-            '      balance(coinType: "' + coin_type + '") { totalBalance }'
+            '      contents { json }'
             '    }'
             '  }'
             '} }'
@@ -545,16 +563,18 @@ class SUIAdapter:
                 continue
             bal = 0
             try:
-                bal = int((n.get("balance") or {}).get("totalBalance", 0) or 0)
+                bal = int(((n.get("contents") or {}).get("json") or {}).get("balance") or 0)
             except Exception:
                 pass
             out.append({
                 "objectId": oid,
-                "version": int(n.get("version", 0) or 0),
-                "digest": n.get("digest", ""),
-                "balance": bal,
-            })
+                "version": int(n.get("version", 0)),
+"digest": _digest_to_hex(n.get("digest", "")),
+                 "balance": bal,
+             })
         return out
+
+    # ------------------------------------------------------------ orders
 
     # ------------------------------------------------------------ balances / positions
 
@@ -570,10 +590,25 @@ class SUIAdapter:
             coin_type, decimals = self._coin_spec(asset)
             coins = self._gql_coins(coin_type)
             total = sum(c["balance"] for c in coins)
-            return total / (10**decimals)
+            balance = total / (10**decimals)
         except Exception:  # noqa: BLE001
             log.exception("get_balance failed for %s", asset)
             return 0.0
+        # AFTERMATH ACCOUNT: when the perp adapter is attached, USDC balance
+        # includes the collateral held inside the Aftermath trading account
+        # (the wallet's on-chain USDC plus what was deposited into the perp
+        # account). This is what the risk guard must see for exposure caps.
+        if asset == "USDC" and self.aftermath is not None:
+            try:
+                acct = self.aftermath.accounts()
+                for a in acct or []:
+                    if isinstance(a, dict):
+                        coll = a.get("collateral")
+                        if coll:
+                            balance += float(coll)
+            except Exception:  # noqa: BLE001
+                log.warning("[sui] aftermath collateral read failed (wallet-only balance)")
+        return balance
 
     def get_positions(self) -> list[dict]:
         """Open perp positions. DeepBook margin is not indexed (v1); Aftermath
@@ -621,10 +656,18 @@ class SUIAdapter:
         if len(self._shared_cache) == 2:
             return self._shared_cache
         ids = [oid for oid in (self.pool_id, self.balance_manager) if oid]
-        res = self._rpc("sui_multiGetObjects", [
-            ids,
-            {"showOwner": True, "showContent": False, "showType": False, "showDisplay": False},
-        ])
+        if not ids:
+            return {}
+        try:
+            res = self._rpc("sui_multiGetObjects", [
+                ids,
+                {"showOwner": True, "showContent": False, "showType": False, "showDisplay": False},
+            ])
+        except SuiRpcError as exc:
+            # JSON-RPC multiGetObjects deprecated on public fullnodes; DeepBook
+            # shared-object txs are not the transfer path, so empty is safe.
+            log.warning("[sui] shared versions unavailable: %s", exc)
+            return {}
         cache = {}
         for item in res or []:
             data = item.get("data") if isinstance(item, dict) else None
@@ -762,11 +805,11 @@ class SUIAdapter:
         return self._broadcast_tx(tx_bytes)
 
     def _dry_run(self, tx_json: dict) -> dict:
-        """Simulate a transaction via GraphQL simulateTransaction (the JSON-RPC
-        sui_dryRunTransactionBlock is deprecated on public fullnodes).
+        """Estimate gas for a transaction.
 
-        tx_json is the ProgrammableTransaction {kind, inputs, transactions}
-        JSON shape. Returns {gas_price, budget}."""
+        Tries GraphQL simulateTransaction (available on mainnet GraphQL); when
+        the mutation is absent (testnet), falls back to a fixed budget derived
+        from the reference gas price. A transfer PTB costs ~0.001-0.005 SUI."""
         q = (
             'mutation { '
             '  simulateTransaction(transaction: ' + json.dumps(tx_json) + ', '
@@ -778,7 +821,16 @@ class SUIAdapter:
             '  } '
             '}'
         )
-        data = self._gql(q)
+        try:
+            data = self._gql(q)
+        except SuiRpcError as exc:
+            if "simulateTransaction" in str(exc) or "GRAPHQL" in str(exc):
+                # simulateTransaction not exposed on this network (testnet) -
+                # use a fixed budget from the reference gas price. A transfer
+                # PTB with storage costs ~0.005-0.02 SUI; budget generously.
+                gas_price = self._gql_gas_price()
+                return {"gas_price": gas_price, "budget": max(20_000_000, gas_price * 20_000)}
+            raise
         effects = (data.get("simulateTransaction") or {}).get("effects") or {}
         status = effects.get("status") or {}
         if str(status.get("status")) != "SUCCESS":
@@ -793,11 +845,15 @@ class SUIAdapter:
         return {"gas_price": gas_price, "budget": budget}
 
     def _gql_gas_price(self) -> int:
-        """Reference gas price via GraphQL (suix_getReferenceGasPrice deprecated)."""
-        q = '{ serviceConfig { referenceGasPrice } }'
-        data = self._gql(q)
-        cfg = data.get("serviceConfig") or {}
-        return int(cfg.get("referenceGasPrice") or 1000)
+        """Reference gas price via GraphQL, falling back to the standard 1000
+        MIST when the field is not exposed (testnet ServiceConfig lacks it)."""
+        try:
+            q = '{ serviceConfig { referenceGasPrice } }'
+            data = self._gql(q)
+            cfg = data.get("serviceConfig") or {}
+            return int(cfg.get("referenceGasPrice") or 1000)
+        except SuiRpcError:
+            return 1000
 
     def _broadcast(self, call_args: list[dict], command: dict,
                    gas_price: int, budget: int) -> dict:
@@ -811,22 +867,26 @@ class SUIAdapter:
         """Broadcast tx bytes via GraphQL executeTransaction mutation.
 
         GraphQL signature: executeTransaction(transactionDataBcs: Base64!,
-        signatures: [Signature!]!). Returns {tx_bytes, signature, digest}."""
+        signatures: [Signature!]!). The digest and status live on effects
+        (ExecutionResult has only effects). Returns {tx_bytes, signature,
+        digest, status}."""
         signature = self._sign(tx_bytes)
         tx_b64 = base64.b64encode(tx_bytes).decode()
         q = (
             'mutation { '
             '  executeTransaction(transactionDataBcs: "' + tx_b64 + '", '
             '    signatures: ["' + signature + '"]) { '
-            '    digest '
-            '    effects { status { status } } '
+            '    effects { digest status } '
             '  } '
             '}'
         )
         data = self._gql(q)
         exec_res = data.get("executeTransaction") or {}
-        digest = exec_res.get("digest") or ""
-        return {"tx_bytes": tx_b64, "signature": signature, "digest": digest}
+        effects = exec_res.get("effects") or {}
+        digest = effects.get("digest") or ""
+        status = str(effects.get("status") or "")
+        return {"tx_bytes": tx_b64, "signature": signature, "digest": digest,
+                "status": status}
 
     def _sign(self, tx_bytes: bytes) -> str:
         if self._kp is not None:

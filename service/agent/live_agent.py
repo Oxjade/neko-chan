@@ -285,34 +285,12 @@ def get_history(symbol: str, market: str, days: int = 30) -> pd.DataFrame:
 def execute_trade(token: str, symbol: str, market: str, action: str, quantity: float,
                   stop_loss_pct=None, take_profit_pct=None, leverage=None,
                   ref_price: float = 0.0) -> dict:
-    payload = {
-        "market": market, "symbol": symbol, "action": action,
-        "quantity": quantity, "price": 0, "executed_at": "now",
-    }
-    if leverage:
-        payload["leverage"] = leverage
-    # PAPER LIMIT-FILL SIMULATION: opens (buy/short) carry the same 2bps
-    # inside-market limit price the real path uses (see ENTRY_OFFSET_BPS), so
-    # the paper engine fills at the better maker price instead of the spread.
-    # The limit is computed from the reference price the agent saw; the server
-    # clamps it against the live fetched price (never worse than market).
-    if action in ("buy", "short") and ref_price > 0:
-        payload["limit_price"] = round(
-            ref_price * (1 - ENTRY_OFFSET_BPS / 10000.0) if action == "buy"
-            else ref_price * (1 + ENTRY_OFFSET_BPS / 10000.0), 8)
-    # stop/take are OPEN-side params only: the platform rejects them on closes
-    # (routes_signals.py: "can only be set when opening (buy/short)"). Do not
-    # forward them on sell/cover or the close is rejected and the position
-    # stays open (this was the 2026-08-27 00:41/01:14 ETH-sell rejections).
-    if stop_loss_pct is not None and action in ("buy", "short"):
-        payload["stop_loss_pct"] = stop_loss_pct
-    if take_profit_pct is not None and action in ("buy", "short"):
-        payload["take_profit_pct"] = take_profit_pct
-    r = requests.post(f"{BASE_URL}/api/signals/realtime", headers=_headers(token),
-                      json=payload, timeout=60)
-    if r.status_code != 200:
-        return {"ok": False, "error": r.json().get("detail", r.text[:200])}
-    return {"ok": True, **r.json()}
+    """PAPER MODE REMOVED (2026-09): the bot only trades real venues.
+
+    This function is retained only as a defensive stub - the agent never calls
+    it (real orders route through the execution gateway). If ever invoked it
+    reports the removal explicitly instead of fabricating a paper fill."""
+    return {"ok": False, "error": "paper mode removed - real execution required"}
 
 
 # ---------------------------------------------------------------- profitability gate
@@ -1204,10 +1182,24 @@ def log_decision(row: dict):
     """
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LOG_HEADER = "ts,symbol,direction,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n"
         fresh = not LOG_PATH.exists()
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
+        with open(LOG_PATH, "a+", encoding="utf-8") as f:
             if fresh:
-                f.write("ts,symbol,direction,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n")
+                f.write(LOG_HEADER)
+            else:
+                # SCHEMA GUARD: if the file exists but its header lacks the
+                # current columns (a pre-direction file), rebuild it with the
+                # new header preserving every existing data row so appends
+                # never shift columns again.
+                f.seek(0)
+                first = f.readline()
+                if first.strip() != LOG_HEADER.strip():
+                    import os as _os
+                    body = f.read()
+                    with open(LOG_PATH, "w", encoding="utf-8") as g:
+                        g.write(LOG_HEADER)
+                        g.write(body)  # keep all existing rows
             ts = datetime.now(timezone.utc).isoformat()
             f.write(f"{ts},{row.get('symbol')},{row.get('direction')},{row.get('action')},{row.get('price')},"
                     f"{row.get('quantity')},{row.get('stop_pct')},{row.get('take_pct')},"
@@ -2104,30 +2096,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 stop=_last_scenario.stop,
                                 target=_last_scenario.target)
         else:
-            # Pop-up the decided trade BEFORE the paper order goes out.
-            notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
-                         stop_pct, take_pct, lev_choice,
-                         reasoning=f"[LLM+quant] {reasoning}")
-            fill = execute_trade(token, symbol, market, row["action"], qty, stop_pct or None, take_pct or None,
-                     leverage=lev_choice if action in ("buy", "short") else 1.0,
-                     ref_price=row["price"] or prices.get(symbol, 0) or 0)
-            row["fill_ok"] = fill["ok"]
-            row["error"] = fill.get("error", "")
-            row["price"] = fill.get("price", row["price"])
-            if not fill.get("ok"):
-                notify_error(fill.get("error", ""))
-            print(f"[trade] {row['action']} {qty} {symbol} [{market}] @ {fill.get('price', 'n/a')} "
-                  f"-> {'OK' if fill['ok'] else fill['error']}")
-            if fill.get("ok") and _last_scenario is not None:
-                _log_prediction(decision, _last_scenario.p_win, _last_scenario.R,
-                                _last_scenario.ev, _last_scenario.drift_annual,
-                                _last_scenario.vol_annual,
-                                entry=_last_scenario.entry,
-                                stop=_last_scenario.stop,
-                                target=_last_scenario.target)
-            # D2 fix: LOG IMMEDIATELY after the DB fill is acknowledged so a
-            # later exception can never make an executed trade invisible in the
-            # decision log (this was the 2026-08-26 22:42 EURUSD gap).
+            # PAPER MODE REMOVED (2026-09): the bot only trades real venues
+            # (Aftermath mainnet/testnet). Without a ready execution gateway
+            # the agent HOLDS - it never fabricates paper fills.
+            row["action"] = "hold"
+            row["error"] = "real execution not configured - holding (paper mode removed)"
+            print(f"[hold] real execution not configured - holding (paper mode removed)")
             log_decision(row)
             return
     else:
@@ -2229,11 +2203,11 @@ def main():
                                     clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE),
                                 )
                             else:
-                                fill = execute_trade(token, pick.symbol,
-                                                     dict(UNIVERSE).get(pick.symbol, "crypto"),
-                                                     side, qty,
-                                                     leverage=clamp_leverage(pick.symbol, "crypto", LIVE_AGENT_LEVERAGE),
-                                                     ref_price=prices.get(pick.symbol) or 0)
+                                # PAPER MODE REMOVED: no real gateway means no
+                                # real position to close - never fabricate a
+                                # paper exit.
+                                fill = {"ok": False,
+                                        "error": "real execution not configured - exit skipped (paper mode removed)"}
                             if fill.get("ok"):
                                 print(f"[exit] {label}: {pick.symbol} - {pick.reasoning[:80]}")
                             else:

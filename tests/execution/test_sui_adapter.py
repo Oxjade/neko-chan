@@ -37,13 +37,16 @@ class FakeResponse:
 
 
 def _gql_coins_data(coin_type, balance):
-    """GraphQL response for the _gql_coins query (one owned coin)."""
+    """GraphQL response for the _gql_coins query (one owned coin).
+
+    Current GraphQL returns the balance inside contents.json (raw u64); the
+    per-object balance field is unused."""
     addr_hex = ADDR[2:]
     return {"data": {"address": {"objects": {"nodes": [{
         "address": GAS_COIN,
         "version": "5",
         "digest": "0x3333",
-        "balance": {"totalBalance": str(balance)},
+        "contents": {"json": {"id": GAS_COIN, "balance": str(balance)}},
     }]}}}}
 
 
@@ -62,9 +65,9 @@ class RpcRecorder:
         self.calls.append((kind, payload))
         q = payload.get("query", "")
         if kind == "gql":
-            if "objects(first: 50, filter: {type: \"0x2::sui::SUI\"})" in q:
+            if 'filter: {type: "0x2::coin::Coin<0x2::sui::SUI>"}' in q:
                 return FakeResponse(_gql_coins_data("0x2::sui::SUI", 1_500_000_000))
-            if f'filter: {{type: "{USDC_MAINNET_COIN_TYPE}"}}' in q:
+            if f'filter: {{type: "0x2::coin::Coin<{USDC_MAINNET_COIN_TYPE}>"}}' in q:
                 return FakeResponse(_gql_coins_data(USDC_MAINNET_COIN_TYPE, 12_500_000))
             if "simulateTransaction" in q:
                 return FakeResponse({"data": {"simulateTransaction": {"effects": {
@@ -73,8 +76,7 @@ class RpcRecorder:
                 }}}})
             if "executeTransaction" in q:
                 return FakeResponse({"data": {"executeTransaction": {
-                    "digest": "0xdeadbeefcafe",
-                    "effects": {"status": {"status": "SUCCESS"}},
+                    "effects": {"digest": "0xdeadbeefcafe", "status": "SUCCESS"},
                 }}})
             if "serviceConfig" in q:
                 return FakeResponse({"data": {"serviceConfig": {"referenceGasPrice": 1000}}})
