@@ -946,7 +946,7 @@ class UserBotController:
             b_now = self.registry.get_bot(bot_id)
             if not _parse_watchlist((b_now or {}).get("watchlist")):
                 _def_watch = {
-                    "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                    "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
                     "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
                     "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
                 }.get(chain, ["BTC", "ETH"])
@@ -1072,7 +1072,7 @@ class UserBotController:
             chain = b.get("chain") or "sui"
             watched = _parse_watchlist(b.get("watchlist"))
             default = {
-                "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
                 "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])
@@ -1612,7 +1612,7 @@ class UserBotController:
             chain = b.get("chain") or "sui"
             watched = _parse_watchlist(b.get("watchlist"))
             default = {
-                "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
                 "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])

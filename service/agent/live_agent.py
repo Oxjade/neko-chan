@@ -885,7 +885,7 @@ def _expand_universe_from_gateway(gw) -> None:
         if not listed:
             # static fallback for the chain's known perp markets
             listed = {
-                "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+                "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
                 "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])
@@ -2126,7 +2126,7 @@ def _scope_universe_to_chain() -> None:
         # LIVE_AGENT_SYMBOLS to crypto symbols AND no chain is chosen... but a
         # chain IS chosen here, so always scope to the chain's perps.
         perp_assets = {
-            "sui": ["BTC", "ETH", "SOL", "SUI", "ARB"],
+            "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
             "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
         }.get(chain, ["BTC", "ETH"])
