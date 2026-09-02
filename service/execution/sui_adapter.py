@@ -606,8 +606,14 @@ class SUIAdapter:
                         coll = a.get("collateral")
                         if coll:
                             balance += float(coll)
-            except Exception:  # noqa: BLE001
-                log.warning("[sui] aftermath collateral read failed (wallet-only balance)")
+            except Exception:
+                pass
+            # Fallback: use the native collateral() when CCXT accounts lack the field.
+            if balance == 0:
+                try:
+                    balance += self.aftermath.collateral()
+                except Exception:
+                    pass
         return balance
 
     def get_positions(self) -> list[dict]:
