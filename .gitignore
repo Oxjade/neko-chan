@@ -147,5 +147,18 @@ impeccable.context.tmp
 # Runtime artifacts
 # ====================
 exec_ledger.db
+exec_ledger.db.bak
 research/exports/live_agent_log.csv
+research/exports/live_agent_cache.json
+research/exports/predictions.csv
+research/exports/trailing_high_cache.json
+service/agent/.notify_dedup.json
 service/tg_bot/cards/output/
+
+# ====================
+# Local scripts & state
+# ====================
+scripts/
+.unlazy/
+wipe_and_restart.sh
+*.bak
