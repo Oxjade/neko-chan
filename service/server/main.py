@@ -98,4 +98,5 @@ async def startup_event():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, access_log=api_access_log_enabled())
+    _port = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
+    uvicorn.run(app, host="127.0.0.1", port=_port, access_log=api_access_log_enabled())
