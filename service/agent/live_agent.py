@@ -188,8 +188,11 @@ def get_price(token: str, symbol: str, market: str) -> float:
 # Aftermath public perp CLOB orderbook (no API key required for reads). Used to
 # price Sui-based perp analysis/trades directly from the venue's own book
 # instead of routing through Hyperliquid.
-AFTERMATH_API = "https://aftermath.finance/api"
-AFTERMATH_TESTNET_API = "https://testnet.aftermath.finance/api"
+# Aftermath is the primary perp market-data source. Overridable via env
+# (AFTERMATH_API_BASE or AFTERMATH_TESTNET_API_BASE) for staging/self-host.
+AFTERMATH_API = os.getenv("AFTERMATH_API_BASE", "https://aftermath.finance/api").rstrip("/")
+AFTERMATH_TESTNET_API = os.getenv("AFTERMATH_TESTNET_API_BASE",
+                                  "https://testnet.aftermath.finance/api").rstrip("/")
 AFTERMATH_MARKET_SYMBOLS = {
     "BTC": "BTC/USD:USDC", "ETH": "ETH/USD:USDC", "SOL": "SOL/USD:USDC",
     "SUI": "SUI/USD:USDC", "HYPE": "HYPE/USD:USDC", "XRP": "XRP/USD:USDC",
