@@ -18,7 +18,7 @@ class EnvExampleTests(unittest.TestCase):
     def test_env_example_is_parseable_by_dotenv(self) -> None:
         values = dotenv_values(ROOT_DIR / ".env.example")
 
-        self.assertEqual(values["ENVIRONMENT"], "development")
+        self.assertEqual(values["ENVIRONMENT"], "production")
         self.assertEqual(values["DATABASE_URL"], "")
         self.assertEqual(values["DB_PATH"], "service/server/data/clawtrader.db")
         self.assertEqual(values["ADANOS_API_BASE_URL"], "https://api.adanos.org")
