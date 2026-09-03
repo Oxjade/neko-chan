@@ -546,6 +546,45 @@ class UserBotController:
             return {}
         return {}
 
+    def _exec_account(self, bot_id: int, chain: str) -> dict:
+        """Real on-chain account state for a bot+chain (RPC, not mock).
+        Falls back to the user's generated wallet (address) even when the
+        gateway has no chain keys, so Receive/dashboard always shows the
+        wallet with live balances."""
+        wallet = self._user_wallet(bot_id, chain)
+        if not self._exec_ready():
+            if wallet:
+                return {"balances": self._rpc_balances(
+                            bot_id, chain, wallet.get("address") or ""),
+                        "positions": [],
+                        "wallet_address": wallet.get("address") or ""}
+            return {"balances": {}, "positions": []}
+        self._exec_path()
+        try:
+            self.gateway.provision_wallet(bot_id, chain)
+        except Exception:
+            pass
+        if wallet is None:
+            try:
+                wallet = self.gateway.ledger.wallet_by_bot_chain(bot_id, chain)
+            except Exception:
+                pass
+        if not wallet:
+            return {"balances": {}, "positions": []}
+        try:
+            self.gateway.sync(bot_id, chain)
+        except Exception:
+            pass
+        try:
+            state = self.gateway.ledger.load_chain_state(wallet["id"]) or {}
+        except Exception:
+            state = {}
+        return {
+            "balances": state.get("balances") or {},
+            "positions": state.get("positions") or [],
+            "wallet_address": wallet.get("address") or "",
+        }
+
     def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
         self._exec_path()
         from wallet_ui import render_wallet_panel
