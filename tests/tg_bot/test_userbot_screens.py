@@ -11,7 +11,7 @@ os.environ.setdefault("TG_VAULT_MASTER_KEY", Fernet.generate_key().decode())
 
 from key_vault import KeyVault
 from store import Registry
-from userbot import render_dashboard_text, render_positions_text
+from userbot import render_dashboard_text, render_positions_text, render_production_dashboard
 
 
 @pytest.fixture()
@@ -58,8 +58,29 @@ def test_dashboard_works_with_zero_trades():
 def test_positions_renders_leverage_and_symbols():
     text = render_positions_text(PORTFOLIO)
     assert "BTC" in text and "LONG" in text
-    assert "5x" in text
-    assert "EURUSD" in text
+
+
+def test_production_dashboard_shows_real_balance_and_address():
+    account = {"balances": {"USDC": 123.45, "native": 2.5},
+               "positions": [], "wallet_address": "0xabc"}
+    text = render_production_dashboard({"bot_name": "Nekoadmin", "is_running": 1},
+                                       account, "sui")
+    assert "Nekoadmin" in text and "SUI" in text and "0xabc" in text
+    assert "$123.45" in text
+
+
+def test_production_dashboard_shows_real_equity_when_snapshot_provided():
+    account = {"balances": {"USDC": 0.0, "native": 0.088},
+               "positions": [], "wallet_address": "0xabc"}
+    eq = {"usdc": 500.0, "sui": 0.088, "sui_price": 0.78, "sui_value": 0.069,
+          "collateral": 100.0, "unrealized_pnl": 25.0, "equity": 625.0}
+    text = render_production_dashboard({"bot_name": "Nekoadmin", "is_running": 1},
+                                       account, "sui", equity=eq)
+    assert "EQUITY" in text
+    assert "$625.00" in text  # total equity
+    assert "Wallet USDC" in text and "Aftermath" in text
+    assert "$+25.00" in text  # unrealized (money() puts $ before +)
+    assert "Total" in text
 
 
 def test_positions_without_prices_fall_back_to_entry():

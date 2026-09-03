@@ -33,6 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import requests
 
+from sui_equity import sui_equity
+
 # ----------------------------------------------------------------- config
 
 BASE_URL = None  # set from env below
@@ -122,20 +124,60 @@ class Watcher:
         return 0
 
     def equity(self) -> float | None:
+        """Real account equity (USD) for this bot's Sui/Aftermath wallet.
+
+        equity = wallet USDC + Aftermath collateral + unrealized perp PnL.
+        Returns None when the bot isn't a chain wallet we can read."""
         try:
-            token = self.registry.platform_token(self.bot_id)
-            if not token:
+            bot = self.registry.get_bot(self.bot_id) or {}
+            if not bot.get("wallet_addr"):
                 return None
-            r = requests.get(f"{self.platform}/api/positions",
-                             headers={"Authorization": f"Bearer {token}"}, timeout=10)
-            if r.status_code != 200:
-                return None
-            d = r.json()
-            cash = float(d.get("cash", 0))
-            pos_val = sum(float(p.get("pnl") or 0) for p in d.get("positions", []))
-            return cash + pos_val
-        except Exception:
+            snap = sui_equity(bot)
+            return float(snap["equity"])
+        except Exception as exc:
+            log.warning("[watcher] equity read failed: %s", exc)
             return None
+
+    def equity_snapshot(self) -> dict:
+        """Full real-equity snapshot (USDC/collateral/unrealized/SUI/price)."""
+        try:
+            bot = self.registry.get_bot(self.bot_id) or {}
+            if not bot.get("wallet_addr"):
+                return {}
+            snap = sui_equity(bot)
+            snap["chain"] = bot.get("chain") or "sui"
+            return snap
+        except Exception:
+            return {}
+
+    # -------------------------------------------------- real-equity baseline
+
+    BASE_KIND = "watcher_eq_base"
+
+    def _load_baseline(self) -> float | None:
+        """Starting real equity (USD) persisted in the registry event ledger."""
+        try:
+            for e in self.registry.recent_events(self.tg_id, limit=200):
+                if e.get("kind") == self.BASE_KIND and e.get("payload"):
+                    return float(e["payload"].get("usd") or 0.0)
+        except Exception:
+            pass
+        return None
+
+    def _init_baseline(self, equity: float) -> float:
+        """Return the persisted baseline, creating it from `equity` if missing.
+
+        Once created, the baseline is frozen so PnL is measured against a fixed
+        starting point and restarts never re-anchor it to today's equity."""
+        base = self._load_baseline()
+        if base is not None:
+            return base
+        try:
+            self.registry.mark_event(self.tg_id, self.BASE_KIND, self.BASE_KIND,
+                                     {"usd": round(float(equity), 6), "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        except Exception as exc:
+            log.warning("[watcher] baseline persist failed: %s", exc)
+        return float(equity)
 
     # ------------------------------------------------------------ classify
 
@@ -270,27 +312,43 @@ class Watcher:
         return self._trade_stats()[2]
 
     def profit_report(self, pnl: float, trades: int, win: float, fees: float,
-                      equity: float) -> bool:
-        """Push a periodic profit summary with the cat's voice + real numbers."""
+                      equity: float, snap: dict | None = None) -> bool:
+        """Push a periodic profit summary with the cat's voice + real numbers.
+
+        `snap` (optional) is an equity_snapshot() dict used to show the real
+        on-chain breakdown (wallet USDC / Aftermath collateral / unrealized PnL
+        / SUI) so the report never leans on a fake $100k baseline."""
         kind = "watcher_profit"
         ref = time.strftime("%Y-%m-%d")
+        win_txt = f"{win:.0f}%"
+        breakdown = ""
+        if snap:
+            usdc = snap.get("usdc", 0.0)
+            coll = snap.get("collateral", 0.0)
+            unreal = snap.get("unrealized_pnl", 0.0)
+            sui = snap.get("sui", 0.0)
+            sui_val = snap.get("sui_value", 0.0)
+            lines = [f"  Wallet USDC  ${usdc:,.2f}", f"  Aftermath    ${coll:,.2f}"]
+            if unreal:
+                lines.append(f"  Unrealized   ${unreal:+,.2f}")
+            if sui:
+                lines.append(f"  SUI          {sui:,.4f} (${sui_val:,.2f})")
+            breakdown = "\n" + "\n".join(lines)
         if pnl >= 0:
             mood = "neko is pleased. the bag is pleased."
-        elif pnl < 0:
-            mood = "neko is unbothered. the bag feels it though."
-        win_txt = f"{win:.0f}%"
-        if pnl >= 0:
-            text = (f"📈 <b>PROFIT REPORT</b> 🐱\n"
-                    f"Net P&L: <b>${pnl:+,.2f}</b>\n"
-                    f"Trades: {trades} · win rate {win_txt}\n"
-                    f"Fees: ${fees:.2f} · Equity: ${equity:,.2f}\n"
-                    f"~ {mood}")
+            header = "📈 <b>PROFIT REPORT</b> 🐱"
+            pnl_txt = f"Net P&L: <b>${pnl:+,.2f}</b>"
         else:
-            text = (f"📉 <b>PROFIT REPORT</b> 🐱\n"
-                    f"Net P&L: <b>{pnl:,.2f}</b>\n"
-                    f"Trades: {trades} · win rate {win_txt}\n"
-                    f"Fees: ${fees:.2f} · Equity: ${equity:,.2f}\n"
-                    f"~ {mood}")
+            mood = "neko is unbothered. the bag feels it though."
+            header = "📉 <b>PROFIT REPORT</b> 🐱"
+            pnl_txt = f"Net P&L: <b>{pnl:,.2f}</b>"
+        text = (f"{header}\n"
+                f"{pnl_txt}\n"
+                f"Trades: {trades} · win rate {win_txt}\n"
+                f"Fees: ${fees:.2f} · Equity: ${equity:,.2f}\n"
+                f"<code>──────────────</code>\n"
+                f"<b>BALANCE</b>{breakdown}\n"
+                f"~ {mood}")
         return self.notify.notify(self.bot_id, self.tg_id, self.bot_token, self.chat_id,
                                   kind, ref, text, dedup=True)
 
@@ -552,7 +610,8 @@ class Watcher:
 
     def run(self):
         log.info("[watcher] started agent watcher (watermark %s)", self.watermark)
-        self.last_equity_mark = self.equity() or self.start_equity
+        self._baseline = self._init_baseline(self.equity() or 0.0)
+        self.last_equity_mark = self.equity() or self._baseline
         self._last_profit_day = None
         self._sent_position_alerts: dict[str, set[str]] = {}  # symbol -> alert levels sent
         self._last_bal = self._wallet_balances()  # seed baseline (no notify on first poll)
@@ -563,13 +622,14 @@ class Watcher:
                 self._watch_deposits()
                 eq = self.equity()
                 if eq is not None:
-                    pct = (eq / self.last_equity_mark - 1) * 100
+                    pct = (eq / self.last_equity_mark - 1) * 100 if self.last_equity_mark else 0.0
                     if abs(pct) >= self.equity_interval * 100:
                         kind = K_MILESTONE_UP if pct > 0 else K_MILESTONE_DOWN
+                        pnl_vs_base = eq - self._baseline
                         if self.notify.notify(self.bot_id, self.tg_id, self.bot_token,
                                               self.chat_id, kind, f"eq:{str(eq)[:12]}",
-                                              f"🚀 Equity {eq:,.2f} ({pct:+.1f}%)" if pct > 0
-                                              else f"⚠️ Equity {eq:,.2f} ({pct:+.1f}%) - consider pausing",
+                                              f"🚀 Equity {eq:,.2f} (P&L {pnl_vs_base:+,.2f})" if pct > 0
+                                              else f"⚠️ Equity {eq:,.2f} (P&L {pnl_vs_base:+,.2f}) - consider pausing",
                                               buttons=[[("⏸️ Pause", "sb:pause")]] if pct < 0 else None,
                                               dedup=True):
                             self.last_equity_mark = eq
@@ -580,12 +640,14 @@ class Watcher:
                     if today != self._last_profit_day:
                         self._last_profit_day = today
                         try:
+                            snap = self.equity_snapshot() or {}
                             self.profit_report(
-                                pnl=eq - self.start_equity,
+                                pnl=eq - self._baseline,
                                 trades=self._trade_count(),
                                 win=self._win_rate(),
                                 fees=self._fees(),
                                 equity=eq,
+                                snap=snap,
                             )
                         except Exception as exc:
                             log.warning("[watcher] profit report failed: %s", exc)

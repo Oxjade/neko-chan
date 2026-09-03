@@ -94,8 +94,13 @@ def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
         daemon=True).start()
 
 
-def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
-    """Simple production dashboard: real chain balance + address + positions."""
+def render_production_dashboard(bot: dict, account: dict, chain: str,
+                                equity: dict | None = None) -> str:
+    """Simple production dashboard: real chain balance + address + positions.
+
+    `equity` is an optional sui_equity.sui_equity() snapshot used to show a
+    real Equity (wallet USDC + Aftermath collateral + unrealized PnL) and the
+    on-chain breakdown, instead of a hard-coded baseline."""
     line = "─" * 26
     bal = account.get("balances") or {}
     usdc = float(bal.get("USDC", 0))
@@ -103,6 +108,22 @@ def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
     positions = account.get("positions") or []
     realized = float(bal.get("realized_pnl", 0))
     addr = str(account.get("wallet_address") or "") or ""
+    equity_lines = ""
+    if equity:
+        e_usdc = float(equity.get("usdc", 0))
+        e_coll = float(equity.get("collateral", 0))
+        e_unreal = float(equity.get("unrealized_pnl", 0))
+        e_sui = float(equity.get("sui", 0))
+        e_sui_val = float(equity.get("sui_value", 0))
+        e_eq = float(equity.get("equity", 0))
+        bits = [f"  Wallet USDC <code>{_money(e_usdc, sign=False)}</code>",
+                f"  Aftermath   <code>{_money(e_coll, sign=False)}</code>"]
+        if abs(e_unreal) >= 0.005:
+            bits.append(f"  Unrealized  <code>{_money(e_unreal)}</code>")
+        if e_sui:
+            bits.append(f"  SUI         <code>{e_sui:,.4f} (${e_sui_val:,.2f})</code>")
+        equity_lines = ("\n<b>💎 EQUITY</b>\n" + "\n".join(bits)
+                        + f"\n  <b>Total <code>{_money(e_eq, sign=False)}</code></b>")
     pos_lines = []
     if not positions:
         pos_lines.append("  no open positions")
@@ -131,7 +152,8 @@ def render_production_dashboard(bot: dict, account: dict, chain: str) -> str:
         f"<b>💰 BALANCE</b>\n"
         f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
         f"{f'  SUI <code>{native:,.4f}</code>' if native else ''}\n"
-        f"{f'  realized {_money(realized)}' if realized else ''}\n\n"
+        f"{f'  realized {_money(realized)}' if realized else ''}\n"
+        f"{equity_lines}\n"
         f"{('<b>🔗 ADDRESS</b>\n  <code>' + _esc(addr) + '</code>') if addr else ''}\n"
         f"<b>📡 POSITIONS ({len(positions)})</b>\n" + "\n".join(pos_lines) + "\n"
         f"<code>{line}</code>"
@@ -584,6 +606,16 @@ class UserBotController:
             "positions": state.get("positions") or [],
             "wallet_address": wallet.get("address") or "",
         }
+
+    def _equity_snapshot(self, bot: dict | None = None) -> dict:
+        """Real Sui/Aftermath equity snapshot (wallet USDC + collateral +
+        unrealized PnL). Used by the dashboard to show honest Equity."""
+        try:
+            from sui_equity import sui_equity
+            bot = bot or {}
+            return sui_equity(bot)
+        except Exception:
+            return {}
 
     def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
         self._exec_path()
@@ -1067,7 +1099,7 @@ class UserBotController:
                         account["wallet_address"] = _addr
                 except Exception:
                     pass
-            text = render_production_dashboard(b, account, chain)
+            text = render_production_dashboard(b, account, chain, equity=self._equity_snapshot(b))
             start_label = "⏸️ Pause" if b.get("is_running") else "▶️ Start"
             start_cb = "sb:pause" if b.get("is_running") else "sb:start_agent"
             kb = telegram.InlineKeyboardMarkup([

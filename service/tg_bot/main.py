@@ -96,7 +96,7 @@ def start_watchers(registry: Registry, platform: PlatformClient):
             bot_token=bot_token,
             chat_id=bot["tg_id"],
             platform_base=platform.base,
-            start_equity=100_000.0,
+            start_equity=0.0,
         )
         t = _threading.Thread(target=watcher.run, name=f"watcher-{bot['id']}", daemon=True)
         t.start()
