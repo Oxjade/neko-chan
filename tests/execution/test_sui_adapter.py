@@ -77,6 +77,10 @@ class RpcRecorder:
         self.calls.append((kind, payload))
         q = payload.get("query", "")
         if kind == "gql":
+            if 'balance(coinType: "0x2::sui::SUI")' in q:
+                return FakeResponse({"data": {"address": {"balance": {"totalBalance": "1500000000"}}}})
+            if f'balance(coinType: "{USDC_MAINNET_COIN_TYPE}")' in q:
+                return FakeResponse({"data": {"address": {"balance": {"totalBalance": "12500000"}}}})
             if 'filter: {type: "0x2::coin::Coin<0x2::sui::SUI>"}' in q:
                 return FakeResponse(_gql_coins_data("0x2::sui::SUI", 1_500_000_000))
             if f'filter: {{type: "0x2::coin::Coin<{USDC_MAINNET_COIN_TYPE}>"}}' in q:

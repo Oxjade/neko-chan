@@ -29,6 +29,9 @@ log = logging.getLogger("execution")
 
 SUI_MAINNET_RPC = "https://fullnode.mainnet.sui.io:443"
 SUI_TESTNET_RPC = "https://fullnode.testnet.sui.io:443"
+# Blockvision retains suix_getCoins (fullnode.* deprecated it). Used as fallback
+# for coin-object queries when GraphQL `objects` returns empty (mainnet SUI).
+SUI_MAINNET_RPC_FALLBACK = "https://sui-mainnet-endpoint.blockvision.org:443"
 
 SUI_COIN_TYPE = "0x2::sui::SUI"
 
@@ -531,14 +534,39 @@ class SUIAdapter:
         except requests.RequestException as exc:
             raise SuiRpcError("graphql", f"transport error: {exc}") from exc
 
+    def _gql_balance(self, coin_type: str) -> int:
+        """Total balance for a coin type via GraphQL `address { balance }`.
+
+        This is the reliable way to read a total (SUI, USDC) on mainnet.
+        The `objects` coin query returns empty for Coin on current mainnet
+        GraphQL, but `balance`/`balances` works correctly."""
+        try:
+            q = '{ address(address: "' + self.address + '") { balance(coinType: "' + coin_type + '") { totalBalance } } }'
+            data = self._gql(q)
+            raw = ((data.get("address") or {}).get("balance") or {}).get("totalBalance") or "0"
+            return int(str(raw).strip() or 0)
+        except Exception:
+            return 0
+
     def _gql_coins(self, coin_type: str) -> list[dict]:
         """Owned coin objects via GraphQL (JSON-RPC suix_getCoins is deprecated).
 
         The objects filter requires the full `0x2::coin::Coin<...>` type (the
         raw coin type alone matches nothing), and the true balance is in
         `contents.json.balance` (raw u64) - the per-object balance field
-        returns 0 on current GraphQL."""
+        returns 0 on current GraphQL.
+
+        On mainnet the GraphQL `objects` coin query currently returns empty
+        even when `balance` shows funds (verified 2026-09). Fall back to a
+        JSON-RPC `suix_getCoins` via Blockvision when that happens."""
         addr = self.address[2:] if self.address.startswith("0x") else self.address
+        raw_coin = coin_type
+        if coin_type.startswith("0x2::coin::Coin<"):
+            # unwrap for fallback RPC which wants the inner type
+            try:
+                raw_coin = coin_type.split("<", 1)[1].rsplit(">", 1)[0]
+            except Exception:
+                raw_coin = coin_type
         if not coin_type.startswith("0x2::coin::Coin<"):
             coin_type = f"0x2::coin::Coin<{coin_type}>"
         q = (
@@ -569,9 +597,39 @@ class SUIAdapter:
             out.append({
                 "objectId": oid,
                 "version": int(n.get("version", 0)),
-"digest": _digest_to_hex(n.get("digest", "")),
-                 "balance": bal,
-             })
+ "digest": _digest_to_hex(n.get("digest", "")),
+                  "balance": bal,
+              })
+        if out:
+            return out
+        # Fallback for mainnet where GraphQL objects returns empty: try
+        # Blockvision JSON-RPC `suix_getCoins` (still serves it).
+        if self.network == "mainnet":
+            try:
+                import requests as _rq
+                for url in (SUI_MAINNET_RPC_FALLBACK, self.rpc_url):
+                    try:
+                        r = _rq.post(url, json={
+                            "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
+                            "params": [self.address, raw_coin, None, 50],
+                        }, timeout=8)
+                        j = r.json()
+                        data_list = (j.get("result") or {}).get("data") or []
+                        if data_list:
+                            fallback = []
+                            for c in data_list:
+                                fallback.append({
+                                    "objectId": c.get("coinObjectId") or c.get("objectId"),
+                                    "version": int(c.get("version", 0)),
+                                    "digest": str(c.get("digest") or ""),
+                                    "balance": int(c.get("balance") or 0),
+                                })
+                            if fallback:
+                                return fallback
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         return out
 
     # ------------------------------------------------------------ orders
@@ -588,8 +646,16 @@ class SUIAdapter:
     def get_balance(self, asset: str) -> float:
         try:
             coin_type, decimals = self._coin_spec(asset)
-            coins = self._gql_coins(coin_type)
-            total = sum(c["balance"] for c in coins)
+            # Use GraphQL `balance` (reliable on mainnet) instead of summing
+            # coin objects via `objects` which currently returns empty.
+            total = self._gql_balance(coin_type)
+            if total == 0:
+                # Fallback to summing coin objects if balance field is empty
+                try:
+                    coins = self._gql_coins(coin_type)
+                    total = sum(c["balance"] for c in coins) or 0
+                except Exception:
+                    pass
             balance = total / (10**decimals)
         except Exception:  # noqa: BLE001
             log.exception("get_balance failed for %s", asset)
