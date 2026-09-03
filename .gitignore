@@ -162,3 +162,5 @@ scripts/
 .unlazy/
 wipe_and_restart.sh
 *.bak
+research/exports/wallets/
+~/

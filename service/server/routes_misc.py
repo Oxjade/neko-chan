@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
 
 def _resolve_skill_path(skill_name: Optional[str] = None):
@@ -49,22 +49,13 @@ def register_misc_routes(app: FastAPI) -> None:
         return {'error': f"Skill '{skill_name}' not found"}
 
     @app.get('/')
-    async def serve_index():
-        index_path = Path(__file__).parent.parent / 'frontend' / 'dist' / 'index.html'
-        if index_path.exists():
-            return FileResponse(index_path)
+    async def serve_api_root():
         return {'message': 'AI-Trader API'}
 
     @app.get('/assets/{file}')
     async def serve_assets(file: str):
-        asset_path = Path(__file__).parent.parent / 'frontend' / 'dist' / 'assets' / file
-        if asset_path.exists():
-            return FileResponse(asset_path)
         return Response(status_code=404)
 
     @app.get('/{path:path}')
-    async def serve_spa_fallback(path: str):
-        index_path = Path(__file__).parent.parent / 'frontend' / 'dist' / 'index.html'
-        if index_path.exists():
-            return FileResponse(index_path)
+    async def serve_api_fallback(path: str):
         return {'message': 'AI-Trader API'}
