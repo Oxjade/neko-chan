@@ -142,6 +142,46 @@ def test_get_real_portfolio_aggregates_chains():
     assert portfolio["positions"][0]["side"] == "long"
 
 
+class _FakeAftermath:
+    def __init__(self, collateral=0.0, unrealized=0.0):
+        self._collateral = collateral
+        self._unrealized = unrealized
+
+    def collateral(self):
+        return self._collateral
+
+    def positions(self):
+        return {"ok": True,
+                "data": [{"unrealizedPnl": str(self._unrealized)}]}
+
+
+def test_get_real_portfolio_includes_aftermath_collateral_and_pnl():
+    states = {
+        "sui": {"balances": {"USDC": 20.0}, "positions": []},
+    }
+    # wallet on-chain USDC and Aftermath collateral are distinct: surviving
+    # scenario is funded in the perp account (collateral) with an open win.
+    adapters = {"sui": types.SimpleNamespace(
+        aftermath=_FakeAftermath(collateral=5000.0, unrealized=75.5))}
+    gw = FakeGateway(adapters, chain_states=states)
+    portfolio = live_agent.get_real_portfolio(gw, 7)
+    # 20 (wallet USDC) + 5000 (aftermath collateral) + 75.5 (unrealized PnL)
+    assert portfolio["cash"] == pytest.approx(5095.5)
+
+
+def test_get_real_portfolio_tolerates_broken_aftermath():
+    # An aftermath adapter that blows up must NOT sink the whole portfolio.
+    class _Bad:
+        @property
+        def aftermath(self):
+            raise RuntimeError("boom")
+
+    states = {"sui": {"balances": {"USDC": 20.0}, "positions": []}}
+    gw = FakeGateway({"sui": _Bad()}, chain_states=states)
+    portfolio = live_agent.get_real_portfolio(gw, 7)
+    assert portfolio["cash"] == pytest.approx(20.0)
+
+
 def test_gateway_none_when_execution_disabled():
     live_agent.EXEC_ENABLED = False
     assert live_agent._get_exec_gateway() is None

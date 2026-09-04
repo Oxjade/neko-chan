@@ -483,7 +483,7 @@ class UserBotController:
             from sui_adapter import SUIAdapter
 
             b = self.registry.get_bot(bot_id) or {}
-            network = (b.get("network") or "testnet").strip().lower()
+            network = (b.get("network") or "mainnet").strip().lower()
             testnet = network != "mainnet"
 
             ledger = ExecLedger(os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
@@ -529,7 +529,7 @@ class UserBotController:
             return {}
         try:
             b = self.registry.get_bot(bot_id) or {}
-            network = (b.get("network") or "testnet").strip().lower()
+            network = (b.get("network") or "mainnet").strip().lower()
             import requests
             if chain == "sui":
                 # network -> GraphQL endpoint + USDC coin type (mainnet uses
@@ -1166,7 +1166,7 @@ class UserBotController:
                     import json as _json
                     import csv as _csv
                     from pathlib import Path
-                    cache_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_cache.json"
+                    cache_path = Path(__file__).resolve().parents[2] / "research" / "exports" / f"live_agent_cache_bot{bot_id}.json"
                     latest: dict[str, dict] = {}
                     last_reason = ""
                     if cache_path.exists():
@@ -1181,7 +1181,7 @@ class UserBotController:
                         except Exception:
                             pass
                     if not latest:
-                        log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
+                        log_path = Path(__file__).resolve().parents[2] / "research" / "exports" / f"live_agent_log_bot{bot_id}.csv"
                         if log_path.exists():
                             with open(log_path, newline="", encoding="utf-8") as f:
                                 for row in _csv.DictReader(f):
@@ -1643,7 +1643,7 @@ class UserBotController:
             icons = {"scalp": "⚡", "intraday": "⏱", "swing": "📈", "auto": "🤖"}
             ttype_label = f"{icons.get(current_ttype, '❓')} {current_ttype.upper()}"
             current_chain = b.get("chain") or "sui"
-            current_network = b.get("network") or "testnet"
+            current_network = b.get("network") or "mainnet"
             _net_label = {"mainnet": "🌐 mainnet", "testnet": "🧪 testnet"}.get(current_network, current_network)
             text = (f"⚙️ Settings - {b['bot_name']}\n\n"
                     f"Chain:     {_chain_label(current_chain)}\n"

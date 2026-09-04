@@ -73,7 +73,7 @@ class AgentPool:
             "LIVE_AGENT_EXECUTION": os.environ.get("LIVE_AGENT_EXECUTION", "0"),
             "LIVE_AGENT_STRATEGY": os.environ.get("LIVE_AGENT_STRATEGY", "momentum20"),
             "LIVE_AGENT_TRADER_TYPE": bot.get("trader_type") or "scalp",
-            "LIVE_AGENT_NETWORK": bot.get("network") or "testnet",
+            "LIVE_AGENT_NETWORK": bot.get("network") or "mainnet",
             "LIVE_AGENT_CHAIN": bot.get("chain") or "sui",
             "LIVE_AGENT_WATCHLIST": bot.get("watchlist") or "",
             # for pushing human-friendly error notifications straight to the user

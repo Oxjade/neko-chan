@@ -84,9 +84,19 @@ class Watcher:
 
     # ------------------------------------------------------------ helpers
 
+    @property
+    def _watermark_kind(self) -> str:
+        # Per-bot isolated watermark: each bot tracks its own signal high-water
+        # mark so one bot's progress never skips another bot's signals.
+        return f"{WATERMARK}:{self.bot_id}"
+
     def _load_watermark(self) -> int:
         try:
             row = self.registry.recent_events(self.tg_id, limit=200)
+            # Prefer per-bot kind, fallback to legacy global kind for migration.
+            for e in row:
+                if e.get("kind") == self._watermark_kind and e.get("ref_id"):
+                    return int(e["ref_id"])
             for e in row:
                 if e.get("kind") == WATERMARK and e.get("ref_id"):
                     return int(e["ref_id"])
@@ -96,10 +106,8 @@ class Watcher:
 
     def _save_watermark(self, value: int) -> None:
         try:
-            # overwrite semantics: mark_event is INSERT OR IGNORE keyed on
-            # (tg_id, kind, ref_id); a new ref_id each time = new row, which is
-            # fine for monotonic read (recent_events returns newest first).
-            self.registry.mark_event(self.tg_id, WATERMARK, str(value), None)
+            # Per-bot kind ensures no cross-bot watermark overlap.
+            self.registry.mark_event(self.tg_id, self._watermark_kind, str(value), None)
         except Exception:
             pass
 
@@ -154,9 +162,19 @@ class Watcher:
 
     BASE_KIND = "watcher_eq_base"
 
+    @property
+    def _baseline_kind(self) -> str:
+        # Per-bot isolated baseline: each bot's P&L is measured against its OWN
+        # starting equity, not a shared value that would leak across bots.
+        return f"{self.BASE_KIND}:{self.bot_id}"
+
     def _load_baseline(self) -> float | None:
         """Starting real equity (USD) persisted in the registry event ledger."""
         try:
+            for e in self.registry.recent_events(self.tg_id, limit=200):
+                if e.get("kind") == self._baseline_kind and e.get("payload"):
+                    return float(e["payload"].get("usd") or 0.0)
+            # Fallback to legacy global kind for migration.
             for e in self.registry.recent_events(self.tg_id, limit=200):
                 if e.get("kind") == self.BASE_KIND and e.get("payload"):
                     return float(e["payload"].get("usd") or 0.0)
@@ -173,7 +191,7 @@ class Watcher:
         if base is not None:
             return base
         try:
-            self.registry.mark_event(self.tg_id, self.BASE_KIND, self.BASE_KIND,
+            self.registry.mark_event(self.tg_id, self._baseline_kind, self._baseline_kind,
                                      {"usd": round(float(equity), 6), "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
         except Exception as exc:
             log.warning("[watcher] baseline persist failed: %s", exc)
@@ -423,7 +441,7 @@ class Watcher:
             addr = bot.get("wallet_addr") or ""
             if not addr:
                 return None
-            network = (bot.get("network") or "testnet").strip().lower()
+            network = (bot.get("network") or "mainnet").strip().lower()
             testnet = network != "mainnet"
             gql = f"https://graphql.{'testnet' if testnet else 'mainnet'}.sui.io/graphql"
             usdc_type = self.SUI_USDC_TESTNET if testnet else self.SUI_USDC_MAINNET

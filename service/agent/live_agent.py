@@ -39,8 +39,14 @@ import pandas as pd
 import requests
 
 AGENT_DIR = Path(__file__).resolve().parents[1]  # service/
-LOG_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_log.csv"
-CACHE_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "live_agent_cache.json"
+# Per-bot session isolation: each agent subprocess is launched with its own
+# LIVE_AGENT_BOT_ID (see agent_pool), so decisions + the peek cache must be
+# written to a bot-specific file. A shared single file let one bot's agent
+# clobber another's decisions and leaked cross-bot data into every Peek view.
+_BOT_SLOT = os.getenv("LIVE_AGENT_BOT_ID", "0") or "0"
+_EXPORT_DIR = Path(__file__).resolve().parents[2] / "research" / "exports"
+LOG_PATH = _EXPORT_DIR / f"live_agent_log_bot{_BOT_SLOT}.csv"
+CACHE_PATH = _EXPORT_DIR / f"live_agent_cache_bot{_BOT_SLOT}.json"
 TOKEN_FILE = Path(__file__).resolve().parents[2] / "service" / "agent" / ".agent_token"
 
 MODEL = os.getenv("LIVE_AGENT_MODEL", "opencode-go/deepseek-v4-flash")
@@ -98,8 +104,10 @@ ENTRY_OFFSET_BPS = float(os.getenv("LIVE_AGENT_ENTRY_OFFSET_BPS", "2"))
 # Peak-price tracker for trailing stops (persisted to disk so it survives
 # agent restarts — without this a restart resets the tracker and a winning
 # position that was up 20% loses its peak, potentially missing the trail exit).
+# Per-bot isolated: each bot's trailing high is independent (otherwise bot A's
+# peak would leak into bot B's exit logic).
 _trailing_high: dict[str, float] = {}
-TRAILING_HIGH_PATH = Path(__file__).resolve().parents[2] / "research" / "exports" / "trailing_high_cache.json"
+TRAILING_HIGH_PATH = _EXPORT_DIR / f"trailing_high_cache_bot{_BOT_SLOT}.json"
 try:
     if TRAILING_HIGH_PATH.exists():
         import json as _json
@@ -816,8 +824,9 @@ def equity(portfolio: dict, prices: dict) -> float:
 
 
 # ---------------------------------------------------------------- prediction tracking
-
-PRED_LOG = Path(__file__).resolve().parents[2] / "research" / "exports" / "predictions.csv"
+# Per-bot isolated: each bot logs its own predictions so calibration is not
+# polluted by another bot's trades.
+PRED_LOG = _EXPORT_DIR / f"predictions_bot{_BOT_SLOT}.csv"
 
 
 def _log_prediction(decision: dict, p_win: float, R: float, ev: float,
@@ -850,7 +859,9 @@ def _get_exec_gateway():
             sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "execution"))
             # Per-bot network selection: set the testnet env vars before building
             # the gateway so the adapters hit the right RPC/API endpoints.
-            _network = os.getenv("LIVE_AGENT_NETWORK", "testnet").strip().lower()
+            _network = os.getenv("LIVE_AGENT_NETWORK", "mainnet").strip().lower()
+            if _network not in ("mainnet", "testnet"):
+                _network = "mainnet"
             is_testnet = _network != "mainnet"
             for _chain_var in ("HL", "SOL", "SUI"):
                 os.environ[f"EXEC_{_chain_var}_TESTNET"] = "1" if is_testnet else "0"
@@ -931,7 +942,14 @@ def _resolve_real_venue(symbol: str, market: str, gw) -> tuple[str, str] | None:
 
 
 def get_real_portfolio(gw, bot_id: int) -> dict:
-    """Positions + cash from the execution ledger (synced from on-chain)."""
+    """Positions + cash from the execution ledger (synced from on-chain).
+
+    'cash' is the trading equity available to size new trades: wallet USDC
+    PLUS Aftermath perp collateral PLUS unrealized PnL. The perp deposits live
+    inside the Aftermath account, not the wallet, so counting only on-chain
+    wallet USDC made the agent conclude 'no balance or price' the moment funds
+    were deposited to the venue. Any read failure degrades to the ledger value.
+    """
     positions, cash = [], 0.0
     for chain in gw.adapters:
         try:
@@ -941,6 +959,27 @@ def get_real_portfolio(gw, bot_id: int) -> dict:
         wallet = gw.ledger.wallet_by_bot_chain(bot_id, chain)
         if not wallet:
             continue
+        # Real Aftermath balance (perp collateral + unrealized PnL) if the
+        # gateway wired an aftermath adapter for this chain.
+        aftermath = None
+        try:
+            aftermath = getattr(gw.adapters.get(chain), "aftermath", None)
+        except Exception:
+            aftermath = None
+        if aftermath is not None:
+            try:
+                cash += float(aftermath.collateral() or 0.0)
+                pos = aftermath.positions()
+                rows = pos.get("data") or []
+                if isinstance(rows, dict):
+                    rows = rows.get("positions") or []
+                for p in rows if isinstance(rows, list) else []:
+                    try:
+                        cash += float((p or {}).get("unrealizedPnl") or 0.0)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         state = gw.ledger.load_chain_state(wallet["id"]) or {}
         balances = state.get("balances") or {}
         cash += float(balances.get("USDC") or balances.get("USD") or 0.0)

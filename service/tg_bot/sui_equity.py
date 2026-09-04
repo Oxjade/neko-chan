@@ -28,7 +28,7 @@ def _wallet_balances(bot: dict) -> tuple[float, float]:
     addr = str(bot.get("wallet_addr") or "").strip()
     if not addr:
         return 0.0, 0.0
-    network = (bot.get("network") or "testnet").strip().lower()
+    network = (bot.get("network") or "mainnet").strip().lower()
     testnet = network != "mainnet"
     gql = f"https://graphql.{'testnet' if testnet else 'mainnet'}.sui.io/graphql"
     usdc_type = SUI_USDC_TESTNET if testnet else SUI_USDC_MAINNET
@@ -51,7 +51,7 @@ def _aftermath(bot: dict) -> tuple[float, float, int | None]:
     addr = str(bot.get("wallet_addr") or "").strip()
     if not addr:
         return 0.0, 0.0, None
-    network = (bot.get("network") or "testnet").strip().lower()
+    network = (bot.get("network") or "mainnet").strip().lower()
     api = AFTERMATH_TESTNET_API if network != "mainnet" else AFTERMATH_API
     collateral = 0.0
     try:
