@@ -50,7 +50,7 @@ DEEPBOOK_MODULE = "deepbook"
 DEEPBOOK_DECIMALS = 6  # DeepBook prices/quantities are u64 with 6 decimals
 # Aftermath perp prices on Sui are raw float from the CCXT API.
 AFTERMATH_PRICE_SCALE = 1.0
-GAS_MIN_BALANCE = 50_000_000  # require at least 0.05 SUI for gas (testnet faucets are small)
+GAS_MIN_BALANCE = 5_000_000  # require at least 0.005 SUI for gas (mainnet sends often have ~0.06 SUI)
 RPC_TIMEOUT = 20
 
 
@@ -607,27 +607,35 @@ class SUIAdapter:
         if self.network == "mainnet":
             try:
                 import requests as _rq
+                import time as _time
                 for url in (SUI_MAINNET_RPC_FALLBACK, self.rpc_url):
-                    try:
-                        r = _rq.post(url, json={
-                            "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
-                            "params": [self.address, raw_coin, None, 50],
-                        }, timeout=8)
-                        j = r.json()
-                        data_list = (j.get("result") or {}).get("data") or []
-                        if data_list:
-                            fallback = []
-                            for c in data_list:
-                                fallback.append({
-                                    "objectId": c.get("coinObjectId") or c.get("objectId"),
-                                    "version": int(c.get("version", 0)),
-                                    "digest": str(c.get("digest") or ""),
-                                    "balance": int(c.get("balance") or 0),
-                                })
-                            if fallback:
-                                return fallback
-                    except Exception:
-                        continue
+                    for attempt in range(3):
+                        try:
+                            r = _rq.post(url, json={
+                                "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
+                                "params": [self.address, raw_coin, None, 50],
+                            }, timeout=8)
+                            j = r.json()
+                            # Blockvision rate-limit returns {"error_msg": "too frequent"}
+                            if isinstance(j, dict) and j.get("error_msg") and "frequent" in str(j.get("error_msg")).lower():
+                                _time.sleep(1.5 * (attempt + 1))
+                                continue
+                            data_list = (j.get("result") or {}).get("data") or []
+                            if data_list:
+                                fallback = []
+                                for c in data_list:
+                                    fallback.append({
+                                        "objectId": c.get("coinObjectId") or c.get("objectId"),
+                                        "version": int(c.get("version", 0)),
+                                        "digest": _digest_to_hex(str(c.get("digest") or "")),
+                                        "balance": int(c.get("balance") or 0),
+                                    })
+                                if fallback:
+                                    return fallback
+                            break
+                        except Exception:
+                            _time.sleep(0.5)
+                            continue
             except Exception:
                 pass
         return out
@@ -755,10 +763,18 @@ class SUIAdapter:
 
     def _pick_gas_coin(self) -> dict:
         coins = self._gql_coins(SUI_COIN_TYPE)
+        # Prefer a coin with enough for gas; otherwise fall back to the largest
+        # available coin (better to try with 0.02 SUI than fail when user has 0.06).
         for c in coins:
             if c["balance"] >= GAS_MIN_BALANCE:
                 return {"objectId": c["objectId"], "version": c["version"], "digest": c["digest"]}
-        raise SuiRpcError("graphql coins", "no SUI gas coin with >= 1 SUI balance")
+        if coins:
+            # No coin meets the ideal threshold — use the largest available and let
+            # the node validate the budget (dry-run already caps it).
+            best = max(coins, key=lambda x: x["balance"])
+            if best["balance"] >= 1_000_000:  # at least 0.001 SUI
+                return {"objectId": best["objectId"], "version": best["version"], "digest": best["digest"]}
+        raise SuiRpcError("graphql coins", f"no SUI gas coin with >= {GAS_MIN_BALANCE/1e9:.3f} SUI; have {coins[0]['balance']/1e9:.4f} SUI" if coins else "no SUI coins found")
 
     def _get_coins(self, coin_type: str, limit: int = 50) -> list[dict]:
         """Owned coin objects of a type: [{objectId, version, digest, balance}].
@@ -904,9 +920,18 @@ class SUIAdapter:
         gas_coin: optional explicit gas coin. When sending SUI the gas coin
         must NOT be the coin being transferred (duplicated ObjectRef), so
         callers pass a different coin here."""
+        coin = gas_coin or self._pick_gas_coin()
+        # Cap budget to gas coin balance to avoid "gas budget is too high"
+        # when the user has a small SUI balance (e.g. 0.06 SUI) and the dry-run
+        # returns a budget near or above it.
+        try:
+            if budget >= int(coin.get("balance", 0)):
+                budget = max(5_000_000, int(coin["balance"]) - 1_000_000)
+        except Exception:
+            pass
         tx_bytes = _serialize_tx_ptb_v1(
             inputs, commands, self.address,
-            gas_coin or self._pick_gas_coin(),
+            coin,
             gas_price, budget, self._shared_versions(),
         )
         return self._broadcast_tx(tx_bytes)

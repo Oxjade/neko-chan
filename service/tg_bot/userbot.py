@@ -75,16 +75,7 @@ def _delayed_photo_delete(bot_token: str, chat_id: int, message_id: int,
 
 
 def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
-                         ttl: int = 300) -> None:
-    """Delete a text message after ttl seconds (background thread)."""
-    threading.Thread(
-        target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
-            bot_token, chat_id, message_id, ttl),
-        daemon=True).start()
-
-
-def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
-                         ttl: int = 300) -> None:
+                          ttl: int = 300) -> None:
     """Delete a text message after ttl seconds (background thread). Reuses the
     same delete path as photo messages - private keys self-destruct so they
     don't persist in Telegram history."""
@@ -2158,10 +2149,21 @@ class UserBotController:
                 else:
                     err = result.get("error", "unknown error")
                     warning = f"\n\n⚠️ <b>Transfer failed</b>: {_esc(err[:120])}"
-                    if "insufficient" in err.lower() or "no usdc" in err.lower():
-                        text = (f"❌ <b>Transfer failed</b>\n\n"
-                                f"Your wallet doesn't have enough USDC or "
-                                f"SUI for gas. {_esc(err[:120])}")
+                    el = err.lower()
+                    if "insufficient" in el or "no usdc" in el:
+                        # Distinguish USDC vs gas: check if SUI is mentioned or budget
+                        if "gas" in el or "budget" in el or "sui" in el:
+                            text = (f"❌ <b>Transfer failed — not enough SUI for gas</b>\n\n"
+                                    f"Your wallet has USDC but needs a little SUI to pay gas. "
+                                    f"Keep ~0.02 SUI for fees. {_esc(err[:120])}")
+                        else:
+                            text = (f"❌ <b>Transfer failed</b>\n\n"
+                                    f"Your wallet doesn't have enough USDC. "
+                                    f"You have less than ${amount:.2f} USDC. {_esc(err[:120])}")
+                    elif "budget" in el or "gas" in el:
+                        text = (f"⚠️ <b>Couldn't send — gas budget too high</b>\n\n"
+                                f"Sui rejected the gas budget (too high for your 0.06 SUI). "
+                                f"Try a smaller amount or add a little SUI. {_esc(err[:120])}")
                     else:
                         text = (f"⚠️ <b>Couldn't send</b> — {_esc(err[:120])}\n\n"
                                 f"To execute manually, use your private key to\n"
@@ -2173,7 +2175,8 @@ class UserBotController:
                 warning = f"\n\nError: {_esc(str(exc)[:120])}"
 
             kb = telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
+                [telegram.InlineKeyboardButton("📤 Send Again", callback_data="sb:send"),
+                 telegram.InlineKeyboardButton("🗝️ Private Keys", callback_data="sb:keys")],
                 [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")],
             ])
             sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
