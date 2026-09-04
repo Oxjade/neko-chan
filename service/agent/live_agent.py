@@ -1067,7 +1067,11 @@ def route_real_order(gw, bot_id: int, symbol: str, market: str, action: str,
                 else ref_price * (1 - take_pct / 100), 6)
     from order_model import OrderIntent
     intent = OrderIntent(**intent_kw)
-    return gw.route_and_sync(bot_id, intent, ref_price)
+    fill = gw.route_and_sync(bot_id, intent, ref_price)
+    if isinstance(fill, dict):
+        fill.setdefault("order_type", "limit")
+        fill.setdefault("limit_price", intent_kw.get("limit_price"))
+    return fill
 
 
 # ---------------------------------------------------------------- log
@@ -1215,7 +1219,7 @@ def notify_trade(symbol: str, action: str, qty: float, price: float,
     pad = f"{reasoning[:140]}" if reasoning else ""
     text = (
         f"🎯 <b>Neko-Chan decided: {side} {_esc(symbol)}</b>\n\n"
-        f"   {action.upper()} <b>{qty:g}</b> {_esc(symbol)} @ ${price:,.4f}\n"
+        f"   🚦 LIMIT <b>{qty:g}</b> {_esc(symbol)} @ <code>${price:,.4f}</code>\n"
         f"   Leverage <b>{leverage:g}x</b> · Stop {stop_pct:.1f}% · Take {take_pct:.1f}%\n"
         f"{f'   {_esc(pad)}' if pad else ''}"
     )
@@ -2158,6 +2162,8 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["fill_ok"] = fill.get("ok")
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("price", row["price"])
+            row["order_type"] = fill.get("order_type", "limit")
+            row["limit_price"] = fill.get("limit_price") or row["price"]
             if not fill.get("ok"):
                 notify_error(fill.get("error", ""))
             print(f"[trade][real] {row['action']} {qty} {symbol} [{market}] "

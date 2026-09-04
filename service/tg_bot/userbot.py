@@ -1200,13 +1200,19 @@ class UserBotController:
                             else:
                                 label = action or "?"
                             qty = row.get("quantity") or row.get("qty") or ""
-                            price = row.get("price") or ""
+                            price = row.get("limit_price") or row.get("price") or ""
+                            order_type = (row.get("order_type") or "").upper()
                             when = str(row.get("ts") or "")[11:19] or "?"
                             reasoning = (_esc(row.get("reasoning") or "")).strip()
-                            lines.append(f"📊 <b>{_esc(sym.upper())}</b> · {_esc(label)} · {when} UTC\n"
-                                         f"  qty {qty} · price ${price}")
+                            entry = f"🚦 LIMIT @ <code>${price:,.4f}</code>" if (order_type == "LIMIT" and price) else f"Market @ <code>${price:,.4f}</code>" if price else ""
+                            stop = row.get("stop_pct") or ""
+                            take = row.get("take_pct") or ""
+                            guard = f" · ⛔ {stop}% / 🎯 {take}%" if stop or take else ""
+                            lines.append(f"📊 <b>{_esc(sym.upper())}</b> · <b>{_esc(label)}</b> · <code>{qty}</code>\n")
+                            if entry:
+                                lines.append(f"  {entry}{guard}")
                             if reasoning:
-                                lines.append(f"  Why: {reasoning[:160]}")
+                                lines.append(f"  💡 {reasoning[:100]}")
                         else:
                             lines.append(f"📊 <b>{_esc(sym.upper())}</b> · analyzing…\n"
                                          f"  Agent is watching this asset for a setup.")
@@ -2719,8 +2725,8 @@ class UserBotController:
                 res = self.gateway.route_and_sync(bot_id, intent, ref_price)
                 if res.get("ok"):
                     await q.message.edit_text(f"✅ <b>Took {symbol} {direction.upper() or side.upper()}</b>\n"
-                                              f"Qty {qty:.6f} @ ${ref_price:,.2f} · {lev:g}x\n"
-                                              f"Stop {stop_pct:.1f}% · Take {take_pct:.1f}%\n"
+                                              f"🚦 LIMIT <code>{qty:.6f}</code> @ <code>${ref_price:,.4f}</code> · {lev:g}x\n"
+                                              f"⛔ Stop {stop_pct:.1f}% · 🎯 Take {take_pct:.1f}%\n"
                                               f"Order #{res.get('order_id')} — real USDC on {chain}",
                                               parse_mode="HTML",
                                               reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl")],[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
