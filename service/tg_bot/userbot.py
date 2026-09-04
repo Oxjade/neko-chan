@@ -1225,10 +1225,30 @@ class UserBotController:
                         lines.append("\n💰 <b>Live</b>: " + " · ".join(prices))
                 except Exception:
                     pass
+                # Manual Take/Reject buttons for the top pending decision (if any)
+                kb_rows = []
+                try:
+                    # Offer Take/Reject for each active symbol that has a buy/short decision
+                    for sym in active:
+                        row = latest.get(sym.upper()) if 'latest' in locals() else None
+                        if not row:
+                            continue
+                        act = (row.get("action") or "").lower()
+                        direction = (row.get("direction") or "").lower()
+                        # Only actionable opens (buy/short), not holds/exits
+                        if act in ("buy", "short") or direction in ("long", "short"):
+                            label = "LONG" if (act == "buy" or direction == "long") else "SHORT"
+                            kb_rows.append([
+                                telegram.InlineKeyboardButton(f"✅ Take {sym.upper()} {label}", callback_data=f"trade:take:{sym.upper()}"),
+                                telegram.InlineKeyboardButton(f"❌ Reject", callback_data=f"trade:reject:{sym.upper()}"),
+                            ])
+                            break  # only top one to keep keyboard clean
+                except Exception:
+                    pass
+                kb_rows.append([telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")])
+                kb_rows.append([telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")])
             await q.message.edit_text("\n".join(lines), parse_mode="HTML",
-                                      reply_markup=telegram.InlineKeyboardMarkup(
-                                          [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")],
-                                           [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
+                                      reply_markup=telegram.InlineKeyboardMarkup(kb_rows))
 
         async def _exec_account(self, bot_id: int, chain: str) -> dict:
             """Real on-chain account state for a bot+chain (RPC, not mock).
@@ -2571,6 +2591,154 @@ class UserBotController:
                     [[telegram.InlineKeyboardButton("✅ Take Profit", callback_data=f"sb:close:{symbol}")],
                      [telegram.InlineKeyboardButton("📊 Dashboard", callback_data="sb:dash")]]))
 
+        async def trade_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """User manually takes Neko's pending decision — executes against real USDC."""
+            q = update.callback_query
+            await q.answer()
+            try:
+                symbol = q.data.split(":", 2)[2].upper()
+            except Exception:
+                await q.message.edit_text("❓ Invalid trade symbol.", reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:peek")]]))
+                return
+            # Load pending decision from per-bot cache
+            pending = None
+            try:
+                from pathlib import Path
+                import json as _json
+                cache_path = Path(__file__).resolve().parents[2] / "research" / "exports" / f"live_agent_cache_bot{bot_id}.json"
+                if cache_path.exists():
+                    cache = _json.loads(cache_path.read_text(encoding="utf-8"))
+                    pending = cache.get(symbol) or cache.get(symbol.upper()) or cache.get(symbol.lower())
+                    # fallback: search by symbol field
+                    if not pending:
+                        for _, row in (cache or {}).items():
+                            if (row.get("symbol") or "").upper() == symbol:
+                                pending = row
+                                break
+            except Exception:
+                pending = None
+            if not pending or (pending.get("action") or "").lower() not in ("buy", "short"):
+                await q.message.edit_text(f"ℹ️ No pending {symbol} decision to take (maybe already held or expired).",
+                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
+                return
+            if not self._exec_ready():
+                await q.message.edit_text("⚠️ Real execution not ready — no trading keys configured.",
+                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
+                return
+            # Real execution via gateway (Aftermath perp on Sui)
+            try:
+                b = self.registry.get_bot(bot_id) or {}
+                chain = (b.get("chain") or "sui")
+                # Fresh price
+                ref_price = 0.0
+                try:
+                    ref_price = float(self.platform.price(self.registry.platform_token(bot_id) or "", "crypto", symbol) or 0)
+                except Exception:
+                    pass
+                if ref_price <= 0:
+                    try:
+                        # Fallback to Aftermath public price
+                        import sys
+                        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "execution"))
+                        from live_agent import fetch_aftermath_price
+                        ref_price = float(fetch_aftermath_price(symbol) or 0)
+                    except Exception:
+                        pass
+                if ref_price <= 0:
+                    ref_price = float(pending.get("price") or 0)
+                if ref_price <= 0:
+                    await q.message.edit_text(f"⚠️ No price for {symbol} — try again in a moment.",
+                                              reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
+                    return
+                # Recompute size against REAL equity (wallet USDC + collateral) so $0.01 test balance works
+                qty = float(pending.get("quantity") or pending.get("qty") or 0)
+                stop_pct = float(pending.get("stop_pct") or pending.get("stop_loss_pct") or 5.0)
+                take_pct = float(pending.get("take_pct") or pending.get("take_profit_pct") or 8.0)
+                lev = float(pending.get("leverage") or pending.get("lev") or 20.0)
+                # Clamp to risk guard bounds
+                stop_pct = max(2.0, min(stop_pct, 8.0))
+                take_pct = max(4.0, min(take_pct, 24.0))
+                # If qty is 0 (was sized at $0 equity), recompute from real equity now
+                if qty <= 0 or qty < 1e-8:
+                    try:
+                        snap = self._equity_snapshot(b)
+                        real_eq = float(snap.get("equity") or snap.get("usdc") or 0.0)
+                        # also try gateway ledger cash
+                        if real_eq <= 0:
+                            try:
+                                self._exec_path()
+                                from ledger import ExecLedger
+                                import os as _os
+                                _ledger = ExecLedger(_os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
+                                _w = _ledger.wallet_by_bot_chain(bot_id, chain)
+                                if _w:
+                                    _st = _ledger.load_chain_state(_w["id"]) or {}
+                                    _bal = _st.get("balances") or {}
+                                    real_eq = float(_bal.get("USDC") or _bal.get("USD") or 0.0)
+                                _ledger.close()
+                            except Exception:
+                                pass
+                        if real_eq > 0:
+                            # Use same conviction sizing as live_agent: 45% cap, 20x floor
+                            bal = real_eq
+                            expo = 0.15  # conservative for manual take
+                            notional = bal * expo
+                            qty = notional / ref_price if ref_price > 0 else 0
+                    except Exception:
+                        pass
+                if qty <= 0:
+                    await q.message.edit_text(f"⚠️ Couldn't size {symbol} — no equity. Deposit USDC first.",
+                                              reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")]]))
+                    return
+                # Build and route real order via gateway
+                await q.message.edit_text(f"⏳ Taking <b>{symbol} {pending.get('direction','').upper() or pending.get('action','').upper()}</b> @ ${ref_price:,.2f} — routing to real USDC…", parse_mode="HTML")
+                self._exec_path()
+                from order_model import OrderIntent
+                action = "buy" if (pending.get("direction","").lower() == "long" or pending.get("action","").lower() == "buy") else "sell" if (pending.get("direction","").lower() == "long") else "buy"
+                # Map direction to side: long->buy, short->sell (open)
+                direction = (pending.get("direction") or "").lower()
+                side = "buy" if direction == "long" else "sell" if direction == "short" else ("buy" if (pending.get("action") or "").lower() == "buy" else "sell")
+                # For perp, venue is aftermath-perp on sui
+                chain = (b.get("chain") or "sui")
+                venue = "aftermath-perp" if chain == "sui" else "hl-perp"
+                intent = OrderIntent(
+                    chain=chain, venue=venue, symbol=symbol,
+                    side=side, qty=float(qty), order_type="limit",
+                    limit_price=round(ref_price * (0.9998 if side == "buy" else 1.0002), 6),
+                    leverage=float(lev) if pending.get("action") in ("buy","short") or direction in ("long","short") else 1.0,
+                    idempotency_key=f"manual-take:{bot_id}:{symbol}:{int(time.time()*1000)}",
+                )
+                if stop_pct:
+                    intent.stop_loss = round(ref_price * (1 - stop_pct/100) if side == "buy" else ref_price * (1 + stop_pct/100), 6)
+                if take_pct:
+                    intent.take_profit = round(ref_price * (1 + take_pct/100) if side == "buy" else ref_price * (1 - take_pct/100), 6)
+                res = self.gateway.route_and_sync(bot_id, intent, ref_price)
+                if res.get("ok"):
+                    await q.message.edit_text(f"✅ <b>Took {symbol} {direction.upper() or side.upper()}</b>\n"
+                                              f"Qty {qty:.6f} @ ${ref_price:,.2f} · {lev:g}x\n"
+                                              f"Stop {stop_pct:.1f}% · Take {take_pct:.1f}%\n"
+                                              f"Order #{res.get('order_id')} — real USDC on {chain}",
+                                              parse_mode="HTML",
+                                              reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl")],[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                else:
+                    await q.message.edit_text(f"⚠️ <b>Couldn't take {symbol}</b>\n{res.get('error','unknown')[:200]}",
+                                              parse_mode="HTML",
+                                              reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
+            except Exception as exc:
+                await q.message.edit_text(f"⚠️ Take failed: {str(exc)[:200]}",
+                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
+
+        async def trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            try:
+                symbol = q.data.split(":", 2)[2].upper()
+            except Exception:
+                symbol = "trade"
+            await q.message.edit_text(f"❌ Rejected <b>{symbol}</b> — Neko will look for the next setup.",
+                                      parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
         async def exec_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
@@ -2638,3 +2806,5 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(exec_risk, pattern=r"^sb:execrisk$"))
         app.add_handler(CallbackQueryHandler(close_position, pattern=r"^sb:(close|close_yes):\w+$"))
         app.add_handler(CallbackQueryHandler(keep_open, pattern=r"^sb:keep:\w+$"))
+        app.add_handler(CallbackQueryHandler(trade_take, pattern=r"^trade:take:"))
+        app.add_handler(CallbackQueryHandler(trade_reject, pattern=r"^trade:reject:"))

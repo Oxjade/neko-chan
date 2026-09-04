@@ -982,7 +982,31 @@ def get_real_portfolio(gw, bot_id: int) -> dict:
                 pass
         state = gw.ledger.load_chain_state(wallet["id"]) or {}
         balances = state.get("balances") or {}
-        cash += float(balances.get("USDC") or balances.get("USD") or 0.0)
+        ledger_cash = float(balances.get("USDC") or balances.get("USD") or 0.0)
+        # Fallback: ledger can be stale (0) after a fresh sync or if GraphQL
+        # objects were empty. Use the adapter's direct on-chain USDC balance
+        # and sui_equity as authoritative when ledger shows 0.
+        if ledger_cash == 0:
+            try:
+                ad = gw.adapters.get(chain)
+                if ad is not None and hasattr(ad, "get_balance"):
+                    onchain = float(ad.get_balance("USDC") or 0.0)
+                    if onchain > 0:
+                        ledger_cash = onchain
+            except Exception:
+                pass
+        if ledger_cash == 0:
+            try:
+                from sui_equity import sui_equity as _eq
+                # need bot dict for sui_equity - reconstruct minimal
+                _b = {"wallet_addr": wallet.get("address") or "", "network": getattr(gw.adapters.get(chain), "network", "mainnet")}
+                _snap = _eq(_b)
+                onchain2 = float(_snap.get("usdc") or 0.0) + float(_snap.get("collateral") or 0.0)
+                if onchain2 > ledger_cash:
+                    ledger_cash = onchain2
+            except Exception:
+                pass
+        cash += ledger_cash
         for p in state.get("positions") or []:
             side = str(p.get("side") or p.get("coin", "")).lower()
             qty = float(p.get("qty") or p.get("szi") or 0.0)
@@ -1782,6 +1806,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         side = "buy" if best.direction == "long" else "short"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
+                        # Clamp to risk-guard bounds (2-8%) so the trade isn't
+                        # rejected as "stop too wide" and actually executes
+                        # against real USDC.
+                        stop_pct = max(2.0, min(float(stop_pct or 5.0), 8.0))
+                        take_pct = max(4.0, min(float(take_pct or 8.0), 24.0))
                         qty, lev, why = balance_aware_size(
                             eq, portfolio.get('cash', eq), best.entry, stop_pct,
                             best.symbol, conviction=best.conviction, p_win=best.p_win)
@@ -1942,8 +1971,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             if _last_scenario is not None:
                                 stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
                                 take_pct = abs(_last_scenario.target - _last_scenario.entry) / _last_scenario.entry * 100
+                                stop_pct = max(2.0, min(float(stop_pct or 5.0), 8.0))
+                                take_pct = max(4.0, min(float(take_pct or 8.0), 24.0))
                             else:
-                                stop_pct, take_pct = 8.0, 24.0  # fallback if no match
+                                stop_pct, take_pct = 5.0, 12.0  # fallback if no match
                             decision = {
                                 "action": llm_action,
                                 "symbol": llm_sym,
@@ -1989,6 +2020,8 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         side = "buy" if best.direction == "long" else "short"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
+                        stop_pct = max(2.0, min(float(stop_pct or 5.0), 8.0))
+                        take_pct = max(4.0, min(float(take_pct or 8.0), 24.0))
                         qty, lev, why = balance_aware_size(
                             eq, portfolio.get('cash', eq), best.entry, stop_pct,
                             best.symbol, conviction=best.conviction, p_win=best.p_win)
