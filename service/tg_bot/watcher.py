@@ -352,6 +352,20 @@ class Watcher:
             if sui:
                 lines.append(f"  SUI          {sui:,.4f} (${sui_val:,.2f})")
             breakdown = "\n" + "\n".join(lines)
+        # No trades yet -> equity is just deposited funds, not profit.
+        # Don't show "Net P&L $0.08" which confuses users; show deposited/equity only.
+        if trades == 0:
+            header = "💰 <b>BALANCE</b> 🐱"
+            pnl_txt = f"Equity: <b>${equity:,.2f}</b> (no trades yet — this is your deposited funds, not profit)"
+            win_txt = "—"
+            text = (f"{header}\n"
+                    f"{pnl_txt}\n"
+                    f"Trades: 0 · Equity: ${equity:,.2f}\n"
+                    f"<code>──────────────</code>\n"
+                    f"<b>BALANCE</b>{breakdown}\n"
+                    f"~ neko is waiting for the first trade 🐾")
+            return self.notify.notify(self.bot_id, self.tg_id, self.bot_token, self.chat_id,
+                                      kind, ref, text, dedup=True)
         if pnl >= 0:
             mood = "neko is pleased. the bag is pleased."
             header = "📈 <b>PROFIT REPORT</b> 🐱"
