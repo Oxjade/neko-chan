@@ -1109,7 +1109,7 @@ class UserBotController:
             if update.message:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
             elif update.callback_query:
-                await update.callback_query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                await _safe_edit(update.callback_query, text, reply_markup=kb)
 
         async def start_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query

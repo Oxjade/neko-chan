@@ -810,12 +810,13 @@ class SUIAdapter:
                 return {"ok": False, "error": f"no {asset} balance on {self.address[:12]}…"}
             coins.sort(key=lambda c: c["balance"], reverse=True)
             gas_coin = None
+            use_gas_coin_for_sui = False
             if asset == "SUI":
                 # When sending SUI, the gas coin must differ from the transfer
                 # source (same ObjectRef twice is rejected). Reserve the
                 # LARGEST coin as gas and transfer from the rest, merging all
                 # other coins into the transfer primary first so the amount
-                # can span multiple coins.
+                # can span multiple coins. For a single coin, use GasCoin itself.
                 if len(coins) >= 2:
                     gas_coin = coins[0]
                     primary = coins[1]
@@ -826,9 +827,11 @@ class SUIAdapter:
                     others += [c for c in coins if c["objectId"] not in
                                (primary["objectId"], gas_coin["objectId"])]
                 else:
-                    gas_coin = None  # single coin: split a gas amount out below
-                    primary = coins[0]
+                    # Single SUI coin: use GasCoin for both gas and SplitCoins
+                    gas_coin = coins[0]
+                    primary = None
                     others = []
+                    use_gas_coin_for_sui = True
             else:
                 primary = coins[0]
                 others = [c for c in coins[1:] if c["objectId"] != primary["objectId"]]
@@ -838,8 +841,16 @@ class SUIAdapter:
                         "error": f"insufficient {asset}: have {total / 10**decimals:.6f}, need {amount:.6f}"}
             # When sending SUI, the transfer primary must hold the amount after
             # merging - cap the request at the primary+others balance minus gas.
-            if asset == "SUI" and gas_coin is not None:
+            if asset == "SUI" and gas_coin is not None and not use_gas_coin_for_sui:
                 spendable = total - int(gas_coin["balance"])
+                if amount_raw > spendable:
+                    return {"ok": False,
+                            "error": f"insufficient {asset} after gas reserve: "
+                                     f"spendable {spendable/10**decimals:.6f}, need {amount:.6f}"}
+            elif asset == "SUI" and use_gas_coin_for_sui:
+                # Single coin SUI: gas and transfer share the same coin, need amount + gas <= total
+                # Reserve at least 5M for gas
+                spendable = total - 5_000_000
                 if amount_raw > spendable:
                     return {"ok": False,
                             "error": f"insufficient {asset} after gas reserve: "
@@ -849,47 +860,96 @@ class SUIAdapter:
             bcs_inputs, bcs_commands = [], []
             json_inputs, json_transactions = [], []
 
-            # Merge step: merge dust coins into primary.
-            if others:
+            # Merge step: merge dust coins into primary only if primary alone doesn't cover amount
+            if others and primary and not use_gas_coin_for_sui and primary["balance"] < amount_raw:
+                # Collect all dust coins needed to cover the amount
+                needed = amount_raw - primary["balance"]
+                to_merge = []
                 for c in others:
+                    if needed <= 0:
+                        break
+                    to_merge.append(c)
+                    needed -= c["balance"]
+                if to_merge:
+                    # Single MergeCoins with all sources (avoids duplicated ObjectRef)
                     bcs_inputs.append(_bcs_call_arg_imm_or_owned(
                         primary["objectId"], primary["version"], primary["digest"]))
-                    bcs_inputs.append(_bcs_call_arg_imm_or_owned(
-                        c["objectId"], c["version"], c["digest"]))
-                    bcs_commands.append(b"\x03" + _bcs_argument_input(0) + _bcs_vec(
-                        [_bcs_argument_input(1)]))
+                    primary_idx = len(bcs_inputs) - 1
+                    src_indices = []
+                    for c in to_merge:
+                        bcs_inputs.append(_bcs_call_arg_imm_or_owned(
+                            c["objectId"], c["version"], c["digest"]))
+                        src_indices.append(len(bcs_inputs) - 1)
+                    # MergeCoins: destination primary, sources dust
+                    bcs_commands.append(b"\x03" + _bcs_argument_input(primary_idx) + _bcs_vec(
+                        [_bcs_argument_input(i) for i in src_indices]))
                     json_inputs.append({"Object": {"ImmOrOwnedObject": {
                         "objectId": primary["objectId"], "version": primary["version"],
                         "digest": primary["digest"]}}})
-                    json_inputs.append({"Object": {"ImmOrOwnedObject": {
-                        "objectId": c["objectId"], "version": c["version"],
-                        "digest": c["digest"]}}})
-                    # MergeCoins command: merge the second coin into the first
+                    json_src = []
+                    for c in to_merge:
+                        json_inputs.append({"Object": {"ImmOrOwnedObject": {
+                            "objectId": c["objectId"], "version": c["version"],
+                            "digest": c["digest"]}}})
+                        json_src.append({"Input": len(json_inputs) - 1})
                     json_transactions.append({
-                        "MergeCoins": {"destination": {"Input": 0}, "sources": [{"Input": 1}]}})
+                        "MergeCoins": {"destination": {"Input": len(json_inputs) - len(to_merge) - 1}, "sources": json_src}})
 
             # Transfer step: SplitCoins(primary, [amount]) + TransferObjects([res0], recipient)
             recipient_addr = recipient if recipient.startswith("0x") else f"0x{recipient}"
-            coin_idx = len(bcs_inputs)  # index of the primary coin input in the BCS array
-            bcs_inputs.append(_bcs_call_arg_imm_or_owned(
-                primary["objectId"], primary["version"], primary["digest"]))
-            bcs_inputs.append(_bcs_call_arg_pure(_bcs_u64(amount_raw)))
-            bcs_inputs.append(_bcs_call_arg_pure(_bcs_addr(recipient_addr)))
-            json_inputs.append({"Object": {"ImmOrOwnedObject": {
-                "objectId": primary["objectId"], "version": primary["version"],
-                "digest": primary["digest"]}}})
-            json_inputs.append({"Pure": "0x" + _bcs_u64(amount_raw).hex()})
-            json_inputs.append({"Pure": "0x" + _bcs_addr(recipient_addr).hex()})
+            if use_gas_coin_for_sui:
+                # Single SUI coin: SplitCoins(GasCoin, [amount])
+                bcs_inputs.append(_bcs_call_arg_pure(_bcs_u64(amount_raw)))
+                bcs_inputs.append(_bcs_call_arg_pure(_bcs_addr(recipient_addr)))
+                json_inputs.append({"Pure": "0x" + _bcs_u64(amount_raw).hex()})
+                json_inputs.append({"Pure": "0x" + _bcs_addr(recipient_addr).hex()})
+                coin_arg = b"\x00"  # GasCoin
+                amount_arg = _bcs_argument_input(len(bcs_inputs) - 2)
+                recv_arg = _bcs_argument_input(len(bcs_inputs) - 1)
+                bcs_commands.append(_bcs_command_split_coins(coin_arg, [amount_arg]))
+                bcs_commands.append(_bcs_command_transfer_objects([_bcs_argument_result(0)], recv_arg))
+                json_transactions.append(
+                    {"SplitCoins": {"coin": {"GasCoin": True}, "amounts": [{"Input": len(json_inputs) - 2}]}})
+                json_transactions.append(
+                    {"TransferObjects": {"coins": [{"Result": 0}], "to": {"Input": len(json_inputs) - 1}}})
+            else:
+                if bcs_commands:  # merging already added primary at 0, reuse it
+                    # Primary is at Input 0 from the merge step
+                    bcs_inputs.append(_bcs_call_arg_pure(_bcs_u64(amount_raw)))
+                    bcs_inputs.append(_bcs_call_arg_pure(_bcs_addr(recipient_addr)))
+                    json_inputs.append({"Pure": "0x" + _bcs_u64(amount_raw).hex()})
+                    json_inputs.append({"Pure": "0x" + _bcs_addr(recipient_addr).hex()})
+                    coin_arg = _bcs_argument_input(0)
+                    amount_arg = _bcs_argument_input(len(bcs_inputs) - 2)
+                    recv_arg = _bcs_argument_input(len(bcs_inputs) - 1)
+                    bcs_commands.append(_bcs_command_split_coins(coin_arg, [amount_arg]))
+                    bcs_commands.append(_bcs_command_transfer_objects([_bcs_argument_result(0)], recv_arg))
+                    # JSON SplitCoins coin is the same primary at Input 0
+                    json_transactions.append(
+                        {"SplitCoins": {"coin": {"Input": 0}, "amounts": [{"Input": len(json_inputs) - 2}]}})
+                    json_transactions.append(
+                        {"TransferObjects": {"coins": [{"Result": 0}], "to": {"Input": len(json_inputs) - 1}}})
+                else:
+                    coin_idx = len(bcs_inputs)  # index of the primary coin input in the BCS array
+                    bcs_inputs.append(_bcs_call_arg_imm_or_owned(
+                        primary["objectId"], primary["version"], primary["digest"]))
+                    bcs_inputs.append(_bcs_call_arg_pure(_bcs_u64(amount_raw)))
+                    bcs_inputs.append(_bcs_call_arg_pure(_bcs_addr(recipient_addr)))
+                    json_inputs.append({"Object": {"ImmOrOwnedObject": {
+                        "objectId": primary["objectId"], "version": primary["version"],
+                        "digest": primary["digest"]}}})
+                    json_inputs.append({"Pure": "0x" + _bcs_u64(amount_raw).hex()})
+                    json_inputs.append({"Pure": "0x" + _bcs_addr(recipient_addr).hex()})
 
-            coin_arg = _bcs_argument_input(coin_idx)
-            amount_arg = _bcs_argument_input(coin_idx + 1)
-            recv_arg = _bcs_argument_input(coin_idx + 2)
-            bcs_commands.append(_bcs_command_split_coins(coin_arg, [amount_arg]))
-            bcs_commands.append(_bcs_command_transfer_objects([_bcs_argument_result(0)], recv_arg))
-            json_transactions.append(
-                {"SplitCoins": {"coin": {"Input": coin_idx}, "amounts": [{"Input": coin_idx + 1}]}})
-            json_transactions.append(
-                {"TransferObjects": {"coins": [{"Result": 0}], "to": {"Input": coin_idx + 2}}})
+                    coin_arg = _bcs_argument_input(coin_idx)
+                    amount_arg = _bcs_argument_input(coin_idx + 1)
+                    recv_arg = _bcs_argument_input(coin_idx + 2)
+                    bcs_commands.append(_bcs_command_split_coins(coin_arg, [amount_arg]))
+                    bcs_commands.append(_bcs_command_transfer_objects([_bcs_argument_result(0)], recv_arg))
+                    json_transactions.append(
+                        {"SplitCoins": {"coin": {"Input": coin_idx}, "amounts": [{"Input": coin_idx + 1}]}})
+                    json_transactions.append(
+                        {"TransferObjects": {"coins": [{"Result": 0}], "to": {"Input": coin_idx + 2}}})
 
             tx_json = {
                 "kind": "ProgrammableTransaction",
@@ -923,10 +983,14 @@ class SUIAdapter:
         coin = gas_coin or self._pick_gas_coin()
         # Cap budget to gas coin balance to avoid "gas budget is too high"
         # when the user has a small SUI balance (e.g. 0.06 SUI) and the dry-run
-        # returns a budget near or above it.
+        # returns a budget near or above it. For small gas coins (<20M), cap to 10M.
         try:
-            if budget >= int(coin.get("balance", 0)):
-                budget = max(5_000_000, int(coin["balance"]) - 1_000_000)
+            bal = int(coin.get("balance", 0))
+            if budget >= bal:
+                budget = max(5_000_000, bal - 1_000_000)
+            # Hard cap for small gas coins to ensure 17M coin can handle 10M budget
+            if bal < 20_000_000 and budget > 10_000_000:
+                budget = 10_000_000
         except Exception:
             pass
         tx_bytes = _serialize_tx_ptb_v1(
@@ -959,9 +1023,10 @@ class SUIAdapter:
             if "simulateTransaction" in str(exc) or "GRAPHQL" in str(exc):
                 # simulateTransaction not exposed on this network (testnet) -
                 # use a fixed budget from the reference gas price. A transfer
-                # PTB with storage costs ~0.005-0.02 SUI; budget generously.
+                # PTB with storage costs ~0.005-0.01 SUI; budget conservatively
+                # to fit small gas coins (e.g. 17M).
                 gas_price = self._gql_gas_price()
-                return {"gas_price": gas_price, "budget": max(20_000_000, gas_price * 20_000)}
+                return {"gas_price": gas_price, "budget": max(10_000_000, gas_price * 10_000)}
             raise
         effects = (data.get("simulateTransaction") or {}).get("effects") or {}
         status = effects.get("status") or {}
