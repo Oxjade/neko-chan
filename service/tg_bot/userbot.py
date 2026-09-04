@@ -135,7 +135,7 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         if tgt:
             meta += f" · target {tgt}"
         pos_lines.append(f"  {_esc(sym)}  {side.upper()} {qty:g}  {_money(pnl)}{meta}")
-    status = "🟢 RUNNING" if bot.get("is_running") else "⏸️ PAUSED"
+    status = ("⏸️ TRADING PAUSED" if bot.get("paused") else ("🟢 RUNNING" if bot.get("is_running") else "⛔ OFFLINE"))
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
         f"<code>{line}</code>\n"
@@ -221,7 +221,7 @@ def render_dashboard_text(bot: dict, portfolio: dict, lb_row: dict | None = None
         else:
             pos_lines.append(f"     stop {p.get('stop_loss')} · target {p.get('take_profit')}")
 
-    status = "🟢 RUNNING" if bot.get("is_running") else "⏸️ PAUSED"
+    status = ("⏸️ TRADING PAUSED" if bot.get("paused") else ("🟢 RUNNING" if bot.get("is_running") else "⛔ OFFLINE"))
     ago = _ago(bot.get("last_heartbeat"))
     trade_total = lb_row.get("trade_count", tcount) if lb_row else tcount
     fees_paid = lb_row.get("fees_paid", 0.0) if lb_row else 0.0
@@ -1091,8 +1091,10 @@ class UserBotController:
                 except Exception:
                     pass
             text = render_production_dashboard(b, account, chain, equity=self._equity_snapshot(b))
-            start_label = "⏸️ Pause" if b.get("is_running") else "▶️ Start"
-            start_cb = "sb:pause" if b.get("is_running") else "sb:start_agent"
+            # Pause now means "pause trading (LLM)" — bot stays online, so use `paused` flag
+            is_trading = not b.get("paused") and b.get("is_running")
+            start_label = "⏸️ Pause Trading" if is_trading else "▶️ Start Trading"
+            start_cb = "sb:pause" if is_trading else "sb:resume"
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
                  telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
@@ -1562,13 +1564,14 @@ class UserBotController:
             await q.answer()
             b = self.registry.get_bot(bot_id)
             if q.data == "sb:pause_yes":
-                self.registry.update_bot(bot_id, is_running=0, paused=1)
+                # Pause TRADING (LLM) only — keep the Telegram bot session online
+                self.registry.update_bot(bot_id, is_running=1, paused=1)
                 if self.agent_pool:
                     self.agent_pool.stop(bot_id)
-                await q.message.edit_text(USERBOT["paused"], reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                await q.message.edit_text("⏸️ Trading paused — LLM stopped, bot stays online. Dashboard, Send/Receive still work.\n\nTap ▶️ Resume to restart trading.", reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
                 return
             if q.data == "sb:resume":
-                self.registry.update_bot(bot_id, paused=0)
+                self.registry.update_bot(bot_id, is_running=1, paused=0)
                 self.start_bot(bot_id)
                 if self.agent_pool:
                     self.agent_pool.start(bot_id)
@@ -1590,14 +1593,15 @@ class UserBotController:
                                           reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("✅ Yes, delete", callback_data="sb:delete_yes")], [telegram.InlineKeyboardButton("↩️ Keep it", callback_data="sb:dash")]]))
                 return
             text = (f"🤖 {b['bot_name']} · bot status\n\n"
-                    f"Status:    {'🟢 RUNNING' if b['is_running'] else '⏸️ PAUSED'}\n"
+                    f"Bot:       {'🟢 ONLINE' if b['is_running'] else '⛔ OFFLINE'}\n"
+                    f"Trading:   {'⏸️ PAUSED' if b['paused'] else '🟢 ACTIVE'}\n"
                     f"Heartbeat: {_ago(b['last_heartbeat'])}\n"
                     f"Profile:   {b['risk_profile']}\n"
                     f"Interval:  {b['interval_sec']}s\n"
                     f"Markets:   {b['symbols']}\n"
                     f"Leverage:  {b.get('leverage') or 1.0}x\n"
                     f"Last error: {humanize_error(b['last_error']) if b['last_error'] else 'none'}")
-            kb = [[telegram.InlineKeyboardButton("⏸️ Pause", callback_data="sb:pause") if b["is_running"] else telegram.InlineKeyboardButton("▶️ Resume", callback_data="sb:resume")],
+            kb = [[telegram.InlineKeyboardButton("⏸️ Pause Trading" if not b["paused"] else "▶️ Resume Trading", callback_data="sb:pause" if not b["paused"] else "sb:resume")],
                   [telegram.InlineKeyboardButton("🗑️ Delete Bot", callback_data="sb:delete")],
                   [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]
             await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(kb))
@@ -1730,14 +1734,14 @@ class UserBotController:
                                                       telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
                 return
             if raw in ("pause", "stop", "halt"):
-                self.registry.update_bot(bot_id, is_running=0, paused=1)
+                self.registry.update_bot(bot_id, is_running=1, paused=1)
                 if self.agent_pool:
                     self.agent_pool.stop(bot_id)
                 try:
                     await update.message.delete()
                 except Exception:
                     pass
-                await update.message.reply_text("⏸️ Agent paused. Neko-Chan is resting.",
+                await update.message.reply_text("⏸️ Trading paused — LLM stopped, bot stays online.",
                                                 reply_markup=telegram.InlineKeyboardMarkup(
                                                     [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
                 return
