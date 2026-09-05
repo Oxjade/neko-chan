@@ -16,7 +16,7 @@ import telegram
 from telegram import Update
 from telegram.ext import (Application, ContextTypes, CommandHandler,
                           CallbackQueryHandler, ConversationHandler,
-                          MessageHandler, filters)
+                          MessageHandler, TypeHandler, filters)
 
 from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
 from store import utcnow
@@ -804,6 +804,71 @@ class UserBotController:
         bot_id = bot["id"]
         platform_token = bot["platform_token"]
         tg_id = bot["tg_id"]
+
+        # ---------------------------------------------------------------
+        # 3-MINUTE MESSAGE TTL: every message this bot sends (notifications,
+        # confirmations, prompts, key displays) self-destructs after 3
+        # minutes - ONLY the main dashboard persists. The user's own input
+        # (pasted keys, amounts, addresses) self-destructs on the same clock.
+        # ---------------------------------------------------------------
+        ttl = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
+
+        def _keep_dashboard(msg) -> bool:
+            """Keep rule: the MAIN DASHBOARD is the only survivor. It is the
+            only panel whose keyboard carries the Kill-Switch row."""
+            try:
+                rm = msg.reply_markup
+                cbs = [getattr(b, "callback_data", "")
+                       for row in getattr(rm, "inline_keyboard", []) or []
+                       for b in row]
+                return "sb:dash" in cbs and "sb:kill" in cbs
+            except Exception:
+                return False
+
+        def _sched_del(msg):
+            if msg is None or _keep_dashboard(msg):
+                return
+            threading.Thread(
+                target=_delayed_photo_delete,
+                args=(app.bot.token, msg.chat_id, msg.message_id, ttl),
+                daemon=True).start()
+
+        orig_send_message = app.bot.send_message
+        async def _ttl_send_message(*a, **k):
+            msg = await orig_send_message(*a, **k)
+            try:
+                _sched_del(msg)
+            except Exception:
+                pass
+            return msg
+        app.bot.send_message = _ttl_send_message
+
+        orig_edit_message_text = app.bot.edit_message_text
+        async def _ttl_edit_message_text(*a, **k):
+            res = await orig_edit_message_text(*a, **k)
+            try:
+                from telegram import Message as _Msg
+                if isinstance(res, _Msg):
+                    _sched_del(res)
+            except Exception:
+                pass
+            return res
+        app.bot.edit_message_text = _ttl_edit_message_text
+
+        async def _user_input_ttl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            # The user's own messages (keys, amounts, addresses, commands)
+            # vanish after the same 3 minutes. Button taps are excluded: the
+            # tapped message belongs to the bot (dashboard/panels).
+            if update.callback_query:
+                return
+            msg = update.effective_message
+            if msg and msg.from_user and not msg.from_user.is_bot:
+                threading.Thread(
+                    target=_delayed_photo_delete,
+                    args=(app.bot.token, msg.chat_id, msg.message_id, ttl),
+                    daemon=True).start()
+        app.add_handler(TypeHandler(Update, _user_input_ttl), group=-1)
+
 
         async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """First-ever /start: welcome + key onboarding gate + setup wizard."""
