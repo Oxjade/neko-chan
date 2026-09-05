@@ -28,6 +28,7 @@ from platform_client import PlatformClient
 from userbot import UserBotController
 from agent_pool import AgentPool
 from gateway import ExecGateway
+from ledger import ExecLedger
 from handlers.common import menu_keyboard
 from handlers.master import register_master_handlers
 from handlers.wizard import simple_flow_handlers
@@ -130,6 +131,73 @@ def start_bot_cleanup(registry: Registry, userbot: UserBotController,
         except Exception:
             pass
 
+    def _notify_owner_via_master(bot: dict, message: str):
+        """Notify through the MASTER bot - the user's own bot token may be
+        dead (that is often WHY onboarding was never finished)."""
+        try:
+            import os as _os
+            token = _os.environ.get("TG_BOT_TOKEN") or cfg.require_master_token()
+            import requests as _r
+            _r.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": bot["tg_id"], "text": message,
+                          "parse_mode": "HTML"}, timeout=15)
+        except Exception:
+            pass
+
+    def _purge_incomplete_onboarding(registry: Registry, deadline_minutes: int = 30):
+        """Delete bots whose onboarding never completed (operator rule: 30 min).
+
+        A bot with onboarding_complete=0 has no confirmed wallet, no trading
+        chain, and (by the key-cancel rule) usually no AI key - it just idles
+        a poller. Safe-deletes only: a bot with ANY exec order/fill is kept
+        (it traded, so its owner must relink manually instead)."""
+        from datetime import datetime, timedelta, timezone as _tz
+        cutoff = datetime.now(_tz.utc) - timedelta(minutes=deadline_minutes)
+        for bot in registry.all_bots():
+            if bot.get("onboarding_complete"):
+                continue
+            created = bot.get("created_at") or ""
+            try:
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if created_dt > cutoff:
+                continue
+            if registry.get_active_key(bot.get("tg_id")):
+                continue  # has an AI key - keep it despite incomplete onboarding
+            # trade-history guard: a bot that ever filled keeps its records
+            try:
+                ledger = ExecLedger(os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db"))
+                orders = ledger._conn.execute(
+                    "SELECT COUNT(*) c FROM exec_orders WHERE bot_id=?", (bot["id"],)).fetchone()["c"]
+                fills = ledger._conn.execute(
+                    "SELECT COUNT(*) c FROM exec_fills WHERE order_id IN "
+                    "(SELECT id FROM exec_orders WHERE bot_id=?)", (bot["id"],)).fetchone()["c"]
+                if orders or fills:
+                    log.info("[cleanup] bot %s has trade history - not auto-deleted", bot["id"])
+                    continue
+                # purge the (unused) wallet key material with the bot
+                ledger._conn.execute("DELETE FROM exec_wallets WHERE bot_id=?", (bot["id"],))
+                ledger._conn.commit()
+                ledger.close()
+            except Exception as exc:
+                log.warning("[cleanup] exec-ledger purge failed for bot %s: %s", bot["id"], exc)
+            _notify_owner_via_master(bot, (
+                f"🗑️ Bot <b>{bot.get('bot_name')}</b> was removed because setup "
+                f"was never completed within {deadline_minutes} minutes.\n\n"
+                "You can re-add it anytime from the master bot with /addbot."))
+            try:
+                userbot.stop_bot(bot["id"])
+            except Exception:
+                pass
+            try:
+                agent_pool.stop(bot["id"])
+            except Exception:
+                pass
+            registry.delete_bot(bot["id"], bot["tg_id"])
+            log.info("[cleanup] removed incomplete-onboarding bot %s (%s)",
+                     bot["id"], bot.get("bot_name"))
+
     def _loop():
         while True:
             try:
@@ -151,6 +219,10 @@ def start_bot_cleanup(registry: Registry, userbot: UserBotController,
                     log.info("[cleanup] removed unconfigured bot %s (%s)", bot_id, bot.get("bot_name"))
             except Exception as exc:
                 log.warning("[cleanup] sweep error: %s", exc)
+            try:
+                _purge_incomplete_onboarding(registry)
+            except Exception as exc:
+                log.warning("[cleanup] onboarding sweep error: %s", exc)
             # Restart crashed agents: the pool is only touched at boot and on
             # explicit commands, so a dead live_agent (e.g. a startup race
             # against the API server) would otherwise stay dead forever and the

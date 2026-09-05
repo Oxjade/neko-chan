@@ -69,14 +69,22 @@ def _load_execution_cfg() -> dict:
     cfg = {}
 
     # ---- Sui (Aftermath perps) ----
+    # OPERATOR CONFIG ONLY - never another bot's key. The old code grabbed
+    # "SELECT key_enc FROM exec_wallets LIMIT 1" as a fallback, which silently
+    # assigned the FIRST bot's keypair to every later bot (the 2026-09-04
+    # incident: bot 4 traded on bot 1's account). Per-bot wallets come from
+    # onboarding (exec_wallets keyed by bot_id); the operator env key is used
+    # exclusively for the operator's own bot (operator_bot_id, default 1).
     _enc_key: str | None = None
     _testnet = _env("EXEC_SUI_TESTNET", "1") != "0"
+    _operator_bot_id = _env_int("EXEC_OPERATOR_BOT_ID", 1)
     try:
         _ledger_path = _env("EXEC_LEDGER_PATH", "exec_ledger.db")
         _db = _sqlite3.connect(_ledger_path)
         _db.row_factory = _sqlite3.Row
         _row = _db.execute(
-            "SELECT key_enc FROM exec_wallets WHERE chain='sui' LIMIT 1"
+            "SELECT key_enc FROM exec_wallets WHERE chain='sui' AND bot_id=? LIMIT 1",
+            (_operator_bot_id,),
         ).fetchone()
         _db.close()
         if _row and _row["key_enc"]:
@@ -101,6 +109,7 @@ def _load_execution_cfg() -> dict:
             extra["aftermath_api_base"] = _af
         cfg["sui"] = {
             "key_enc": vault.encrypt(_enc_key),
+            "operator_bot_id": _operator_bot_id,
             "rpc_url": _env("EXEC_SUI_RPC_URL", ""),
             "testnet": _testnet,
             "network": _env("EXEC_SUI_NETWORK", "testnet" if _testnet else "mainnet").strip().lower(),
@@ -114,6 +123,7 @@ def _load_execution_cfg() -> dict:
         cfg["hyperliquid"] = {
             "key_enc": vault.encrypt(hl_key),
             "master_address": hl_master,
+            "operator_bot_id": _operator_bot_id,
             "testnet": _env("EXEC_HL_TESTNET", "1") != "0",
         }
 
@@ -122,6 +132,7 @@ def _load_execution_cfg() -> dict:
     if sol_key:
         cfg["solana"] = {
             "key_enc": vault.encrypt(sol_key),
+            "operator_bot_id": _operator_bot_id,
             "rpc_url": _env("EXEC_SOL_RPC_URL", ""),
             "testnet": _env("EXEC_SOL_TESTNET", "1") != "0",
         }
@@ -336,14 +347,25 @@ class ExecGateway:
 
     def provision_wallet(self, bot_id: int, chain: str) -> int | None:
         """Ensure a wallet row exists for (bot_id, chain) in the exec ledger.
-        
+
         If a per-user wallet was already generated via onboarding, that wallet
-        is preserved - the operator config only fills in when no wallet exists.
-        Returns wallet_id or None if chain is not configured."""
+        is preserved. The operator config (operator bot's own key, or
+        EXEC_SUI_KEYPAIR_HEX) fills in ONLY for the operator's own bot -
+        NEVER for user bots: sharing a keypair means two bots trading one
+        account (the 2026-09-04 bot1/bot4 incident). User bots without their
+        own wallet must complete onboarding first. Returns wallet_id or
+        None if the chain is not configured for this bot."""
         # Check if the user already generated a wallet (from onboarding).
         existing = self.ledger.wallet_by_bot_chain(bot_id, chain)
         if existing and existing.get("key_enc"):
             return existing["id"]
+        operator_bot_id = int(self._cfg.get(chain, {}).get("operator_bot_id", 1) or 1)
+        if bot_id != operator_bot_id:
+            log.warning(
+                "[gateway] bot %s has no %s wallet - refusing to reuse the operator "
+                "keypair (one keypair per bot). Complete onboarding to generate one.",
+                bot_id, chain)
+            return None
         c = self._cfg.get(chain)
         if not c or not c.get("key_enc"):
             return None

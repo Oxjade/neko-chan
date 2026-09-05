@@ -78,6 +78,10 @@ def test_gateway_wires_full_stack(monkeypatch, tmp_path):
 def test_gateway_provisions_wallets(monkeypatch, tmp_path):
     monkeypatch.setenv("REAL_TRADING_ENABLED", "1")
     _set_chain_env()
+    # bot 7 acts as the operator bot here: since the 2026-09-04 fix, the
+    # operator keypair provisions ONLY the operator bot - user bots must
+    # generate their own wallet via onboarding (one keypair per bot).
+    monkeypatch.setenv("EXEC_OPERATOR_BOT_ID", "7")
     g = ExecGateway.build(ledger_path=str(tmp_path / "d.db"))
     wallets = g.provision_all_wallets(7)
     assert set(wallets.keys()) == {"hyperliquid", "solana", "sui"}
@@ -90,9 +94,22 @@ def test_gateway_provisions_wallets(monkeypatch, tmp_path):
     assert again == wallets
 
 
+def test_gateway_never_shares_operator_key_with_user_bots(monkeypatch, tmp_path):
+    """The 2026-09-04 incident: gateway's first-row fallback assigned bot 1's
+    keypair to bot 4. User bots must NEVER inherit the operator key."""
+    monkeypatch.setenv("REAL_TRADING_ENABLED", "1")
+    _set_chain_env()
+    monkeypatch.setenv("EXEC_OPERATOR_BOT_ID", "1")
+    g = ExecGateway.build(ledger_path=str(tmp_path / "f.db"))
+    res = g.provision_all_wallets(4)
+    assert res == {}, "user bot must not receive the operator keypair"
+    assert g.ledger.wallet_by_bot_chain(4, "sui") is None
+
+
 def test_gateway_sync_and_deposit_scan_never_raise(monkeypatch, tmp_path):
     monkeypatch.setenv("REAL_TRADING_ENABLED", "1")
     _set_chain_env()
+    monkeypatch.setenv("EXEC_OPERATOR_BOT_ID", "9")
     g = ExecGateway.build(ledger_path=str(tmp_path / "e.db"))
     g.provision_all_wallets(9)
     # Stub every adapter's network reads so the test is hermetic.

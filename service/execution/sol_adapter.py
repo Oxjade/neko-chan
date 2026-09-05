@@ -196,7 +196,7 @@ class SOLAdapter:
             "price": intent.limit_price,
             "tpPrice": intent.take_profit,
             "slPrice": intent.stop_loss,
-            "reduceOnly": False,
+            "reduceOnly": bool(getattr(intent, "reduce_only", False)),
             "idempotencyKey": intent.idempotency_key,
         })
         tx = resp.get("transaction") or resp.get("tx") or resp.get("swapTransaction")

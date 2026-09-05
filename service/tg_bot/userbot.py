@@ -22,6 +22,15 @@ from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
 from store import utcnow
 from provider import validate_key, ProviderError
 
+
+def _master_token_fallback() -> str:
+    """Master bot token from tg_config when TG_BOT_TOKEN isn't in the env."""
+    try:
+        from tg_config import require_master_token
+        return require_master_token()
+    except Exception:  # noqa: BLE001
+        return ""
+
 BACK = "↩️ Back"
 HOME = "🏠 Home"
 CANCEL = "❌ Cancel"
@@ -274,6 +283,7 @@ class UserBotController:
     """Builds and tracks one Application per user bot."""
 
     def __init__(self, registry, platform, vault=None, agent_pool=None, gateway=None):
+        self._dead_token_notified: dict[int, float] = {}  # bot_id -> ts
         self.registry = registry
         self.platform = platform
         self.vault = vault
@@ -640,6 +650,9 @@ class UserBotController:
     # ---------------- lifecycle ----------------
 
     def start_bot(self, bot_id: int) -> bool:
+        import logging
+
+        log = logging.getLogger("tg_bot")
         with self._lock:
             if bot_id in self._apps:
                 return True
@@ -649,34 +662,129 @@ class UserBotController:
             token = self.registry.bot_token(bot_id)
             if not token:
                 return False
+            # SESSION UNIQUENESS: one poller per Telegram token. Two bot rows
+            # sharing a token = Telegram 409 conflicts, dropped updates, and
+            # cross-user session bleed (bots 2/4 both held @Nkofbot).
+            other = self.registry.bot_token_owner(token, exclude_bot_id=bot_id)
+            if other is not None:
+                log.warning("bot %s shares its Telegram token with bot %s - refusing to start a second poller",
+                            bot_id, other)
+                self.registry.update_bot(
+                    bot_id, is_running=0,
+                    last_error=f"token already polled by bot {other} - relink this bot with its own token")
+                return False
+            # PRE-FLIGHT: validate the token before spawning the poll thread.
+            # A dead token (regenerated in @BotFather) polls 'Unauthorized'
+            # forever - the user can NEVER reach the bot to change anything
+            # (their API key included). Fail fast, mark the bot, and tell the
+            # user through the MASTER bot (which is always alive) how to fix it.
+            # ONLY a confirmed 401 marks the token dead: a network hiccup here
+            # must not disable a healthy bot.
+            try:
+                r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
+                body = r.json() if r.status_code == 200 else {}
+                if r.status_code in (401, 403) or (
+                        isinstance(body, dict) and body.get("error_code") in (401, 403)):
+                    self.registry.update_bot(
+                        bot_id, is_running=0,
+                        last_error="bot token invalid - relink required (recreate the token "
+                                   "in @BotFather, then send /relink to @Nekochanadminbot)")
+                    log.warning("bot %s (@%s) token rejected by Telegram - not starting, user notified",
+                                bot_id, bot.get("bot_username"))
+                    self._notify_dead_token(bot, bot_id)
+                    return False
+                # any other status (429/5xx/timeout): let the poll retry loop handle it
+            except Exception:
+                pass  # network error - don't mislabel a healthy token as dead
             app = Application.builder().token(token).build()
             self._register_handlers(app, bot)
             self._apps[bot_id] = app
             self.registry.update_bot(bot_id, is_running=1, last_heartbeat=utcnow())
 
         def _poll():
+            import asyncio
             import logging
 
             log = logging.getLogger("tg_bot")
             attempts = 0
             while attempts < 10:
+                # run_polling creates AND CLOSES its own event loop; calling it
+                # again in the same thread crashes with 'Event loop is closed'
+                # instead of re-testing the token. Fresh loop per attempt.
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 try:
                     app.run_polling(drop_pending_updates=True, stop_signals=())
+                    loop.close()
                     return  # clean stop
                 except Exception as exc:  # noqa: BLE001
                     attempts += 1
-                    log.error("user bot %s polling failed (%s/10): %s", bot_id, attempts, exc)
+                    msg = str(exc)
+                    log.error("user bot %s polling failed (%s/10): %s", bot_id, attempts, msg)
+                    from telegram.error import InvalidToken as _InvalidToken
+                    if isinstance(exc, _InvalidToken) or "Unauthorized" in msg:
+                        # dead token will never recover by retrying - stop now
+                        # and route the user to the master bot for a relink.
+                        self.registry.update_bot(
+                            bot_id, is_running=0,
+                            last_error="bot token invalid - relink required (recreate the "
+                                       "token in @BotFather, then send /relink to @Nekochanadminbot)")
+                        self._notify_dead_token(bot, bot_id)
+                        with self._lock:
+                            self._apps.pop(bot_id, None)
+                        return
                     if attempts >= 10:
                         break
                     import time as _t
 
                     _t.sleep(10 * attempts)  # backoff: 10s, 20s, ...
+                finally:
+                    if not loop.is_closed():
+                        loop.close()
+                    asyncio.set_event_loop(None)
             self.registry.update_bot(bot_id, is_running=0, last_error="polling failed after 10 attempts")
             with self._lock:
                 self._apps.pop(bot_id, None)
 
         threading.Thread(target=_poll, name=f"userbot-{bot_id}", daemon=True).start()
         return True
+
+    def _notify_dead_token(self, bot: dict, bot_id: int) -> None:
+        """Tell the user (via the always-alive master bot) that their bot's
+        token died and exactly how to relink it. Deduped: only once per hour
+        per bot so polling restarts don't spam."""
+        import time as _t
+
+        now = _t.time()
+        last = self._dead_token_notified.get(bot_id, 0.0)
+        if now - last < 3600:
+            return
+        self._dead_token_notified[bot_id] = now
+        try:
+            import os as _os
+
+            master_token = _os.environ.get("TG_BOT_TOKEN") or _master_token_fallback()
+            if not master_token:
+                return
+            username = bot.get("bot_username") or f"bot {bot_id}"
+            text = (
+                f"⚠️ <b>@{username} is unreachable</b>\n\n"
+                f"Its Telegram token was rejected (it was probably regenerated or "
+                f"deleted in @BotFather). Until it is relinked the bot cannot receive "
+                f"ANY commands - including AI-key changes.\n\n"
+                f"<b>How to fix (2 min):</b>\n"
+                f"1. Open @BotFather → /mybots → select @{username} → API Token → "
+                f"Revoke (or copy the current token)\n"
+                f"2. Send <code>/relink</code> here and paste the new token\n\n"
+                f"Your wallet, positions and AI key stay untouched."
+            )
+            requests.post(
+                f"https://api.telegram.org/bot{master_token}/sendMessage",
+                json={"chat_id": bot.get("tg_id"), "text": text, "parse_mode": "HTML"},
+                timeout=10,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("dead-token notification failed for bot %s: %s", bot_id, exc)
 
     def stop_bot(self, bot_id: int):
         with self._lock:

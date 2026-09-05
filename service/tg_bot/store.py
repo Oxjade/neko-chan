@@ -248,6 +248,46 @@ class Registry:
             row = self._conn.execute("SELECT bot_token_enc FROM bots WHERE id = ?", (bot_id,)).fetchone()
             return self.vault.decrypt(row["bot_token_enc"]) if row else None
 
+    def bot_token_owner(self, token: str, exclude_bot_id: int | None = None) -> int | None:
+        """Return the bot_id already running this Telegram token, if any.
+        Used to enforce ONE POLLER PER TOKEN (bots 2 and 4 both registered
+        @Nkofbot - two pollers on one token = Telegram 409 conflicts and
+        cross-user session bleed)."""
+        h = self.vault.hash_key(token)
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT id FROM bots WHERE bot_token_hash = ? AND id != ? LIMIT 1",
+                (h, exclude_bot_id if exclude_bot_id is not None else -1),
+            ).fetchone()
+            return row["id"] if row else None
+
+    def update_bot_token(self, bot_id: int, tg_id: int, new_token: str,
+                         bot_username: str) -> None:
+        """Swap in a fresh BotFather token for an existing bot (relink flow).
+
+        The old token usually died because the user regenerated it in
+        @BotFather - the bot then polls 'Unauthorized' forever and the user
+        can never reach it to change anything (API keys included). This
+        re-encrypts and stores the new token + username so start_bot works
+        again. Ownership is enforced by tg_id."""
+        enc_token = self.vault.encrypt(new_token)
+        token_hash = self.vault.hash_key(new_token)
+        with _LOCK:
+            dup = self._conn.execute(
+                "SELECT id FROM bots WHERE bot_token_hash = ? AND id != ?",
+                (token_hash, bot_id),
+            ).fetchone()
+            if dup:
+                raise ValueError("this Telegram bot token is already registered")
+            cur = self._conn.execute(
+                "UPDATE bots SET bot_token_enc = ?, bot_token_hash = ?, bot_username = ?, "
+                "is_running = 0, last_error = NULL WHERE id = ? AND tg_id = ?",
+                (enc_token, token_hash, bot_username, bot_id, tg_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError("bot not found for this user")
+            self._conn.commit()
+
     def platform_token(self, bot_id: int) -> str | None:
         """Platform API bearer token for a bot (used by the watcher to read
         /api/positions). Distinct from the Telegram bot token."""

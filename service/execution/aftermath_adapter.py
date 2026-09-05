@@ -361,13 +361,51 @@ class AftermathAdapter:
             return {"ok": False, "error": "no txKind in allocate response"}
         return self._submit_native_tx(tk)
 
+    def _get_coins_via_rpc(self, coin_type_raw: str) -> list[dict]:
+        """Owned coins via JSON-RPC suix_getCoins (Blockvision fallback).
+
+        The mainnet GraphQL objects index returns EMPTY even when the wallet
+        holds coins (verified 2026-09); Blockvision still serves the deprecated
+        suix_getCoins. Used as fallback for gas AND settle-USDC discovery."""
+        import time as _time
+        import requests as _rr
+        urls = ["https://sui-mainnet-endpoint.blockvision.org:443",
+                "https://fullnode.mainnet.sui.io:443"] if self.network == "mainnet" else \
+               ["https://fullnode.testnet.sui.io:443"]
+        out: list[dict] = []
+        for url in urls:
+            for attempt in range(3):
+                try:
+                    rj = _rr.post(url, json={
+                        "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
+                        "params": [self.address, coin_type_raw, None, 50],
+                    }, timeout=8).json()
+                    if isinstance(rj, dict) and rj.get("error_msg") and \
+                            "frequent" in str(rj.get("error_msg")).lower():
+                        _time.sleep(1.5 * (attempt + 1))
+                        continue
+                    for c in ((rj.get("result") or {}).get("data") or []):
+                        out.append({
+                            "objectId": c.get("coinObjectId") or c.get("objectId"),
+                            "version": int(c.get("version", 0)),
+                            "digest": c.get("digest", ""),
+                            "balance": int(c.get("balance") or 0),
+                        })
+                    if out:
+                        return out
+                    break
+                except Exception:
+                    _time.sleep(0.5)
+                    continue
+        return out
+
     def _find_usdc_coin(self) -> dict | None:
         """Locate the wallet's USDC coin object (id, version, digest bytes).
 
         The coin must be of the SETTLE ID type (the USDC Aftermath settles in),
-        which is what the deposit MoveCall's Coin<> type argument expects."""
+        which is what the deposit MoveCall's Coin<> type argument expects.
+        GraphQL first, then the JSON-RPC fallback (mainnet index gaps)."""
         settle_id = self._resolve_settle_id()
-        import requests as _r
         gql_url = "https://graphql.testnet.sui.io/graphql" if self.network == "testnet" \
             else "https://graphql.mainnet.sui.io/graphql"
         q = ('{ address(address: "' + self.address + '") {'
@@ -375,7 +413,7 @@ class AftermathAdapter:
              + settle_id + '>"}) { nodes {'
              '    address version digest contents { json } } } } }')
         try:
-            r = _r.post(gql_url, json={"query": q}, timeout=20)
+            r = requests.post(gql_url, json={"query": q}, timeout=20)
             data = r.json().get("data") or {}
             nodes = (((data.get("address") or {}).get("objects") or {}).get("nodes") or [])
             for o in nodes:
@@ -393,27 +431,25 @@ class AftermathAdapter:
                     }
         except Exception as exc:
             log.warning("[aftermath] usdc coin lookup failed: %s", exc)
+        # Fallback: JSON-RPC getCoins (GraphQL objects index gaps on mainnet).
+        try:
+            for c in self._get_coins_via_rpc(settle_id):
+                if c.get("balance", 0) > 0:
+                    import base58 as _b58
+                    return {
+                        "objectId": c["objectId"],
+                        "version": c["version"],
+                        "digest": c["digest"],
+                        "digest_bytes": _b58.b58decode(c["digest"]),
+                    }
+        except Exception as exc:
+            log.warning("[aftermath] usdc coin rpc fallback failed: %s", exc)
         return None
 
     def _wallet_usdc_balance(self) -> float:
         """Wallet's on-chain USDC of the settle type (usable for deposits)."""
-        coin = self._find_usdc_coin()
-        if coin is None:
-            return 0.0
-        import requests as _r
-        gql_url = "https://graphql.testnet.sui.io/graphql" if self.network == "testnet" \
-            else "https://graphql.mainnet.sui.io/graphql"
-        q = ('{ object(address: "' + coin["objectId"] + '") { '
-             '  asMoveObject { contents { json } } } }')
-        try:
-            r = _r.post(gql_url, json={"query": q}, timeout=20)
-            data = r.json().get("data") or {}
-            obj = (data.get("object") or {}).get("asMoveObject") or {}
-            bal = ((obj.get("contents") or {}).get("json") or {}).get("balance") or 0
-            return float(bal) / 1e6
-        except Exception as exc:
-            log.warning("[aftermath] wallet usdc balance failed: %s", exc)
-            return 0.0
+        coins = self._get_coins_via_rpc(self._resolve_settle_id())
+        return sum(c.get("balance", 0) for c in coins) / 1e6
 
     def _submit_native_tx(self, tx_kind_b64: str) -> dict:
         """Wrap a base64 TransactionKind in TransactionData::V1, sign, submit.
@@ -421,52 +457,81 @@ class AftermathAdapter:
         txKind from the native REST is a BCS TransactionKind. We build
         TransactionData::V1 { kind, sender, gas_data, expiration } using the
         same BCS primitives the Sui adapter uses, then broadcast via the Sui
-        GraphQL executeTransaction."""
+        GraphQL executeTransaction.
+
+        GAS (verified against docs.sui.io gas pricing + Aftermath CCXT docs):
+        a deposit/allocate PTB actually costs ~0.001-0.01 SUI (computation
+        buckets 50k-200k units x ~1000 MIST reference gas price), so requiring
+        a SINGLE coin of 0.05 SUI was 5-50x too strict and blocked wallets
+        holding e.g. 0.03-0.04 SUI. Instead: sum ALL the wallet's SUI coins
+        (Sui accepts up to 256 gas coins per tx) and scale the budget to the
+        balance - a wallet with a few hundredths of a SUI trades fine."""
         import hashlib as _hl
         import base58 as _b58
         from sui_adapter import (_bcs_addr, _bcs_u64, _ed25519_sign,
                                  _bcs_object_ref, _bcs_vec, _uleb128)
 
         tx_kind = base64.b64decode(tx_kind_b64)
-        now_ms = int(time.time() * 1000)
-        # 1. gas coin + price + budget via Sui GraphQL (same as SUIAdapter)
-        import requests as _r
+        # 1. gas coins + price + budget (same discovery path as SUIAdapter:
+        # GraphQL objects index can return EMPTY on mainnet even when the
+        # wallet holds SUI, so fall back to Blockvision suix_getCoins).
         gql_url = "https://graphql.testnet.sui.io/graphql" if self.network == "testnet" \
             else "https://graphql.mainnet.sui.io/graphql"
         q_coin = ('{ address(address: "' + self.address + '") {'
-                  '  objects(first: 20, filter: {type: "0x2::coin::Coin<0x2::sui::SUI>"}) { nodes {'
+                  '  objects(first: 50, filter: {type: "0x2::coin::Coin<0x2::sui::SUI>"}) { nodes {'
                   '    address version digest'
                   '    contents { json } } } } }')
-        r = _r.post(gql_url, json={"query": q_coin}, timeout=20)
-        data = r.json().get("data") or {}
-        addr_node = data.get("address") or {}
-        objs = ((addr_node.get("objects") or {}).get("nodes") or [])
-        gas_coin = None
-        for o in objs:
-            try:
-                bal = int(((o.get("contents") or {}).get("json") or {}).get("balance") or 0)
-            except Exception:
-                continue
-            if bal >= 50_000_000:  # 0.05 SUI min for gas
-                gas_coin = {"objectId": o.get("address"), "version": int(o.get("version", 0)),
-                            "digest": o.get("digest", "")}
+        coins = []
+        try:
+            r = requests.post(gql_url, json={"query": q_coin}, timeout=20)
+            data = r.json().get("data") or {}
+            addr_node = data.get("address") or {}
+            for o in ((addr_node.get("objects") or {}).get("nodes") or []):
+                try:
+                    bal = int(((o.get("contents") or {}).get("json") or {}).get("balance") or 0)
+                except Exception:
+                    continue
+                if bal > 0:
+                    coins.append({"objectId": o.get("address"), "version": int(o.get("version", 0)),
+                                  "digest": o.get("digest", ""), "balance": bal})
+        except Exception as exc:
+            log.warning("[aftermath] gql gas-coin query failed: %s", exc)
+        if not coins:
+            coins = self._get_coins_via_rpc("0x2::sui::SUI")
+        coins.sort(key=lambda c: c["balance"], reverse=True)
+        total = sum(c["balance"] for c in coins)
+        # Floor: measured live via dry run - an Aftermath deposit PTB costs
+        # ~1.8M MIST net (computation 1.75M + storage - rebate). A wallet with
+        # >= 2.5M MIST (0.0025 SUI) can fund budget >= 2M and still pay.
+        if total < 2_500_000:
+            return {"ok": False, "error": (
+                f"insufficient SUI for gas: wallet holds {total/1e9:.4f} SUI; "
+                "need >= 0.0025 SUI (a deposit tx costs ~0.002 SUI; "
+                ">= 0.01 SUI recommended)")}
+        # Budget: never set a budget above what the wallet can lock. 2M MIST
+        # covers the measured deposit cost (~1.8M); 0.02 SUI when the wallet
+        # allows, for headroom on complex PTBs (oracle updates etc).
+        budget = min(20_000_000, max(2_000_000, int(total * 0.7)))
+        # Gas coins: largest-first until the budget is covered (max 256/tx).
+        gas_coins = []
+        cum = 0
+        for c in coins:
+            gas_coins.append(c)
+            cum += c["balance"]
+            if cum >= budget or len(gas_coins) >= 256:
                 break
-        if gas_coin is None:
-            return {"ok": False, "error": "no SUI gas coin >= 0.05 SUI on testnet wallet"}
-        # Sui digests are base58 - convert to hex for the BCS object ref.
-        digest_hex = _b58.b58decode(gas_coin["digest"]).hex()
-        gas_coin["digest"] = "0x" + digest_hex
-        # gas price
+        for c in gas_coins:
+            # Sui digests are base58 - convert to hex for the BCS object ref.
+            digest_hex = _b58.b58decode(c["digest"]).hex()
+            c["digest"] = "0x" + digest_hex
+        # gas price (reference price; ~1000 MIST on testnet/mainnet)
         q_gp = "{ serviceConfig { referenceGasPrice } }"
-        r2 = _r.post(gql_url, json={"query": q_gp}, timeout=20)
+        r2 = requests.post(gql_url, json={"query": q_gp}, timeout=20)
         gas_price = int(((r2.json().get("data") or {}).get("serviceConfig") or {}).get("referenceGasPrice") or 1000)
-        # budget: a single deposit PTB costs ~0.001-0.01 SUI; use 0.02 SUI to stay
-        # well under the 0.1-0.186 SUI gas coins available on testnet.
-        budget = 20_000_000
 
         # 2. TransactionData::V1 = 0x00 || kind || sender || gas_data || 0x00
         gas_data = (
-            _bcs_vec([_bcs_object_ref(gas_coin["objectId"], gas_coin["version"], gas_coin["digest"])])
+            _bcs_vec([_bcs_object_ref(c["objectId"], c["version"], c["digest"]) for c in gas_coins])
             + _bcs_addr(self.address) + _bcs_u64(gas_price) + _bcs_u64(budget)
         )
         tx_bytes = b"\x00" + tx_kind + _bcs_addr(self.address) + gas_data + b"\x00"
@@ -479,7 +544,7 @@ class AftermathAdapter:
         q_sub = ('mutation { executeTransaction(transactionDataBcs: "' + tx_b64 +
                  '", signatures: ["' + signature + '"]) { '
                  'effects { digest status executionError { message abortCode } } } }')
-        r3 = _r.post(gql_url, json={"query": q_sub}, timeout=60)
+        r3 = requests.post(gql_url, json={"query": q_sub}, timeout=60)
         d3 = r3.json()
         if d3.get("errors"):
             return {"ok": False, "error": f"submit failed: {d3['errors'][0].get('message','')[:200]}"}
@@ -592,7 +657,7 @@ class AftermathAdapter:
             if have < needed:
                 return {"ok": False, "error": (
                     f"insufficient collateral: account {have:.2f} < needed {needed:.2f} USDC "
-                    f"(fund the wallet with the Aftermath testnet USDC type)")}
+                    f"(fund the wallet with the {self.network} USDC settle type)")}
 
         side = "sell" if intent.side == "sell" else "buy"
         order_type = "market" if intent.order_type == "market" else "limit"
@@ -609,6 +674,10 @@ class AftermathAdapter:
             "amount": amount,
             "price": price,
         }]
+        if getattr(intent, "reduce_only", False):
+            # Aftermath OrderRequest.reduceOnly: a close can only REDUCE the
+            # position - it can never open the opposite side by accident.
+            orders[0]["reduceOnly"] = True
 
         body = {
             "orders": orders,

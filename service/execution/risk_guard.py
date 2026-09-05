@@ -62,10 +62,12 @@ class RiskGuard:
                 violations.append("mandatory stop-loss missing on leveraged open")
             elif ref_price > 0:
                 pct = abs(intent.stop_loss - ref_price) / ref_price * 100
-                if pct < self.profile.min_stop_pct:
-                    violations.append(f"stop too tight ({pct:.1f}% < {self.profile.min_stop_pct}%)")
-                if pct > self.profile.max_stop_pct:
-                    violations.append(f"stop too wide ({pct:.1f}% > {self.profile.max_stop_pct}%)")
+                # small tolerance: the agent rounds levels to 6dp / clamps to
+                # these exact bounds, so 8.0 must not reject 8.0000001
+                if pct < self.profile.min_stop_pct - 0.05:
+                    violations.append(f"stop too tight ({pct:.2f}% < {self.profile.min_stop_pct}%)")
+                if pct > self.profile.max_stop_pct + 0.05:
+                    violations.append(f"stop too wide ({pct:.2f}% > {self.profile.max_stop_pct}%)")
         if wallet.open_positions >= self.profile.max_open_positions:
             violations.append("max open positions reached")
         if wallet.realized_pnl_today < 0:

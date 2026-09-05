@@ -601,44 +601,64 @@ class SUIAdapter:
                   "balance": bal,
               })
         if out:
+            # PARTIAL-INDEX GUARD (2026-09-04 incident): the GraphQL objects
+            # index can LAG - it returned 3 of 4 USDC coins (0.049 of 1.057
+            # held), making transfers fail with 'insufficient USDC' even when
+            # the wallet had the balance. Reconcile against the reliable
+            # balance() read: only trust the objects result when it sums to
+            # the true balance; otherwise prefer the JSON-RPC coin set.
+            # NOTE: balance() wants the RAW coin type - coin_type was wrapped
+            # in Coin<> above and returns 0 with it.
+            expected = self._gql_balance(raw_coin)
+            gql_sum = sum(c["balance"] for c in out)
+            if expected > 0 and gql_sum != expected:
+                rpc = self._rpc_coins(raw_coin)
+                rpc_sum = sum(c["balance"] for c in rpc) if rpc else 0
+                if rpc and rpc_sum == expected:
+                    return rpc
+                # neither source matches exactly - return whichever is fuller
+                return rpc if rpc_sum > gql_sum else out
             return out
         # Fallback for mainnet where GraphQL objects returns empty: try
         # Blockvision JSON-RPC `suix_getCoins` (still serves it).
-        if self.network == "mainnet":
-            try:
-                import requests as _rq
-                import time as _time
-                for url in (SUI_MAINNET_RPC_FALLBACK, self.rpc_url):
-                    for attempt in range(3):
-                        try:
-                            r = _rq.post(url, json={
-                                "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
-                                "params": [self.address, raw_coin, None, 50],
-                            }, timeout=8)
-                            j = r.json()
-                            # Blockvision rate-limit returns {"error_msg": "too frequent"}
-                            if isinstance(j, dict) and j.get("error_msg") and "frequent" in str(j.get("error_msg")).lower():
-                                _time.sleep(1.5 * (attempt + 1))
-                                continue
-                            data_list = (j.get("result") or {}).get("data") or []
-                            if data_list:
-                                fallback = []
-                                for c in data_list:
-                                    fallback.append({
-                                        "objectId": c.get("coinObjectId") or c.get("objectId"),
-                                        "version": int(c.get("version", 0)),
-                                        "digest": _digest_to_hex(str(c.get("digest") or "")),
-                                        "balance": int(c.get("balance") or 0),
-                                    })
-                                if fallback:
-                                    return fallback
-                            break
-                        except Exception:
-                            _time.sleep(0.5)
+        rpc = self._rpc_coins(raw_coin)
+        return rpc
+
+    def _rpc_coins(self, raw_coin: str) -> list[dict]:
+        """Owned coins via JSON-RPC suix_getCoins (Blockvision first - the
+        public fullnodes deprecated the method). Returns [] on failure."""
+        if self.network != "mainnet":
+            return []
+        try:
+            import requests as _rq
+            import time as _time
+            for url in (SUI_MAINNET_RPC_FALLBACK, self.rpc_url):
+                for attempt in range(3):
+                    try:
+                        r = _rq.post(url, json={
+                            "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
+                            "params": [self.address, raw_coin, None, 50],
+                        }, timeout=8)
+                        j = r.json()
+                        # Blockvision rate-limit returns {"error_msg": "too frequent"}
+                        if isinstance(j, dict) and j.get("error_msg") and "frequent" in str(j.get("error_msg")).lower():
+                            _time.sleep(1.5 * (attempt + 1))
                             continue
-            except Exception:
-                pass
-        return out
+                        data_list = (j.get("result") or {}).get("data") or []
+                        if data_list:
+                            return [{
+                                "objectId": c.get("coinObjectId") or c.get("objectId"),
+                                "version": int(c.get("version", 0)),
+                                "digest": _digest_to_hex(str(c.get("digest") or "")),
+                                "balance": int(c.get("balance") or 0),
+                            } for c in data_list]
+                        break
+                    except Exception:
+                        _time.sleep(0.5)
+                        continue
+        except Exception:
+            pass
+        return []
 
     # ------------------------------------------------------------ orders
 
@@ -959,6 +979,13 @@ class SUIAdapter:
             gas = self._dry_run(tx_json)
             out = self._broadcast_ptb(bcs_inputs, bcs_commands, gas["gas_price"], gas["budget"],
                                       gas_coin=gas_coin)
+            # A submitted tx can still FAIL on-chain (stale coin version,
+            # InsufficientCoinBalance, ...). Verify before reporting success,
+            # otherwise callers see ok=True for money that never moved.
+            if str(out.get("status", "")).upper() not in ("SUCCESS", ""):
+                return {"ok": False,
+                        "error": f"transfer failed on-chain: {out.get('status')}",
+                        "digest": out.get("digest", "")}
             return {
                 "ok": True,
                 "venue": "sui",

@@ -98,6 +98,7 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
         candidates = [resolved_model] + [m for m in OPENROUTER_FREE_MODELS if m != resolved_model]
 
     for cand in candidates:
+        is_last = cand == candidates[-1]
         try:
             if provider == "claude":
                 resp = _anthropic_completion(base, api_key, cand, None, "say OK",
@@ -105,25 +106,25 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
             else:
                 resp = _chat_once(base, api_key, cand, timeout)
         except requests.Timeout:
-            if provider == "openrouter" and len(candidates) > 1:
+            if not is_last:
                 continue
             raise ProviderError("network", "provider timed out")
         except requests.RequestException as exc:
-            if provider == "openrouter" and len(candidates) > 1:
+            if not is_last:
                 continue
             raise ProviderError("network", f"cannot reach provider: {type(exc).__name__}")
         except Exception as exc:  # noqa: BLE001
-            if provider == "openrouter" and len(candidates) > 1:
+            if not is_last:
                 continue
             raise ProviderError("network", f"provider call failed: {type(exc).__name__}")
 
         # OpenRouter free tier: a paid-model routing (402), per-day free cap
-        # (429), or a forbidden model (403/400) is NOT a bad key - skip this
-        # candidate and try the next free model. `openrouter/auto` (the preset)
-        # commonly returns 402 on a free-tier key, so we must skip past it too,
-        # not raise. Without this the validation "gets stuck on Testing your key".
-        if provider == "openrouter" and len(candidates) > 1:
-            if resp.status_code in (402, 400, 403, 429):
+        # (429), a forbidden model (403/400), or a RETIRED free model (404)
+        # is NOT a bad key - skip this candidate and try the next one.
+        # `openrouter/auto` (the preset) commonly returns 402 on a free-tier
+        # key, so we must skip past it too, not raise.
+        if provider == "openrouter" and not is_last:
+            if resp.status_code in (400, 402, 403, 404, 429):
                 continue
         if resp.status_code in (401, 403):
             raise ProviderError("invalid", "provider rejected the key (401/403)")
@@ -132,21 +133,29 @@ def validate_key(provider: str, api_key: str, base_url: str | None = None,
         if resp.status_code == 429:
             raise ProviderError("rate_limited", "provider is rate limited")
         if resp.status_code >= 500:
-            if provider == "openrouter" and len(candidates) > 1:
+            if not is_last:
                 continue
             raise ProviderError("network", f"provider server error ({resp.status_code})")
         if resp.status_code != 200:
+            if not is_last:
+                continue
             raise ProviderError("unknown", f"unexpected status {resp.status_code}")
         if not _parse_ok(resp, provider):
             # openrouter/auto often routes to reasoning models that return
             # content:null (text lives in `reasoning`) - not an error, just not
             # usable for our 5-token probe, so try the next free model.
-            if provider == "openrouter" and len(candidates) > 1:
+            if not is_last:
                 continue
             raise ProviderError("unknown", "empty provider response")
         return cand
 
-    raise ProviderError("invalid", "provider rejected the key")
+    # Every candidate failed (free-tier caps rotate hourly: 429s are normal)
+    raise ProviderError(
+        "rate_limited",
+        "no OpenRouter free model is available right now (they rotate hourly) - "
+        "try again in a few minutes, or add $5 credits at openrouter.ai/credits "
+        "to use any model",
+    )
 
 
 def chat_completion(provider: str, api_key: str, system: str, user: str,

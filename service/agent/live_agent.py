@@ -134,20 +134,83 @@ AFTERMATH_MAX_LEVERAGE = {
 }
 
 
-def clamp_leverage(symbol: str, market: str, lev: float) -> float:
-    """Clamp requested leverage to the venue/asset max. 1x if market not a perp.
-    Enforces a 20x FLOOR for crypto perps: the bot never trades below 20x
-    (Aftermath supports up to 20x/10x - our cap was the problem, not the venue)."""
+def liq_distance_pct(lev: float, max_lev: float) -> float:
+    """% adverse price move until the venue liquidates a position at leverage `lev`.
+
+    Verified live from Aftermath /perpetuals/all-markets (2026-09-04):
+    BTC/ETH/SOL IMR 0.05 (20x max) with MMR 0.025; SUI/XRP/HYPE IMR 0.1 (10x)
+    with MMR 0.05 - i.e. MMR = IMR/2 = 1/(2*max_lev). A position liquidates
+    when its margin ratio falls to MMR:
+        margin_ratio(lev) - adverse_move = MMR
+        adverse_move = 1/lev - 1/(2*max_lev)
+    At max leverage that is 1/(2*max_lev): 2.5% for 20x markets, 5% for 10x.
+    Funding burn (measured ~0.004%/h ~= 0.1%/day of notional) erodes this
+    further on interday holds."""
+    if max_lev <= 0 or lev <= 0:
+        return 0.0
+    return max(0.0, (1.0 / lev - 1.0 / (2.0 * max_lev)) * 100.0)
+
+
+# Conviction-based leverage: applies ONLY to 20x-leverage markets
+# (BTC/ETH/SOL/XAUT). 13x at floor conviction, scaling linearly to the venue
+# cap (20x) as conviction doubles. Loss per stop-out = notional x stop%, which
+# leverage does NOT change - leverage only moves the liquidation line and the
+# margin locked, so the floor is safe as long as stops stay <= 4% (liq at 13x
+# sits 5.19% against entry, MMR = IMR/2 verified live; 5.19/4 = 1.3x buffer).
+# 10x-cap markets (SUI/XRP/HYPE) are NOT subject to this floor - they stay on
+# the liq-safe margin-fit leverage.
+CONVICTION_LEV_FLOOR = float(os.getenv("LIVE_AGENT_MIN_LEVERAGE", "13.0"))
+CONVICTION_LEV_CAP_MULT = 2.0  # conviction 2x floor -> full venue cap
+
+
+def clamp_leverage(symbol: str, market: str, lev: float,
+                   stop_pct: float | None = None) -> float:
+    """Clamp requested leverage so the STOP always fires before the venue can.
+
+      1. venue/asset cap (BTC/ETH/SOL 20x, SUI/XRP/HYPE 10x, most others 5x)
+      2. liquidation safety: the stop must sit inside 80% of the liq distance
+         (the remaining 20% covers funding burn + fees on multi-day holds).
+         At 20x liquidation sits 2.5% against the entry (MMR = IMR/2,
+         verified live) - a stop the venue outruns is not a stop: the
+         position dies in a partial-liquidation cascade (0.5% liquidation
+         fee + slippage) while the bot still shows it open.
+    The 13x conviction floor (20x markets only) is applied by the caller
+    (balance_aware_size) which also verifies liq safety. 1x if not a perp."""
     if market != "crypto":
         return 1.0
     if lev <= 1:
-        return lev
-    # Aftermath is the live Sui venue - use its real per-market max.
+        return 1.0
     cap = AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)
-    # The floor must never exceed the venue/asset cap, otherwise every request
-    # for a capped asset would be forced to (and clamped to) the max.
-    floor = min(20.0, cap)
-    return min(max(lev, floor), cap)
+    lev = min(lev, float(cap))
+    if stop_pct and stop_pct > 0:
+        # LIQ SAFETY: the stop must fire before liq, with a 20% buffer for
+        # funding burn + fees on multi-day holds. liq_dist(lev, cap) =
+        # 1/lev - 1/(2*cap) >= stop*1.25  =>  lev <= 1 / (stop*1.25 + 1/(2*cap))
+        safe = 1.0 / (stop_pct / 100.0 * 1.25 + 1.0 / (2.0 * cap))
+        lev = min(lev, max(1.0, safe))
+    return max(1.0, lev)
+
+
+def conviction_leverage(symbol: str, market: str, conviction: float,
+                        stop_pct: float | None = None) -> float:
+    """Leverage measured by conviction - 13x floor on 20x-leverage markets.
+
+    Scales linearly from CONVICTION_LEV_FLOOR (13x at floor conviction) to
+    the venue cap (20x at 2x floor conviction), then liq-safety-clamped via
+    clamp_leverage. Conviction below the floor keeps the 13x floor (it is a
+    floor, not a target). 10x-cap markets are exempt: they use the liq-safe
+    margin-fit leverage as before."""
+    if market != "crypto":
+        return 1.0
+    cap = AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)
+    if cap < CONVICTION_LEV_FLOOR:
+        # 10x markets: no 13x floor - liq-safe margin-fit base
+        return clamp_leverage(symbol, market, 2.25, stop_pct=stop_pct)
+    f = 0.0
+    if conviction > 0:
+        f = max(0.0, min(1.0, (conviction - CONVICTION_FLOOR) / CONVICTION_FLOOR))
+    req = CONVICTION_LEV_FLOOR + f * (cap - CONVICTION_LEV_FLOOR)
+    return clamp_leverage(symbol, market, req, stop_pct=stop_pct)
 # Real execution through the chain adapters (execution gateway). Requires
 # REAL_TRADING_ENABLED=1 AND per-chain keys in the gateway env. Default off:
 # the agent stays paper-only on the platform. When on, orders route through
@@ -366,6 +429,46 @@ def compute_risk_size(equity_val: float, entry_price: float, stop_pct: float,
                    f"(kelly {f_used:.2f}, vol x{vol_mult:.2f})")
 
 
+# REACHABLE + COST-AWARE stop/target levels for INTERDAY trading.
+# Two constraints (both measured 2026-09-04 on live data):
+#  1. REACHABILITY: BTC daily vol ~2-3% -> 3-8% price moves resolve in
+#     hours-to-days; the old 4-24% take floors produced targets that needed
+#     weeks and never hit.
+#  2. COST SURVIVAL: the platform's 0.5% per-fill fee = ~1.05% round trip.
+#     Backtests show every trade with a target under ~3.2% (costs > 1/3 of
+#     the target) is net-negative regardless of entry quality - so the take
+#     floor is 3.2% and R stays >= 2.0 to keep the required win rate <= ~47%.
+# These are PRICE distances: at venue leverage (2-16x, liq-safe) they map to
+# double-digit PnL on margin while targets stay reachable.
+INTERDAY_STOP_MIN_PCT = float(os.getenv("LIVE_AGENT_STOP_MIN_PCT", "2.0"))
+# 4% ceiling: keeps the 13x conviction-leverage floor liq-safe on 20x markets
+# (liq at 13x = 5.19% out; 5.19/4 = 1.3x buffer). 10x markets cap at 4% too
+# (liq at 10x = 5% out, exactly 1.25x buffer).
+CONVICTION_LEV_STOP_CAP = float(os.getenv("LIVE_AGENT_STOP_MAX_PCT", "4.0"))
+INTERDAY_STOP_MAX_PCT = CONVICTION_LEV_STOP_CAP
+INTERDAY_TAKE_MIN_PCT = float(os.getenv("LIVE_AGENT_TAKE_MIN_PCT", "3.2"))
+INTERDAY_TAKE_MAX_PCT = float(os.getenv("LIVE_AGENT_TAKE_MAX_PCT", "12.0"))
+INTERDAY_MIN_RR = float(os.getenv("LIVE_AGENT_MIN_RR", "2.0"))
+
+
+def clamp_risk_levels(stop_pct: float, take_pct: float) -> tuple[float, float]:
+    """Clamp scenario stop/take percentages into cost-aware, liq-safe bounds.
+
+    stop: [2%, 4%] - the 4% ceiling keeps the 13x conviction-leverage floor
+    liq-safe on 20x markets (liquidation at 13x sits 5.19% against entry,
+    5.19/4 = 1.3x buffer, MMR = IMR/2 verified live 2026-09-04).
+    take: [3.2%, 12%] (>= 3x the 1.05% round-trip cost) and always >= 2R so
+    the required win rate stays at or below the measured trend-confirmed
+    ceiling (~47%).
+    """
+    stop = max(INTERDAY_STOP_MIN_PCT, min(float(stop_pct or 3.0), CONVICTION_LEV_STOP_CAP))
+    take = max(INTERDAY_TAKE_MIN_PCT, min(float(take_pct or stop * INTERDAY_MIN_RR),
+                                          INTERDAY_TAKE_MAX_PCT))
+    if take < stop * INTERDAY_MIN_RR:
+        take = min(stop * INTERDAY_MIN_RR, INTERDAY_TAKE_MAX_PCT)
+    return round(stop, 2), round(take, 2)
+
+
 def balance_aware_size(equity_val: float, cash: float, entry_price: float,
                        stop_pct: float, symbol: str,
                        market: str = "crypto",
@@ -402,12 +505,16 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
             exposure = 0.15
     notional = balance * exposure
     units = notional / entry_price
-    # leverage: fit margin into the balance, floor 20x, clamp to venue/asset cap
-    margin_use = max(0.05, min(0.5, 0.20))
-    lev = notional / (balance * margin_use) if balance > 0 else LIVE_AGENT_LEVERAGE
-    lev = max(20.0, min(lev, 100.0))                # min 20x (Aftermath floor), max 100x
-    lev = clamp_leverage(symbol, market, lev)       # venue/asset cap
-    # hard cap: margin must fit the balance at ANY leverage
+    # LEVERAGE MEASURED BY CONVICTION: 13x floor on 20x-leverage markets
+    # (BTC/ETH/SOL/XAUT), scaling linearly to the venue cap as conviction
+    # doubles above the floor. Loss per stop-out = notional x stop% is
+    # unchanged by leverage - leverage only moves the liquidation line, and
+    # clamp_leverage keeps it beyond stop x 1.25 (verified: at 13x liq sits
+    # 5.19% out vs the 4% stop cap; at 20x 2.5% vs tight conviction stops).
+    # 10x-cap markets (SUI/XRP/HYPE) are exempt - they stay liq-safe
+    # margin-fit (~2.25x).
+    lev = conviction_leverage(symbol, market, conviction, stop_pct=stop_pct)
+    # margin must still fit inside the balance at this leverage
     if lev > 1 and notional > balance * 0.95 * lev:
         units = (balance * 0.95 * lev) / entry_price
         notional = units * entry_price
@@ -811,6 +918,54 @@ def traded_symbols_today() -> set[str]:
     return traded
 
 
+# DIRECTION LOCK + ONE-SHOT RULE (one good trade discipline, web-validated
+# 2026-09-04: OneTradeJournal one-trade-a-day - a stop-out ends the session
+# for that symbol; re-entry or direction flip on the same day is a violation).
+# ONE attempt per symbol per day: pick the best setup, take the shot, then
+# make NO further decisions on that asset - win or lose it waits until
+# tomorrow. (Env-tunable for operators who want a retry.)
+MAX_ENTRY_ATTEMPTS = int(os.getenv("LIVE_AGENT_MAX_ENTRY_ATTEMPTS", "1"))
+
+
+def entry_directions_today() -> dict[str, set[str]]:
+    """{symbol: {directions attempted today}} - filled or not. The direction
+    a symbol was last attempted with is the only one allowed for the day."""
+    dirs: dict[str, set[str]] = {}
+    if not LOG_PATH.exists():
+        return dirs
+    today = datetime.now(timezone.utc).date().isoformat()
+    with open(LOG_PATH, encoding="utf-8") as f:
+        next(f, None)
+        for line in f:
+            if not line.startswith(today):
+                continue
+            parts = line.split(",")
+            symbol = (parts[1] if len(parts) > 1 else "").strip().upper()
+            action = parts[3] if len(parts) > 3 else (parts[2] if len(parts) > 2 else "")
+            if symbol and action in ("buy", "short"):
+                dirs.setdefault(symbol, set()).add(action)
+    return dirs
+
+
+def entry_attempts_today(symbol: str) -> int:
+    """Number of ENTRY decisions made for a symbol today (any outcome)."""
+    if not LOG_PATH.exists():
+        return 0
+    today = datetime.now(timezone.utc).date().isoformat()
+    n = 0
+    with open(LOG_PATH, encoding="utf-8") as f:
+        next(f, None)
+        for line in f:
+            if not line.startswith(today):
+                continue
+            parts = line.split(",")
+            sym = (parts[1] if len(parts) > 1 else "").strip().upper()
+            action = parts[3] if len(parts) > 3 else (parts[2] if len(parts) > 2 else "")
+            if sym == symbol.upper() and action in ("buy", "short"):
+                n += 1
+    return n
+
+
 def equity(portfolio: dict, prices: dict) -> float:
     cash = portfolio.get("cash", 100000.0)
     for p in portfolio.get("positions", []):
@@ -1034,29 +1189,41 @@ def route_real_order(gw, bot_id: int, symbol: str, market: str, action: str,
     limits on entries). The offset is ~ENTRY_OFFSET_BPS below/above the
     reference price - small enough to fill instantly, but it no longer depends
     on the exact price the LLM saw (BTC may have moved since the scenario).
+
+    CLOSES are REDUCE-ONLY limit orders placed to CROSS the spread (sell
+    slightly below market, buy slightly above): a reduce-only resting order
+    can never flip the position, and a crossing price guarantees the exit
+    fills immediately when protecting capital is the priority.
     """
     resolved = _resolve_real_venue(symbol, market, gw)
     if not resolved:
         return {"ok": False, "error": f"no real venue for {symbol} [{market}]"}
     chain, venue = resolved
+    is_entry = action in ("buy", "short")
     side = "buy" if action in ("buy", "cover") else "sell"
-    lev = clamp_leverage(symbol, market, leverage)
-    # LIMIT ENTRY OFFSET (math-backed): top-of-book spread on liquid perps is
-    # ~0.5-2 bps; placing the entry ~2 bps inside the market fills immediately
-    # while earning maker pricing on the portion that rests.
+    # leverage clamped to venue cap AND liquidation-safe vs this stop distance
+    lev = clamp_leverage(symbol, market, leverage, stop_pct=stop_pct if is_entry else None)
     _entry_off = ENTRY_OFFSET_BPS / 10000.0
+    if is_entry:
+        # cross-inside slightly: fills immediately, earns maker pricing on the rest
+        limit_price = round(ref_price * (1 - _entry_off) if side == "buy"
+                            else ref_price * (1 + _entry_off), 6)
+    else:
+        # CLOSE: cross the spread so the exit cannot rest unfilled
+        limit_price = round(ref_price * (1 - _entry_off) if side == "sell"
+                            else ref_price * (1 + _entry_off), 6)
     intent_kw = dict(
         chain=chain, venue=venue, symbol=symbol, side=side, qty=qty,
         order_type="limit",
-        limit_price=round(ref_price * (1 - _entry_off) if side == "buy"
-                          else ref_price * (1 + _entry_off), 6),
-        # closes (sell/cover) are always 1x with no stop/target re-armed
-        leverage=lev if action in ("buy", "short") else 1.0,
+        limit_price=limit_price,
+        reduce_only=not is_entry,
+        # closes are always 1x with no stop/target re-armed
+        leverage=lev if is_entry else 1.0,
         idempotency_key=(
             f"agent:{os.getenv('LIVE_AGENT_NAME', 'agent')}:{symbol}:{action}:{int(time.time() * 1000)}"
         ),
     )
-    if action in ("buy", "short"):
+    if is_entry:
         if stop_pct:
             intent_kw["stop_loss"] = round(
                 ref_price * (1 - stop_pct / 100) if action == "buy"
@@ -1358,7 +1525,7 @@ def fetch_interval_closes(symbol: str, market: str, interval: str,
             now_ms = int(time.time() * 1000)
             # startTime must span enough bars for the interval. Hyperliquid's
             # candleSnapshot uses millisecond timestamps; we need ~bars * interval_ms.
-            mult = {"5m": 300000, "1h": 3600000, "1d": 86400000}
+            mult = {"5m": 300000, "1h": 3600000, "4h": 4 * 3600000, "1d": 86400000}
             span_ms = bars * mult.get(interval, 3600000)
             r = _r.post("https://api.hyperliquid.xyz/info", json={
                 "type": "candleSnapshot",
@@ -1690,19 +1857,33 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         # scalp scenarios and picks the best-EV horizon.
                         try:
                             from quant_strategy import build_trend_scenarios, trend_confirmed
+                            _trend_kept = 0
                             for tsym, tmarket in UNIVERSE:
                                 tpx = prices.get(tsym, 0)
                                 if tpx <= 0:
                                     continue
                                 if TRADER_TYPE == "auto" or TRADER_TYPE == "intraday":
-                                    c1h = fetch_interval_closes(tsym, tmarket, "1h", 500)
-                                    if len(c1h) >= 30:
-                                        for ts in build_trend_scenarios(tsym, c1h, tpx, "intraday",
-                                                                        bars_per_year=24 * 365):
-                                            momentum_ok[(ts.symbol, ts.direction, ts.horizon)] = (
-                                                trend_confirmed(c1h, ts.direction)
-                                            )
-                                            matrix.append(ts)
+                                    # INTERDAY = ONE GOOD MOMENTUM TRADE, decided on
+                                    # the 4H chart (~6 bars/day): EMA12/26 on 4h =
+                                    # the multi-session trend, not 5-minute noise.
+                                    # Hard entry gates: EMA trend confirmed AND 4h
+                                    # RSI confirms direction (longs >= 40, shorts
+                                    # <= 60) - only A-grade setups reach the LLM.
+                                    c4h = fetch_interval_closes(tsym, tmarket, "4h", 250)
+                                    if len(c4h) >= 30:
+                                        for ts in build_trend_scenarios(tsym, c4h, tpx, "intraday",
+                                                                        bars_per_year=6 * 365):
+                                            confirmed = trend_confirmed(c4h, ts.direction)
+                                            r4 = _rsi_fn(c4h)
+                                            rsi_ok = (r4 >= RSI_ENTRY_THRESHOLD if ts.direction == "long"
+                                                      else r4 <= 100 - RSI_ENTRY_THRESHOLD)
+                                            momentum_ok[(ts.symbol, ts.direction, ts.horizon)] = confirmed
+                                            if confirmed and rsi_ok:
+                                                matrix.append(ts)
+                                                _trend_kept += 1
+                            if TRADER_TYPE == "intraday":
+                                print(f"[quant] 4h momentum scan: {_trend_kept} A-grade "
+                                      f"scenario(s) across {len(UNIVERSE)} symbols")
                                 if TRADER_TYPE == "auto" or TRADER_TYPE == "swing":
                                     c1d = fetch_interval_closes(tsym, tmarket, "1d", 200)
                                     if len(c1d) >= 30:
@@ -1716,25 +1897,30 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             print(f"[quant] trend model unavailable ({_texc})")
                         has_long = {p["symbol"]: p["quantity"] > 0 for p in positions}
                         has_short = {p["symbol"]: p["quantity"] < 0 for p in positions}
+                        # PURE INTRADAY MODE: the 5m-sigma scalp scenarios are
+                        # NOISE for this trader type - drop them entirely so the
+                        # ONLY candidates are 4h-chart momentum plays. One good
+                        # trade, decided on the higher timeframe.
+                        if TRADER_TYPE == "intraday":
+                            matrix = [s for s in matrix if s.horizon != "scalp"]
                         # DO NOT RE-ANALYZE a token that already has an OPEN
-                        # position (long OR short): while it is held we wait for
-                        # that trade to resolve instead of stacking low-conviction
-                        # entries on top of it. The only override is an explicit
-                        # user "watch <ASSET>" - then the user is confirming they
-                        # want it analyzed for the next trade.
+                        # ONE OPEN POSITION PER SYMBOL - NO EXCEPTIONS. While a
+                        # position is held we wait for it to resolve instead of
+                        # stacking entries or flipping direction on top of it.
+                        # (The old WATCHED override silently disabled this rule:
+                        # onboarding seeds the whole watchlist as WATCHED, so
+                        # every symbol was exempt and the bot could stack
+                        # positions / flip direction on the same asset.)
                         open_symbols = {p["symbol"] for p in positions
                                         if p.get("quantity") not in (0, None, "")}
                         if open_symbols:
-                            skipped = sorted(open_symbols - set(WATCHED))
-                            matrix = [s for s in matrix
-                                      if s.symbol not in open_symbols or s.symbol in WATCHED]
-                            if skipped:
-                                print(f"[quant] holding on {len(skipped)} open position(s) "
-                                      f"({', '.join(skipped)}) - not re-analyzing until they resolve "
-                                      f"(override: watch <ASSET>)")
+                            matrix = [s for s in matrix if s.symbol not in open_symbols]
+                            print(f"[quant] holding {len(open_symbols)} open position(s) "
+                                  f"({', '.join(sorted(open_symbols))}) - one position per "
+                                  f"symbol, waiting for it to resolve")
                         # ONE TRADE PER TOKEN PER DAY: drop symbols already
-                        # filled today so the agent moves on to the next watched
-                        # token instead of flipping direction on the same one.
+                        # filled today so the agent moves on to the next token
+                        # instead of flipping direction on the same one.
                         _traded_today = traded_symbols_today()
                         if _traded_today:
                             _skipped_today = sorted(s for s in _traded_today
@@ -1810,11 +1996,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         side = "buy" if best.direction == "long" else "short"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
-                        # Clamp to risk-guard bounds (2-8%) so the trade isn't
-                        # rejected as "stop too wide" and actually executes
-                        # against real USDC.
-                        stop_pct = max(2.0, min(float(stop_pct or 5.0), 8.0))
-                        take_pct = max(4.0, min(float(take_pct or 8.0), 24.0))
+                        # Clamp to REACHABLE interday levels so the trade
+                        # actually executes against real USDC and the target
+                        # can hit within hours-to-days.
+                        stop_pct, take_pct = clamp_risk_levels(stop_pct, take_pct)
                         qty, lev, why = balance_aware_size(
                             eq, portfolio.get('cash', eq), best.entry, stop_pct,
                             best.symbol, conviction=best.conviction, p_win=best.p_win)
@@ -1975,10 +2160,9 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             if _last_scenario is not None:
                                 stop_pct = abs(_last_scenario.entry - _last_scenario.stop) / _last_scenario.entry * 100
                                 take_pct = abs(_last_scenario.target - _last_scenario.entry) / _last_scenario.entry * 100
-                                stop_pct = max(2.0, min(float(stop_pct or 5.0), 8.0))
-                                take_pct = max(4.0, min(float(take_pct or 8.0), 24.0))
+                                stop_pct, take_pct = clamp_risk_levels(stop_pct, take_pct)
                             else:
-                                stop_pct, take_pct = 5.0, 12.0  # fallback if no match
+                                stop_pct, take_pct = 3.0, 6.0  # reachable fallback
                             decision = {
                                 "action": llm_action,
                                 "symbol": llm_sym,
@@ -2024,8 +2208,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         side = "buy" if best.direction == "long" else "short"
                         stop_pct = abs(best.entry - best.stop) / best.entry * 100
                         take_pct = abs(best.target - best.entry) / best.entry * 100
-                        stop_pct = max(2.0, min(float(stop_pct or 5.0), 8.0))
-                        take_pct = max(4.0, min(float(take_pct or 8.0), 24.0))
+                        stop_pct, take_pct = clamp_risk_levels(stop_pct, take_pct)
                         qty, lev, why = balance_aware_size(
                             eq, portfolio.get('cash', eq), best.entry, stop_pct,
                             best.symbol, conviction=best.conviction, p_win=best.p_win)
@@ -2066,6 +2249,10 @@ def run_cycle(token: str, dry: bool = False) -> None:
            "quantity": qty, "stop_pct": stop_pct, "take_pct": take_pct,
            "fill_ok": None, "reasoning": reasoning, "error": ""}
 
+    # Open-position map for the guard chain below (one position per symbol).
+    open_symbols = {p["symbol"] for p in positions
+                    if p.get("quantity") not in (0, None, "")}
+
     if action in ("buy", "sell", "short", "cover"):
         has_long = any(p["symbol"] == symbol and p["quantity"] > 0 for p in positions)
         has_short = any(p["symbol"] == symbol and p["quantity"] < 0 for p in positions)
@@ -2086,18 +2273,34 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"
             row["error"] = (f"already traded {symbol} today - one trade per "
                             f"token per day, moving to the next")
+        elif action in ("buy", "short") and symbol in open_symbols:
+            # ONE OPEN POSITION PER SYMBOL: never stack a second position or
+            # flip direction while the first is still open. The open trade is
+            # left completely alone until its own exit logic (stop/target/
+            # trail) resolves it - no interference, no additions, no flips.
+            row["action"] = "hold"
+            row["error"] = (f"position open on {symbol} - committed to this trade, "
+                            f"waiting for it to win or stop out")
+        elif action in ("buy", "short") and entry_attempts_today(symbol) >= MAX_ENTRY_ATTEMPTS:
+            # ONE-SHOT RULE: a single entry decision per symbol per day. The
+            # bot takes its best shot, then makes NO further decisions on the
+            # asset - no re-entry, no direction flip, no retry spam - until
+            # tomorrow. Win or lose, that symbol's session is over.
+            row["action"] = "hold"
+            row["error"] = (f"{symbol}'s one trade for today is already decided - "
+                            f"no further decisions until tomorrow")
         elif action in ("buy", "short") and qty * prices.get(symbol, 1e9) > eq * MAX_POSITION_PCT / 100:
             row["action"] = "hold"; row["error"] = "position size cap exceeded"
         elif action in ("buy", "short") and stop_pct == 0 and FORCE_STOP_PCT > 0:
             stop_pct = FORCE_STOP_PCT  # mandatory stop-loss on new entries
-        elif action in ("buy", "short") and positions and symbol not in WATCHED:
-            # ONE POSITION RULE: only one open position at a time. If the book
-            # already holds anything and this is a NEW open (not a watched
-            # override), wait for the current trade to resolve first.
+        elif action in ("buy", "short") and positions:
+            # ONE POSITION RULE (interday): only ONE open position at a time -
+            # the bot takes the single best trade and manages it to resolution.
+            # No watched-symbol bypass: onboarding marks the whole watchlist
+            # as watched, which silently disabled this rule before.
             row["action"] = "hold"
-            row["error"] = ("one-position rule: wait for the current trade to "
-                            "resolve before opening another (override: watch "
-                            f"<ASSET> to analyze {symbol} for the next trade)")
+            row["error"] = ("one-position rule: the current trade must resolve "
+                            "before opening another")
         elif action == "buy" and has_long:
             row["action"] = "hold"; row["error"] = "already long in symbol"
         elif action == "short" and has_short:

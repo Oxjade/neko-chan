@@ -100,7 +100,11 @@ def test_route_real_order_open_attaches_stop_and_tp():
     assert bot_id == 7 and ref == 80000
     assert isinstance(intent, OrderIntent)
     assert intent.chain == "hyperliquid" and intent.venue == "hl-perp"
-    assert intent.side == "buy" and intent.leverage == 20
+    assert intent.side == "buy"
+    # LIQ-SAFE: leverage is clamped below the venue max so the stop (5%)
+    # fires before the venue could liquidate. BTC cap 20x, MMR = IMR/2 ->
+    # liq-safe lev = 1 / (0.05*1.25 + 1/(2*20)) = 11.43x (liq at 6.25% > stop).
+    assert intent.leverage == pytest.approx(1.0 / (0.05 * 1.25 + 1.0 / 40.0))
     assert intent.stop_loss == pytest.approx(76000.0)
     assert intent.take_profit == pytest.approx(88000.0)
     assert intent.idempotency_key.startswith("agent:TestAgent:BTC:buy:")

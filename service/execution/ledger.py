@@ -111,8 +111,27 @@ class ExecLedger:
 
     # ---------------- wallets ----------------
 
+    def wallet_owner_by_key(self, key_hash: str, address: str) -> int | None:
+        """Return the bot_id already owning this key_hash or address, if any.
+        Used to enforce one-keypair-per-bot at the storage layer."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT bot_id FROM exec_wallets WHERE (key_hash = ? OR address = ?) LIMIT 1",
+                (key_hash, address),
+            ).fetchone()
+            return row["bot_id"] if row else None
+
     def upsert_wallet(self, bot_id: int, chain: str, address: str, pubkey: str,
                       key_enc: bytes, key_hash: str) -> int:
+        # ONE KEYPAIR PER BOT (enforced here, not by convention): a wallet
+        # row must never carry a key/address that another bot already owns.
+        # The 2026-09-04 incident: gateway's first-row fallback silently
+        # assigned bot 1's keypair to bot 4 - two bots trading one account.
+        owner = self.wallet_owner_by_key(key_hash, address)
+        if owner is not None and owner != bot_id:
+            raise ValueError(
+                f"wallet key/address already owned by bot {owner} - refusing to "
+                f"share a keypair between bots (bot {bot_id} needs its own wallet)")
         with self._lock:
             cur = self._conn.execute(
                 """INSERT INTO exec_wallets (bot_id, chain, address, pubkey, key_enc, key_hash, created_at)
@@ -247,6 +266,17 @@ class ExecLedger:
                     (bot_id,),
                 ).fetchone()
             return float(row["s"])
+
+    def record_fee_marker(self, bot_id: int, amount_usd: float) -> None:
+        """Book a non-fill fee_ledger row (e.g. a negative 'swept' marker after
+        an accumulated fee transfer). fill_id=0, fee_bps=0."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO fee_ledger (bot_id, fill_id, fee_bps, fee_usd, kind, ts) "
+                "VALUES (?, 0, 0, ?, 'swept', ?)",
+                (bot_id, round(amount_usd, 6), utcnow()),
+            )
+            self._conn.commit()
 
     # ---------------- positions ----------------
 

@@ -34,15 +34,17 @@ TAKE_MIN = 12.0                    # narrowest target (at 2× normal vol)
 TAKE_MAX = 40.0                    # widest target (at 0.5× normal vol)
 # ---- sentiment tail-risk adjuster (Fear & Greed, 0-100) ----
 # Only acts at the extremes; in the middle it does nothing so the validated
-# 20d momentum math runs untouched. Greed >= GREED_HOT tightens (stretched
-# market reverses harder); fear <= FEAR_COLD widens (don't get shaken out of
-# an oversold recovery). Extreme-greed adjustment caps at a 1.5R target so the
-# payoff ratio never goes below the Kelly-positive line.
+# momentum math runs untouched. Adjustments are MULTIPLICATIVE so they scale
+# with whatever stop/target the horizon produced (fixed cuts were tuned for
+# the old 8%/24% scale and distorted small reachable targets). Greed >= 90
+# tightens both (stretched markets snap back harder); fear <= 15 widens the
+# stop (don't get shaken out of an oversold recovery). The target never drops
+# below 1.5R so the payoff ratio stays Kelly-positive.
 GREED_HOT = 90.0
 FEAR_COLD = 15.0
-GREED_STOP_CUT = 2.0               # stop 8% -> 6% in extreme greed
-GREED_TARGET_CUT = 6.0             # take 24% -> 18% in extreme greed
-FEAR_STOP_WIDEN = 2.0              # stop 8% -> 10% in extreme fear
+GREED_TIGHTEN = 0.75               # stop & target x0.75 in extreme greed
+FEAR_WIDEN = 1.25                  # stop x1.25 in extreme fear
+MIN_RR_FLOOR = 1.5
 # ---- drift shrinkage for the scenario engine ----
 # Raw 20d drift extrapolated to annual is nonsense (+366% to +744% on a hot
 # week), which inflates P(win) to the cap. Momentum persists but mean-reverts:
@@ -82,6 +84,19 @@ TIME_MIN_HOLD_MINUTES = 30         # absolute floor (avoid churn from noise)
 TIME_MIN_PROFIT_MINUTES = 15
 BAR_MINUTES = 5                    # decision cycle length
 PROFIT_TAKE_MIN_PCT = 0.05
+# ---- cost-aware trade guard (platform fee reality) ----
+# The platform charges 0.5% per fill -> ~1.05% round trip with venue fees.
+# MEASURED 2026-09-04 (sweeps on 9003 5m bars + 9003 1h bars + 1503 1d bars,
+# live entry gates): gross edge is ~+5-7pts of win rate over the GBM baseline,
+# which NO barrier config converts into net profit when costs exceed ~1/3 of
+# the target. Trades whose target doesn't clear costs 3x are guaranteed
+# losers and must never be emitted.
+ROUND_TRIP_COST_PCT = 1.05
+MIN_COST_COVER = 3.0
+MIN_TARGET_PCT = ROUND_TRIP_COST_PCT * MIN_COST_COVER   # 3.15%
+COST_AWARE_MIN_R = 2.0          # reward/risk floor so needed-WR stays <= 47%
+GUARD_MIN_STOP_PCT = 2.0        # risk guard rejects stops < 2% on leveraged opens
+
 # ---- trader-type selection ----
 # The user picks what kind of trader they are. This FILTERS which horizons the
 # engine is allowed to trade - so a scalp trader only sees scalp targets
@@ -385,17 +400,29 @@ HORIZONS = {
 TREND_EMA_FAST = 12
 TREND_EMA_SLOW = 26
 TREND_HORIZON_PARAMS = {
-    # Take-profit targets AIM for 100% per trade (operator requirement: "aim
-    # for 100%"). A 25% partial-profit point banks half the position early
-    # (PARTIAL_PROFIT_PCT), the rest runs toward the 100% target. The stop is
-    # derived from the target and the horizon's per-bar sigma, keeping R sane.
-    "intraday": {"target_pct": 100.0, "stop_sigma": 2.0, "min_r": 1.8},
-    "swing":    {"target_pct": 100.0, "stop_sigma": 2.5, "min_r": 2.0},
+    # VOL-ADAPTIVE levels, web-validated 2026-09-04 against 120 days of daily
+    # candles on the traded asset class (Hyperliquid, same perps we route to):
+    #   BTC daily sigma 2.03% (annualized vol 39%), ETH/SOL 2.95% (56%)
+    #   median daily move BTC 1.13% / ETH 1.40% / SOL 1.69%
+    #   take  = clamp(target_sigma_mult x DAILY sigma, target_min, target_max)
+    #   stop  = max(stop_sigma_mult  x DAILY sigma, take / min_r)
+    # This fixes the fixed-percent problems: the old fixed 8% swing target
+    # needed ~15 days to resolve on BTC (sigma 2%/day) while ETH/SOL needed
+    # ~7; vol-adaptive gives BTC ~5%/ETH-SOL ~7.4% and both resolve in ~6
+    # days at R>=1.5. Intraday resolves in ~2 days at R=1.5 (the platform
+    # risk guard forbids stops < 2%, so true hours-scale stops are not
+    # possible - 1.5 daily sigma is the tightest guard-compatible target).
+    "intraday": {"target_sigma_mult": 1.5, "target_min": 2.0, "target_max": 4.5,
+                 "stop_sigma_mult": 1.0, "min_r": 1.5},
+    "swing":    {"target_sigma_mult": 2.5, "target_min": 4.0, "target_max": 10.0,
+                 "stop_sigma_mult": 1.5, "min_r": 1.5},
 }
 
-# Bank HALF the position at this % profit, let the rest run to the 100% aim
-# (proven scale-out technique: lock profit early, keep upside).
-PARTIAL_PROFIT_PCT = 25.0
+# Bank HALF the position at HALF the take-profit distance, let the rest run
+# to the full target (proven scale-out: lock profit early, keep upside).
+# Fraction-of-target, not a fixed 25% of entry, so the bank point scales
+# with the horizon's target and is always reached BEFORE the full TP.
+PARTIAL_PROFIT_FRACTION = 0.5
 
 
 def _ema(closes: list[float], period: int) -> float:
@@ -464,21 +491,33 @@ def build_trend_scenarios(symbol: str, closes: list[float], current_price: float
     produced absurd R=6-7 with P(win)~13%), this builds intraday from 1h closes
     and swing from daily closes, so drift/vol reflect that horizon.
 
-    TAKE-PROFIT is an ABSOLUTE target (intraday 25%, swing 30%) per the
-    operator's requirement: these horizons chase 25-30%+ per trade. The stop is
-    derived from the per-bar sigma (wider for swing so the 30% target has room
-    to breathe) and R is kept >= min_r. Trend direction (EMA crossover) is NOT
-    a hard filter: both sides are returned so the LLM weighs P(win)/EV.
+    TAKE-PROFIT is VOL-ADAPTIVE (target_sigma_mult x the asset's DAILY sigma,
+    clamped to a reachable band - see TREND_HORIZON_PARAMS for the measured
+    numbers). The stop is derived from the same sigma and R is kept >= min_r.
+    Trend direction (EMA crossover) is NOT a hard filter: both sides are
+    returned so the LLM weighs P(win)/EV.
     """
     if not closes or current_price <= 0 or horizon not in TREND_HORIZON_PARAMS:
         return []
     drift, vol = estimate_drift_vol(closes, bars_per_year=bars_per_year)
     params = TREND_HORIZON_PARAMS[horizon]
-    per_bar_sigma = (vol / math.sqrt(bars_per_year)) * 100.0 if vol > 0 else 1.0
-    # ABSOLUTE 25-30%+ take-profit target (the operator's requirement).
-    take = float(params["target_pct"])
-    # Stop = max(vol-based width, target/min_r) so R never drops below min_r.
-    stop = max(per_bar_sigma * params["stop_sigma"], take / params["min_r"])
+    # DAILY sigma (independent of the bar resolution passed in: vol is
+    # annualized, so /sqrt(365) recovers the per-day scale the params use).
+    daily_sigma_pct = (vol / math.sqrt(365.0)) * 100.0 if vol > 0 else 0.0
+    if daily_sigma_pct > 0:
+        take = params["target_sigma_mult"] * daily_sigma_pct
+        take = max(params["target_min"], min(params["target_max"], take))
+        stop = max(params["stop_sigma_mult"] * daily_sigma_pct, take / params["min_r"])
+    else:
+        # no measurable vol -> smallest guard-compatible levels
+        take = params["target_min"]
+        stop = max(take / params["min_r"], params["target_min"] / params["min_r"])
+    # COST-AWARE floors (same rule as the 5m engine): never emit a trade the
+    # 1.05% round-trip cost can eat.
+    take = max(take, MIN_TARGET_PCT)
+    stop = max(stop, GUARD_MIN_STOP_PCT)
+    if take / stop < COST_AWARE_MIN_R:
+        take = stop * COST_AWARE_MIN_R
     scenarios = []
     # LONG
     long_stop = current_price * (1 - stop / 100.0)
@@ -508,24 +547,35 @@ def build_trend_scenarios(symbol: str, closes: list[float], current_price: float
 
 def _horizon_stop_take(sigma_5m: float, horizon: str,
                        drift_annual: float) -> tuple[float, float]:
-    """Stop/target (%) for a horizon, scaled by drift.
+    """Stop/target (%) for a horizon, scaled by drift. COST-AWARE.
 
     stop  = horizon.stop x sigma_5m (bounded)
     target = horizon.target x sigma_5m x drift_scalar, where drift_scalar grows
              with |drift| so a strong trend extends the target (let it run) and
-             a weak trend stays a tight scalp. Always keeps R >= min_r.
+             a weak trend stays a tight scalp. Always keeps R >= min_r AND
+             clears the cost-aware floor (see ROUND_TRIP_COST_PCT below).
+
+    MEASURED 2026-09-04 (9003 5m bars BTC/ETH/SOL, live entry gates): every
+    sub-3% target is net-negative at the platform's 1.05% round-trip cost -
+    costs ate 260% of the average scalp winner and 40-90% of equity across
+    1420 trades. A trade whose target does not clear costs >= 3x is a
+    guaranteed loser and is not emitted.
     """
     h = HORIZONS[horizon]
     stop = sigma_5m * h["stop"]
-    stop = max(VOL_STOP_MIN_PCT, min(VOL_STOP_MAX_PCT * 3, stop))
+    stop = max(GUARD_MIN_STOP_PCT, min(VOL_STOP_MAX_PCT * 3, stop))
     # drift scalar: 1.0 at low drift -> up to ~2.5x at strong drift
     drift_mag = abs(drift_annual)
     scalar = 1.0 + min(1.5, drift_mag / 0.5)
     take = sigma_5m * h["target"] * scalar
-    take = max(VOL_TARGET_MIN_PCT, take)
-    # floor R
+    # COST-AWARE FLOORS: target must cover the round-trip cost 3x, and the
+    # stop must sit at/above the risk-guard minimum so live clamps don't
+    # distort the reward/risk math that P(win) was computed with.
+    take = max(take, MIN_TARGET_PCT)
     if take / stop < h["min_r"]:
         take = stop * h["min_r"]
+    if take / stop < COST_AWARE_MIN_R:
+        take = stop * COST_AWARE_MIN_R
     return round(stop, 4), round(take, 4)
 
 
@@ -643,20 +693,20 @@ def sentiment_risk_adjust(stop_pct: float, take_pct: float,
     """Adjust stop/target ONLY at extreme sentiment (tail-risk control).
 
     Returns (stop_pct, take_pct, note). Middle sentiment (15 < fg < 90) leaves
-    the validated math untouched. At the extremes:
-      - Greed >= 90: stretch -> tighten stop & target (take profit before the
+    the math untouched. At the extremes:
+      - Greed >= 90: stretch -> tighten stop & target x0.75 (bank before the
         snap-back). Target never below 1.5R (Kelly-positive floor).
-      - Fear  <= 15: oversold -> widen stop (don't get shaken out), keep target.
+      - Fear  <= 15: oversold -> widen stop x1.25 (don't get shaken out).
     """
     if fear_greed is None:
         return stop_pct, take_pct, ""
     if fear_greed >= GREED_HOT:
-        s = max(stop_pct - GREED_STOP_CUT, 4.0)
-        t = max(take_pct - GREED_TARGET_CUT, s * 1.5)
-        return s, t, f"extreme greed ({fear_greed:.0f}) -> tighter stop {s:.0f}%/target {t:.0f}%"
+        s = stop_pct * GREED_TIGHTEN
+        t = max(take_pct * GREED_TIGHTEN, s * MIN_RR_FLOOR)
+        return round(s, 2), round(t, 2), f"extreme greed ({fear_greed:.0f}) -> tighter stop {s:.1f}%/target {t:.1f}%"
     if fear_greed <= FEAR_COLD:
-        s = stop_pct + FEAR_STOP_WIDEN
-        return s, take_pct, f"extreme fear ({fear_greed:.0f}) -> wider stop {s:.0f}%"
+        s = stop_pct * FEAR_WIDEN
+        return round(s, 2), take_pct, f"extreme fear ({fear_greed:.0f}) -> wider stop {s:.1f}%"
     return stop_pct, take_pct, ""
 
 
@@ -753,9 +803,10 @@ def partial_profit_check(positions: list[dict], prices: dict,
     """Proven retail technique: sell HALF at the partial-profit bank point,
     move stop to breakeven, let the rest run to the full target (scale out).
 
-    Bank point = the position's take_profit OR PARTIAL_PROFIT_PCT (25%) of the
-    entry, whichever comes first - so half the position locks a guaranteed 25%
-    while the remainder rides toward the 100% aim. Returns SELL decisions with
+    Bank point = HALF the position's take-profit distance from entry
+    (PARTIAL_PROFIT_FRACTION), so the bank level always sits between entry
+    and the full target - half the position locks a guaranteed win while the
+    remainder rides to the full TP. Returns SELL decisions with
     qty = half the position when the bank point is reached.
     """
     partial = []
@@ -771,17 +822,16 @@ def partial_profit_check(positions: list[dict], prices: dict,
             continue
         if target <= 0:
             continue
-        # BANK POINT: 25% of entry (guaranteed partial) OR the full target.
-        bank_long = entry * (1 + PARTIAL_PROFIT_PCT / 100.0)
-        bank_short = entry * (1 - PARTIAL_PROFIT_PCT / 100.0)
-        bank_target = max(target, bank_long) if qty > 0 else min(target, bank_short)
+        # BANK POINT: half the distance from entry to the take-profit target
+        # (scales with the horizon's target; always inside entry->target).
+        bank_target = entry + (target - entry) * PARTIAL_PROFIT_FRACTION
         # reached bank point? sell half
         if (qty > 0 and cur >= bank_target) or (qty < 0 and cur <= bank_target):
             half = abs(qty) / 2.0
             partial.append(QuantDecision(
                 "sell" if qty > 0 else "cover", symbol, half, 0.0, 0.0,
-                f"scale out: half at {PARTIAL_PROFIT_PCT:.0f}% bank ${bank_target:,.2f}, "
-                f"banked {half:.4f}u, rest trails to target ${target:,.2f}"))
+                f"scale out: half at {PARTIAL_PROFIT_FRACTION*100:.0f}% of target "
+                f"(${bank_target:,.2f}), banked {half:.4f}u, rest trails to target ${target:,.2f}"))
     return partial
 
 

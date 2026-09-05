@@ -47,6 +47,7 @@ class OrderIntent:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     leverage: float = 1.0
+    reduce_only: bool = False  # closes: never flip the position
     idempotency_key: str = ""
 
     def notional(self, ref_price: float) -> float:

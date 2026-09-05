@@ -42,6 +42,10 @@ class VenueRouter:
         self.killswitch = killswitch
         self.sync = sync_engine or SyncEngine(ledger)
         self.adapters: dict[str, object] = {}  # chain -> adapter instance
+        # Minimum accumulated platform fees before an on-chain sweep. Below
+        # this the fee stays booked in fee_ledger (gas for a dust transfer
+        # costs more than the fee itself).
+        self._fee_sweep_min_usd = float(os.environ.get("PLATFORM_FEE_SWEEP_MIN_USD", "1.0"))
 
     # ------------------------------------------------------------ wiring
 
@@ -96,16 +100,8 @@ class VenueRouter:
                     "error": f"duplicate idempotency_key {intent.idempotency_key}", "fee": 0.0}
         order_id = self.ledger.create_order(intent, bot_id)
         if order_id is None or order_id < 0:
-            return {"ok": False, "order_id": None, "status": "rejected",
+            return {"ok": False, "order_id": order_id, "status": "rejected",
                     "error": f"duplicate/conflict idempotency_key {intent.idempotency_key}", "fee": 0.0}
-
-        # PLATFORM FEE BEFORE THE TRADE: the 0.5% fee is paid UPFRONT (before
-        # the order is placed) so it is never deducted from user profit after
-        # the trade. Best-effort: if the sweep fails the order is still routed
-        # (never blocks a trade), but the ledger fee is recorded at entry time.
-        # Venue fees (e.g. 4.5bps for Aftermath) are the venue's own and already
-        # paid at the venue - we do not charge those again.
-        self._sweep_fee(bot_id, chain, ref_price, intent.qty, intent.symbol)
 
         # call the adapter
         try:
@@ -139,6 +135,10 @@ class VenueRouter:
                 fee_venue = round(intent.notional(ref_price) * VENUE_FEE_BPS.get(venue, 0.0) / 10000, 6)
             self.ledger.record_fill(order_id, price=fill_price, qty=fill_qty,
                                     fee_venue=fee_venue, tx_hash=ven_id[:80], bot_id=bot_id)
+            # PLATFORM FEE (0.5%) — charged AFTER a confirmed fill, on the
+            # REAL fill notional (not ref_price): failed/rejected orders never
+            # pay, and the fee matches what the user actually traded.
+            self._sweep_fee(bot_id, chain, fill_price, fill_qty, intent.symbol)
             log.info("[router] bot=%s %s %s %s @ %s ok", bot_id, venue, intent.side, intent.symbol, fill_price)
         else:
             self.ledger.set_order_status(order_id, "rejected")
@@ -147,11 +147,17 @@ class VenueRouter:
 
     def _sweep_fee(self, bot_id: int, chain: str, fill_price: float,
                    fill_qty: float, symbol: str) -> None:
-        """Transfer the 0.5% platform fee to the operator's fee wallet.
+        """Collect the 0.5% platform fee to the operator's fee wallet.
 
-        Reads AFTERMATH_FEE_ADDR (set in .env). Skips when unset. Builds a temp
-        SUIAdapter from the trader's wallet key and calls transfer_asset() with
-        the exact fee. Best-effort - never blocks the trade."""
+        Fee accounting: every confirmed fill books 0.5% of the REAL fill
+        notional into fee_ledger (ledger.record_fill, kind='platform').
+        On-chain transfer is DEFERRED until the accumulated unpaid fees reach
+        PLATFORM_FEE_SWEEP_MIN_USD - sweeping dust costs more gas than the
+        fee is worth (a $0.05 trade yields a $0.00025 fee; the transfer burns
+        ~0.002 SUI of gas, six times the fee). Swept amounts are marked with
+        a negative 'swept' row so accumulation survives restarts.
+        Reads AFTERMATH_FEE_ADDR (set in .env). Skips when unset. Best-effort
+        - never blocks the trade."""
         if chain != "sui":
             return
         fee_addr = os.environ.get("AFTERMATH_FEE_ADDR", "").strip()
@@ -162,6 +168,14 @@ class VenueRouter:
         fee_usd = round(notional * PLATFORM_FEE_BPS / 10000, 6)
         if fee_usd <= 0:
             return
+        # Accumulation: booked platform fees minus already-swept amounts.
+        pending = round(self.ledger.fees_for_bot(bot_id, "platform")
+                        + self.ledger.fees_for_bot(bot_id, "swept"), 6)
+        if pending < self._fee_sweep_min_usd:
+            log.info("[fee] bot=%s accumulated $%s/$%.2f pending (fee $%s booked this fill) - defer sweep",
+                     bot_id, pending, self._fee_sweep_min_usd, fee_usd)
+            return
+        amount = pending
         try:
             wallet = self.ledger.wallet_by_bot_chain(bot_id, "sui")
             if not wallet or not wallet.get("key_enc"):
@@ -176,13 +190,14 @@ class VenueRouter:
             existing = self.adapters.get("sui")
             testnet = bool(getattr(existing, "testnet", True))
             adapter = SUIAdapter(self.ledger, key_hex, testnet=testnet)
-            res = adapter.transfer_asset(fee_addr, fee_usd, "USDC")
+            res = adapter.transfer_asset(fee_addr, amount, "USDC")
             if res.get("ok"):
-                log.info("[fee] swept $%s fee (%s %s) -> %s tx=%s",
-                         fee_usd, symbol, fill_qty, fee_addr[:10] + "…", res.get("digest", "?")[:16])
+                self.ledger.record_fee_marker(bot_id, -amount)
+                log.info("[fee] swept $%s accumulated fee (%s %s) -> %s tx=%s",
+                         amount, symbol, fill_qty, fee_addr[:10] + "…", res.get("digest", "?")[:16])
             else:
-                log.warning("[fee] sweep failed ($%s %s %s): %s",
-                            fee_usd, symbol, fill_qty, res.get("error", "?")[:120])
+                log.warning("[fee] sweep deferred ($%s %s %s): %s - will retry next fill",
+                            amount, symbol, fill_qty, res.get("error", "?")[:120])
         except Exception as exc:  # noqa: BLE001
             log.warning("[fee] sweep exception: %s", exc)
 

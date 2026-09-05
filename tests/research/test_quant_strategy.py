@@ -316,8 +316,11 @@ def test_build_scenarios_returns_long_and_short():
         assert s.ev == pytest.approx(s.p_win * s.R - (1 - s.p_win))
         stop_pct = abs(s.entry - s.stop) / s.entry * 100
         take_pct = abs(s.target - s.entry) / s.entry * 100
-        assert 0.10 <= stop_pct <= 2.0
-        assert 0.20 <= take_pct <= 5.0
+        # cost-aware floors (2026-09-04): stop >= 2% (risk-guard compatible),
+        # take >= 3.15% (3x the ~1.05% round-trip cost) with R >= 2.0
+        assert 2.0 <= stop_pct <= 2.0 + 1e-9 or stop_pct > 2.0
+        assert take_pct >= 3.15
+        assert take_pct / stop_pct >= 2.0
 
 
 def test_scenario_matrix_and_best_pick():
