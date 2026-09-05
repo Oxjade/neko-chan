@@ -1929,12 +1929,49 @@ def run_cycle(token: str, dry: bool = False) -> None:
                             if _skipped_today:
                                 print(f"[quant] already traded today: {', '.join(_skipped_today)} "
                                       f"- moving to next token")
+                        # WATCHED = WAIT FOR GREAT (applies to the cooldown
+                        # path too): if a watched symbol is the would-be pick,
+                        # it only proceeds when its conviction matches or
+                        # beats the best unwatched scenario in the matrix.
+                        # Otherwise the watched asset stays cash and its one
+                        # shot is preserved for a genuinely good setup.
+                        if WATCHED:
+                            best_unwatched = max(
+                                (s.conviction for s in matrix
+                                 if s.symbol not in WATCHED and s.ev > 0),
+                                default=0.0)
+                            before = len(matrix)
+                            matrix = [s for s in matrix
+                                      if s.symbol not in WATCHED
+                                      or s.conviction >= best_unwatched
+                                      or s.ev <= 0]
+                            if len(matrix) < before:
+                                print(f"[quant] watched asset below best unwatched "
+                                      f"conviction ({best_unwatched:.4f}) - waiting "
+                                      f"for a genuinely good setup")
                     # top candidates the LLM will choose among (ranked by conviction).
-                    # Watched assets (user said "watch <ASSET>") are prioritized so
-                    # the agent focuses reasoning + trades on them first.
-                    # Conviction floor: below it, hold cash - never post noise.
-                    actionable = sorted([s for s in matrix
-                                         if s.ev > 0 and s.conviction >= CONVICTION_FLOOR],
+                    # WATCHED = WAIT FOR GREAT: a watched asset is only
+                    # actionable when its conviction is at least the best
+                    # unwatched candidate's - "watch" means the user wants a
+                    # genuinely good trade on THAT asset, not a first-come
+                    # entry. Below that bar the watched asset stays cash and
+                    # its one shot is NOT spent.
+                    best_unwatched_conv = max(
+                        (s.conviction for s in actionable if s.symbol not in WATCHED),
+                        default=0.0)
+                    if WATCHED:
+                        watched_ok = {s.symbol for s in actionable
+                                      if s.symbol in WATCHED
+                                      and s.conviction >= best_unwatched_conv}
+                        dropped = sorted({s.symbol for s in actionable
+                                          if s.symbol in WATCHED} - watched_ok)
+                        if dropped:
+                            print(f"[quant] watched {', '.join(dropped)} below the best "
+                                  f"unwatched conviction ({best_unwatched_conv:.4f}) - "
+                                  f"waiting for a genuinely good setup")
+                        actionable = [s for s in actionable
+                                      if s.symbol not in WATCHED or s.symbol in watched_ok]
+                    actionable = sorted(actionable,
                                         key=lambda s: (s.symbol in WATCHED, s.conviction),
                                         reverse=True)
                     # ALWAYS give the LLM the best LONG and the best SHORT so it
