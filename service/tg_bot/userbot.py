@@ -17,6 +17,7 @@ from telegram import Update
 from telegram.ext import (Application, ContextTypes, CommandHandler,
                           CallbackQueryHandler, ConversationHandler,
                           MessageHandler, TypeHandler, filters)
+from telegram.request import HTTPXRequest
 
 from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
 from store import utcnow
@@ -649,6 +650,109 @@ class UserBotController:
 
     # ---------------- lifecycle ----------------
 
+    def _install_message_ttl(self, bot_token: str) -> type:
+        """Build the TTLRequest class: auto-delete for every bot-sent message
+        + user input after 3 minutes. Only the MAIN DASHBOARD survives
+        (keyboard carries sb:dash + sb:kill).
+
+        Implementation: PTB's ExtBot AND HTTPXRequest are FROZEN (setattr
+        blocked - the 2026-09-06 crash loop), so the TTL lives in a
+        TTLRequest SUBCLASS injected at build time via
+        Application.builder().request(...). do_request inspects successful
+        sendMessage / editMessageText / sendPhoto responses (message_id +
+        reply_markup come straight from the response JSON) and schedules
+        deletion with a raw-request daemon thread (cannot recurse)."""
+        ttl = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
+
+        def _keep(payload: dict) -> bool:
+            """The MAIN DASHBOARD is the only survivor: the only panel whose
+            keyboard carries both the Home and the Kill-Switch buttons."""
+            try:
+                rm = payload.get("reply_markup") or {}
+                rows = rm.get("inline_keyboard") or []
+                cbs = [b.get("callback_data", "") for row in rows for b in row]
+                return "sb:dash" in cbs and "sb:kill" in cbs
+            except Exception:
+                return False
+
+        def _schedule_delete(chat_id: int, message_id: int):
+            def _del():
+                time.sleep(ttl)
+                try:
+                    requests.post(
+                        f"https://api.telegram.org/bot{bot_token}/deleteMessage",
+                        json={"chat_id": chat_id, "message_id": message_id},
+                        timeout=10)
+                except Exception:
+                    pass
+            threading.Thread(target=_del, daemon=True).start()
+
+        def _inspect_response(method: str, payload: dict, result) -> None:
+            if method not in ("sendMessage", "editMessageText", "sendPhoto"):
+                return
+            try:
+                res = (result or {}).get("result") or {}
+                chat_id = (res.get("chat") or {}).get("id")
+                message_id = res.get("message_id")
+                if not chat_id or not message_id:
+                    return
+                if _keep(payload):
+                    return
+                _schedule_delete(chat_id, message_id)
+            except Exception:
+                pass
+
+        def _payload_from(args, kwargs) -> dict:
+            p = kwargs.get("parameters") or (args[1] if len(args) > 1 else None)
+            if isinstance(p, str):
+                import json as _json
+                try:
+                    return _json.loads(p)
+                except Exception:
+                    return {}
+            return p if isinstance(p, dict) else {}
+
+        class TTLRequest(HTTPXRequest):
+            async def do_request(self, *a, **k):
+                res = await super().do_request(*a, **k)
+                try:
+                    url = str(k.get("url") or (a[0] if a else ""))
+                    method = url.rstrip("/").split("/")[-1]
+                    if isinstance(res, dict) and res.get("ok"):
+                        _inspect_response(method, _payload_from(a, k), res)
+                except Exception:
+                    pass
+                return res
+
+        return TTLRequest
+
+    def _register_user_input_ttl(self, app, bot_token: str) -> None:
+        """User-input half of the TTL: the user's own messages (keys, amounts,
+        addresses, commands) vanish after the same 3 minutes. Button taps are
+        excluded: the tapped message belongs to the bot (dashboard/panels)."""
+        ttl = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
+
+        def _schedule_delete(chat_id: int, message_id: int):
+            def _del():
+                time.sleep(ttl)
+                try:
+                    requests.post(
+                        f"https://api.telegram.org/bot{bot_token}/deleteMessage",
+                        json={"chat_id": chat_id, "message_id": message_id},
+                        timeout=10)
+                except Exception:
+                    pass
+            threading.Thread(target=_del, daemon=True).start()
+
+        async def _user_input_ttl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if update.callback_query:
+                return
+            msg = update.effective_message
+            if msg and msg.from_user and not msg.from_user.is_bot:
+                _schedule_delete(msg.chat_id, msg.message_id)
+
+        app.add_handler(TypeHandler(Update, _user_input_ttl), group=-1)
+
     def start_bot(self, bot_id: int) -> bool:
         import logging
 
@@ -696,7 +800,18 @@ class UserBotController:
                 # any other status (429/5xx/timeout): let the poll retry loop handle it
             except Exception:
                 pass  # network error - don't mislabel a healthy token as dead
-            app = Application.builder().token(token).build()
+            # 3-MINUTE MESSAGE TTL: every message the bot SENDS (notifications,
+            # confirmations, prompts) and every USER INPUT (pasted keys,
+            # amounts) self-destructs after TG_MSG_TTL_SECONDS. Only the MAIN
+            # DASHBOARD persists. TTLRequest is injected at build time -
+            # PTB's ExtBot and HTTPXRequest are frozen and cannot be
+            # monkey-patched (that crash-looped the service on 2026-09-06).
+            TTLRequest = self._install_message_ttl(token)
+            app = (Application.builder()
+                   .token(token)
+                   .request(TTLRequest())
+                   .build())
+            self._register_user_input_ttl(app, token)
             self._register_handlers(app, bot)
             self._apps[bot_id] = app
             self.registry.update_bot(bot_id, is_running=1, last_heartbeat=utcnow())
@@ -804,70 +919,6 @@ class UserBotController:
         bot_id = bot["id"]
         platform_token = bot["platform_token"]
         tg_id = bot["tg_id"]
-
-        # ---------------------------------------------------------------
-        # 3-MINUTE MESSAGE TTL: every message this bot sends (notifications,
-        # confirmations, prompts, key displays) self-destructs after 3
-        # minutes - ONLY the main dashboard persists. The user's own input
-        # (pasted keys, amounts, addresses) self-destructs on the same clock.
-        # ---------------------------------------------------------------
-        ttl = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
-
-        def _keep_dashboard(msg) -> bool:
-            """Keep rule: the MAIN DASHBOARD is the only survivor. It is the
-            only panel whose keyboard carries the Kill-Switch row."""
-            try:
-                rm = msg.reply_markup
-                cbs = [getattr(b, "callback_data", "")
-                       for row in getattr(rm, "inline_keyboard", []) or []
-                       for b in row]
-                return "sb:dash" in cbs and "sb:kill" in cbs
-            except Exception:
-                return False
-
-        def _sched_del(msg):
-            if msg is None or _keep_dashboard(msg):
-                return
-            threading.Thread(
-                target=_delayed_photo_delete,
-                args=(app.bot.token, msg.chat_id, msg.message_id, ttl),
-                daemon=True).start()
-
-        orig_send_message = app.bot.send_message
-        async def _ttl_send_message(*a, **k):
-            msg = await orig_send_message(*a, **k)
-            try:
-                _sched_del(msg)
-            except Exception:
-                pass
-            return msg
-        app.bot.send_message = _ttl_send_message
-
-        orig_edit_message_text = app.bot.edit_message_text
-        async def _ttl_edit_message_text(*a, **k):
-            res = await orig_edit_message_text(*a, **k)
-            try:
-                from telegram import Message as _Msg
-                if isinstance(res, _Msg):
-                    _sched_del(res)
-            except Exception:
-                pass
-            return res
-        app.bot.edit_message_text = _ttl_edit_message_text
-
-        async def _user_input_ttl(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            # The user's own messages (keys, amounts, addresses, commands)
-            # vanish after the same 3 minutes. Button taps are excluded: the
-            # tapped message belongs to the bot (dashboard/panels).
-            if update.callback_query:
-                return
-            msg = update.effective_message
-            if msg and msg.from_user and not msg.from_user.is_bot:
-                threading.Thread(
-                    target=_delayed_photo_delete,
-                    args=(app.bot.token, msg.chat_id, msg.message_id, ttl),
-                    daemon=True).start()
-        app.add_handler(TypeHandler(Update, _user_input_ttl), group=-1)
 
 
         async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
