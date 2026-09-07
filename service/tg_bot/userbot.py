@@ -1533,16 +1533,19 @@ class UserBotController:
                 except Exception:
                     lines.append("Could not read agent log.")
                 # Live price snapshot so tapping Refresh always returns fresh data.
+                # AFTERMATH ORDERBOOK (not the platform API): the platform
+                # endpoint rate-limits to 1 req/sec per token, so the old
+                # back-to-back loop only ever priced the first symbol (BTC)
+                # and silently dropped the rest with 429s. Aftermath has no
+                # such limit and is the venue the agent trades on anyway.
                 try:
-                    prices = []
-                    for sym in active:
-                        try:
-                            px = self.platform.price(platform_token, "crypto", sym)
-                            prices.append(f"{sym} ${px:,.4f}")
-                        except Exception:
-                            pass
-                    if prices:
-                        lines.append("\n💰 <b>Live</b>: " + " · ".join(prices))
+                    live_px = await asyncio.get_running_loop().run_in_executor(
+                        None, self._paper_mark_prices, active,
+                        (b.get("network") or "mainnet"))
+                    if live_px:
+                        lines.append("\n💰 <b>Live</b>: " + " · ".join(
+                            f"{s} ${live_px[s.upper()]:,.4f}" for s in active
+                            if s.upper() in live_px))
                 except Exception:
                     pass
                 # Manual Take/Reject buttons for EVERY fresh pending decision.
