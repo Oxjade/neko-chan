@@ -76,6 +76,9 @@ class AgentPool:
             "LIVE_AGENT_NETWORK": bot.get("network") or "mainnet",
             "LIVE_AGENT_CHAIN": bot.get("chain") or "sui",
             "LIVE_AGENT_WATCHLIST": bot.get("watchlist") or "",
+            # trading mode: every new bot defaults to paper ($1,000 virtual);
+            # live only after the user flips the dashboard toggle.
+            "LIVE_AGENT_TRADING_MODE": bot.get("trading_mode") or "paper",
             # for pushing human-friendly error notifications straight to the user
             "TG_BOT_TOKEN": self.registry.bot_token(bot_id) or "",
             "TG_CHAT_ID": str(bot["tg_id"]),

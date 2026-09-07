@@ -217,6 +217,26 @@ def conviction_leverage(symbol: str, market: str, conviction: float,
 # the VenueRouter -> chain adapter -> real venue, risk-guarded + ledgered.
 EXEC_ENABLED = os.getenv("LIVE_AGENT_EXECUTION", "0").strip() in {"1", "true", "yes", "on"}
 EXEC_BOT_ID = int(os.getenv("LIVE_AGENT_BOT_ID", "1") or "1")
+# TRADING MODE: "paper" (default for every new bot - $1,000 virtual USDC,
+# virtual fills at live prices with the REAL cost model) or "live" (real
+# venues). Toggled from the Telegram dashboard, read by the agent each boot.
+TRADING_MODE = os.getenv("LIVE_AGENT_TRADING_MODE", "paper").strip().lower()
+_paper_gw_instance = None
+
+
+def _paper_gateway():
+    """Lazily-built paper gateway per agent process. Portfolio lives in the
+    registry DB (paper_* tables) so the dashboard can render it."""
+    global _paper_gw_instance
+    if _paper_gw_instance is None:
+        _tg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tg_bot")
+        if _tg not in sys.path:
+            sys.path.insert(0, _tg)
+        from paper_gateway import PaperGateway
+        from paper_store import PaperStore
+        db_path = os.path.join(_tg, "registry.db")
+        _paper_gw_instance = PaperGateway(PaperStore(db_path))
+    return _paper_gw_instance
 _exec_gateway = None
 
 
@@ -1607,8 +1627,25 @@ def market_open(market: str) -> bool:
 def run_cycle(token: str, dry: bool = False) -> None:
     global _last_llm_at
     now_iso = datetime.now(timezone.utc).isoformat()
-    gw = _get_exec_gateway()
-    if gw:
+    gw = _get_exec_gateway() if TRADING_MODE == "live" else None
+    if TRADING_MODE == "paper":
+        # PAPER MODE: portfolio from the paper store (virtual $1,000 start).
+        # Positions come from paper_positions; cash = free virtual USDC.
+        pg = _paper_gateway()
+        pf = pg.store.ensure_portfolio(EXEC_BOT_ID)
+        paper_positions = []
+        for pos in pg.store.positions(EXEC_BOT_ID):
+            paper_positions.append({"symbol": pos["symbol"],
+                                    "quantity": pos["qty"] if pos["direction"] == "long"
+                                                else -pos["qty"],
+                                    "entry_price": pos["entry_price"],
+                                    "leverage": pos["leverage"],
+                                    "stop_loss": pos.get("stop_loss"),
+                                    "take_profit": pos.get("take_profit")})
+        portfolio = {"cash": pf["cash"], "positions": paper_positions,
+                     "paper": True, "starting": pf["starting"]}
+        print(f"[paper] cash=${pf['cash']:,.2f} positions={len(paper_positions)}")
+    elif gw:
         portfolio = get_real_portfolio(gw, EXEC_BOT_ID)
         print(f"[exec] real mode: cash=${portfolio.get('cash', 0):,.2f} "
               f"positions={len(portfolio.get('positions', []))}")
@@ -1777,6 +1814,30 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 if sym and p.get("quantity", 0) > 0 and _trailing_high.get(sym):
                     p["high_price"] = _trailing_high[sym]
 
+            # PAPER MODE: manage open paper positions' stop/target/trail
+            # exits through the paper gateway before any new decision.
+            if TRADING_MODE == "paper":
+                try:
+                    closed = _paper_gateway().manage_exits(EXEC_BOT_ID, prices)
+                    for c in closed:
+                        print(f"[paper] exit {c.get('symbol')} :: {c.get('reason')} "
+                              f"pnl={c.get('pnl', 0):+.4f}")
+                    if closed:
+                        # positions changed; refresh before deciding
+                        pf = _paper_gateway().store.ensure_portfolio(EXEC_BOT_ID)
+                        portfolio = {"cash": pf["cash"],
+                                     "positions": [
+                                         {"symbol": p["symbol"],
+                                          "quantity": p["qty"] if p["direction"] == "long" else -p["qty"],
+                                          "entry_price": p["entry_price"],
+                                          "leverage": p["leverage"],
+                                          "stop_loss": p.get("stop_loss"),
+                                          "take_profit": p.get("take_profit")}
+                                         for p in _paper_gateway().store.positions(EXEC_BOT_ID)],
+                                     "paper": True}
+                except Exception as exc:
+                    print(f"[paper] exit management failed: {exc}")
+
             # TIME-BASED EXITS take top priority: a trade that hasn't resolved
             # within its shelf life is dead capital. Green + old = bank it;
             # any position past max_hold_minutes = hard cut at market.
@@ -1922,6 +1983,11 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         # filled today so the agent moves on to the next token
                         # instead of flipping direction on the same one.
                         _traded_today = traded_symbols_today()
+                        if TRADING_MODE == "paper":
+                            try:
+                                _traded_today |= _paper_gateway().store.filled_symbols_today(EXEC_BOT_ID)
+                            except Exception:
+                                pass
                         if _traded_today:
                             _skipped_today = sorted(s for s in _traded_today
                                                     if any(s == sc.symbol for sc in matrix))
@@ -2302,11 +2368,14 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"; row["error"] = "non-positive quantity"
         elif used >= MAX_DAILY_TRADES:
             row["action"] = "hold"; row["error"] = "daily trade limit reached"
-        elif action in ("buy", "short") and symbol in traded_symbols_today():
+        elif action in ("buy", "short") and symbol in (
+                traded_symbols_today()
+                | (_paper_gateway().store.filled_symbols_today(EXEC_BOT_ID)
+                   if TRADING_MODE == "paper" else set())):
             # ONE TRADE PER TOKEN PER DAY: if the bot already opened + filled a
             # position on this symbol today (long OR short), it does NOT flip
             # direction on the same token - it moves on to the next watched
-            # token instead.
+            # token instead. Paper fills count the same as live fills.
             row["action"] = "hold"
             row["error"] = (f"already traded {symbol} today - one trade per "
                             f"token per day, moving to the next")
@@ -2389,6 +2458,35 @@ def run_cycle(token: str, dry: bool = False) -> None:
             print(f"[dry] would {action} {qty} {symbol} [{market}] "
                   f"(stop {stop_pct}%, take {take_pct}%, lev {lev_choice:g}x)")
             row["fill_ok"] = "dry"
+        elif TRADING_MODE == "paper":
+            # PAPER MODE: virtual fills at live prices with the REAL cost
+            # model (venue fee + 0.5% platform fee + slippage). Same
+            # discipline, same decisions - no real money moves. The paper
+            # gateway is lazily built per bot (its own $1,000 portfolio).
+            pg = _paper_gateway()
+            if row["action"] in ("buy", "short"):
+                lev = lev_choice if action in ("buy", "short") else 1.0
+                fill = pg.open(EXEC_BOT_ID, symbol,
+                               "long" if action == "buy" else "short", qty,
+                               prices.get(symbol, 0) or row["price"] or 0,
+                               leverage=lev,
+                               stop_loss=(prices.get(symbol, 0) or 0) * (1 - stop_pct / 100) if action == "buy"
+                                          else (prices.get(symbol, 0) or 0) * (1 + stop_pct / 100) if stop_pct else None,
+                               take_profit=(prices.get(symbol, 0) or 0) * (1 + take_pct / 100) if action == "buy"
+                                           else (prices.get(symbol, 0) or 0) * (1 - take_pct / 100) if take_pct else None,
+                               order_type="limit",
+                               limit_price=row.get("limit_price") or None,
+                               idempotency_key=row.get("idempotency_key", f"paper-{symbol}-{action}-{int(time.time()*1000)}"))
+            else:  # sell / cover
+                fill = pg.close(EXEC_BOT_ID, symbol,
+                                prices.get(symbol, 0) or row["price"] or 0,
+                                idempotency_key=f"paper-{symbol}-{action}-{int(time.time()*1000)}")
+            row["fill_ok"] = fill.get("ok")
+            row["error"] = fill.get("error", "")
+            row["price"] = fill.get("fill_price", row["price"])
+            row["paper"] = True
+            print(f"[trade][paper] {row['action']} {qty} {symbol} "
+                  f"-> {'OK' if fill.get('ok') else fill.get('error')}")
         elif gw:
             # Pop-up the decided trade BEFORE the order goes out.
             notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
@@ -2417,12 +2515,9 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 stop=_last_scenario.stop,
                                 target=_last_scenario.target)
         else:
-            # PAPER MODE REMOVED (2026-09): the bot only trades real venues
-            # (Aftermath mainnet/testnet). Without a ready execution gateway
-            # the agent HOLDS - it never fabricates paper fills.
             row["action"] = "hold"
-            row["error"] = "real execution not configured - holding (paper mode removed)"
-            print(f"[hold] real execution not configured - holding (paper mode removed)")
+            row["error"] = "live execution not configured - holding (switch to Paper mode on the dashboard to trade virtually)"
+            print(f"[hold] live execution not configured - holding")
             log_decision(row)
             return
     else:

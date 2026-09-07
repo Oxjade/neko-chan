@@ -37,6 +37,9 @@ RISK_PRESETS = {
     "aggressive": {"max_daily_trades": 16, "max_position_pct": 40, "force_stop_pct": 3, "active_mode": 1},
 }
 
+# Paper trading: every new bot starts with this virtual USDC balance.
+PAPER_START_USD = 1000.0
+
 # Markets
 MARKET_OPTIONS = {"perps": "⚡ Perps", "spot": "₿ Spot", "us-stock": "📈 US Stocks", "forex": "💱 Forex"}
 LEVERAGE_OPTIONS = (1, 2, 5, 10)

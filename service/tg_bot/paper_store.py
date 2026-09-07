@@ -1,0 +1,213 @@
+"""Paper trading store: virtual portfolios, positions, and orders.
+
+PER BOT, PER MODE. Every new bot starts in paper mode with $1,000 virtual
+USDC. Paper fills use real market prices plus a realistic cost model (venue
+fee + platform fee + slippage) so users learn the TRUE economics of the
+strategies - not a fantasy win rate.
+
+Tables live in the same registry.db (single DB = simple ops), namespaced
+`paper_*`. Real-money execution remains in exec_ledger.db and is untouched.
+"""
+
+import sqlite3
+import threading
+from datetime import datetime, timezone
+from typing import Optional
+
+from tg_config import PAPER_START_USD
+
+_LOCK = threading.RLock()
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS paper_portfolios (
+    bot_id INTEGER PRIMARY KEY,
+    cash REAL NOT NULL,             -- free virtual USDC
+    starting REAL NOT NULL,         -- baseline for P&L (reset on reset)
+    realized_pnl REAL NOT NULL DEFAULT 0.0,
+    fees_paid REAL NOT NULL DEFAULT 0.0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paper_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,        -- long | short
+    qty REAL NOT NULL,              -- base-token quantity
+    entry_price REAL NOT NULL,
+    leverage REAL NOT NULL DEFAULT 1.0,
+    stop_loss REAL,
+    take_profit REAL,
+    peak_price REAL,                -- for trailing-stop management
+    opened_at TEXT NOT NULL,
+    UNIQUE(bot_id, symbol)
+);
+CREATE TABLE IF NOT EXISTS paper_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    side TEXT NOT NULL,             -- entry verb: buy | short | sell | cover
+    qty REAL NOT NULL,
+    price REAL NOT NULL,            -- fill price (market: ref+slippage)
+    fee REAL NOT NULL,              -- total fees charged on the fill
+    status TEXT NOT NULL,           -- filled
+    idempotency_key TEXT UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_paper_positions_bot ON paper_positions(bot_id);
+CREATE INDEX IF NOT EXISTS idx_paper_orders_bot ON paper_orders(bot_id);
+"""
+
+
+def utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class PaperStore:
+    def __init__(self, db_path: str):
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.executescript(_SCHEMA)
+        self._conn.commit()
+
+    # ---------------------------------------------------------- portfolio
+    def ensure_portfolio(self, bot_id: int) -> dict:
+        """Get-or-create the $1,000 paper portfolio for a bot."""
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT * FROM paper_portfolios WHERE bot_id=?", (bot_id,)).fetchone()
+            if row:
+                return dict(row)
+            now = utcnow()
+            self._conn.execute(
+                "INSERT INTO paper_portfolios (bot_id, cash, starting, realized_pnl, "
+                "fees_paid, created_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?)",
+                (bot_id, PAPER_START_USD, PAPER_START_USD, now, now))
+            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT * FROM paper_portfolios WHERE bot_id=?", (bot_id,)).fetchone()
+            return dict(row)
+
+    def portfolio(self, bot_id: int) -> Optional[dict]:
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT * FROM paper_portfolios WHERE bot_id=?", (bot_id,)).fetchone()
+            return dict(row) if row else None
+
+    def _adjust_cash(self, bot_id: int, delta: float, fee: float) -> None:
+        self._conn.execute(
+            "UPDATE paper_portfolios SET cash = cash + ?, fees_paid = fees_paid + ?, "
+            "updated_at = ? WHERE bot_id=?",
+            (delta, fee, utcnow(), bot_id))
+
+    def reset(self, bot_id: int) -> dict:
+        """Wipe positions/orders and restore the starting balance ($1,000)."""
+        with _LOCK:
+            p = self.ensure_portfolio(bot_id)
+            self._conn.execute("DELETE FROM paper_positions WHERE bot_id=?", (bot_id,))
+            self._conn.execute("DELETE FROM paper_orders WHERE bot_id=?", (bot_id,))
+            self._conn.execute(
+                "UPDATE paper_portfolios SET cash=?, starting=?, realized_pnl=0, "
+                "fees_paid=0, updated_at=? WHERE bot_id=?",
+                (PAPER_START_USD, PAPER_START_USD, utcnow(), bot_id))
+            self._conn.commit()
+            return self.portfolio(bot_id)
+
+    # ---------------------------------------------------------- positions
+    def open_position(self, bot_id: int, symbol: str, direction: str, qty: float,
+                      entry_price: float, leverage: float,
+                      stop_loss: Optional[float], take_profit: Optional[float]) -> None:
+        now = utcnow()
+        with _LOCK:
+            self._conn.execute(
+                "INSERT INTO paper_positions (bot_id, symbol, direction, qty, entry_price, "
+                "leverage, stop_loss, take_profit, peak_price, opened_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(bot_id, symbol) DO UPDATE SET qty=?, direction=?, "
+                "entry_price=?, leverage=?, stop_loss=?, take_profit=?, peak_price=?, "
+                "opened_at=?",
+                (bot_id, symbol, direction, qty, entry_price, leverage,
+                 stop_loss, take_profit, entry_price, now,
+                 qty, direction, entry_price, leverage, stop_loss, take_profit,
+                 entry_price, now))
+            self._conn.commit()
+
+    def close_position(self, bot_id: int, symbol: str) -> Optional[dict]:
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT * FROM paper_positions WHERE bot_id=? AND symbol=?",
+                (bot_id, symbol)).fetchone()
+            if not row:
+                return None
+            self._conn.execute(
+                "DELETE FROM paper_positions WHERE bot_id=? AND symbol=?",
+                (bot_id, symbol))
+            self._conn.commit()
+            return dict(row)
+
+    def positions(self, bot_id: int) -> list[dict]:
+        with _LOCK:
+            rows = self._conn.execute(
+                "SELECT * FROM paper_positions WHERE bot_id=? ORDER BY id", (bot_id,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_protect_levels(self, bot_id: int, symbol: str,
+                              stop_loss: Optional[float] = None,
+                              peak_price: Optional[float] = None) -> None:
+        with _LOCK:
+            if stop_loss is not None:
+                self._conn.execute(
+                    "UPDATE paper_positions SET stop_loss=? WHERE bot_id=? AND symbol=?",
+                    (stop_loss, bot_id, symbol))
+            if peak_price is not None:
+                self._conn.execute(
+                    "UPDATE paper_positions SET peak_price=MAX(COALESCE(peak_price, ?), ?) "
+                    "WHERE bot_id=? AND symbol=?",
+                    (peak_price, peak_price, bot_id, symbol))
+            self._conn.commit()
+
+    # ---------------------------------------------------------- orders
+    def record_order(self, bot_id: int, symbol: str, direction: str, side: str,
+                     qty: float, price: float, fee: float,
+                     idempotency_key: str) -> int:
+        with _LOCK:
+            cur = self._conn.execute(
+                "INSERT INTO paper_orders (bot_id, symbol, direction, side, qty, price, "
+                "fee, status, idempotency_key, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'filled', ?, ?)",
+                (bot_id, symbol, direction, side, qty, price, fee,
+                 idempotency_key, utcnow()))
+            self._conn.commit()
+            return cur.lastrowid
+
+    def orders_today(self, bot_id: int) -> int:
+        today = datetime.now(timezone.utc).date().isoformat()
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT COUNT(*) c FROM paper_orders WHERE bot_id=? AND substr(created_at,1,10)=?",
+                (bot_id, today)).fetchone()
+            return row["c"]
+
+    def filled_symbols_today(self, bot_id: int) -> set[str]:
+        """Symbols with an ENTRY fill today (buy/short) - feeds the one-trade
+        discipline so paper mode honors the same rules as live."""
+        today = datetime.now(timezone.utc).date().isoformat()
+        with _LOCK:
+            rows = self._conn.execute(
+                "SELECT DISTINCT symbol FROM paper_orders WHERE bot_id=? "
+                "AND substr(created_at,1,10)=? AND side IN ('buy','short')",
+                (bot_id, today)).fetchall()
+            return {r["symbol"] for r in rows}
+
+    # ---------------------------------------------------------- accounting
+    def settle(self, bot_id: int, realized_pnl_delta: float, fee: float) -> None:
+        """Realized PnL accrues to cash on close (fees already deducted by
+        the caller inside realized_pnl_delta or passed separately)."""
+        with _LOCK:
+            self._conn.execute(
+                "UPDATE paper_portfolios SET cash = cash + ?, realized_pnl = "
+                "realized_pnl + ?, fees_paid = fees_paid + ?, updated_at=? "
+                "WHERE bot_id=?",
+                (realized_pnl_delta, realized_pnl_delta, fee, utcnow(), bot_id))
+            self._conn.commit()

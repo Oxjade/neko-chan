@@ -1315,13 +1315,20 @@ class UserBotController:
                 except Exception:
                     pass
             text = render_production_dashboard(b, account, chain, equity=self._equity_snapshot(b))
+            mode = (b.get("trading_mode") or "paper").lower()
+            mode_line = ("\n🟢 <b>MODE: LIVE</b> — real funds on-chain" if mode == "live"
+                         else "\n🟡 <b>MODE: PAPER</b> — virtual $1,000, no real money")
+            text = text + mode_line
             # Pause now means "pause trading (LLM)" — bot stays online, so use `paused` flag
             is_trading = not b.get("paused") and b.get("is_running")
             start_label = "⏸️ Pause Trading" if is_trading else "▶️ Start Trading"
             start_cb = "sb:pause" if is_trading else "sb:resume"
+            mode_label = "🧪 Switch to PAPER" if mode == "live" else "🔴 Switch to LIVE"
+            mode_cb = "sb:mode_paper" if mode == "live" else "sb:mode_live"
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
                  telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
+                [telegram.InlineKeyboardButton(mode_label, callback_data=mode_cb)],
                 [telegram.InlineKeyboardButton("📤 Send", callback_data="sb:send"),
                  telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
@@ -1822,6 +1829,74 @@ class UserBotController:
                 await q.message.edit_text(USERBOT["delete_confirm"].format(name=b["bot_name"]),
                                           reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("✅ Yes, delete", callback_data="sb:delete_yes")], [telegram.InlineKeyboardButton("↩️ Keep it", callback_data="sb:dash")]]))
                 return
+            if q.data in ("sb:mode_live", "sb:mode_paper"):
+                # MODE SWITCH: paper -> live is the dangerous direction and
+                # gets a full confirmation with the real-funds warning.
+                going_live = q.data == "sb:mode_live"
+                if not going_live:
+                    self.registry.update_bot(bot_id, trading_mode="paper")
+                    if self.agent_pool:
+                        self.agent_pool.stop(bot_id)
+                        self.agent_pool.start(bot_id)
+                    await q.message.edit_text(
+                        "🧪 <b>PAPER MODE ON</b>\n\n"
+                        "Virtual $1,000 portfolio. Fills at live prices with the "
+                        "real cost model (fees + slippage) so results mirror live "
+                        "trading. No real money moves.\n\n"
+                        "Reset the paper portfolio anytime in ⚙️ Settings.",
+                        parse_mode="HTML",
+                        reply_markup=telegram.InlineKeyboardMarkup(
+                            [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                    return
+                # live confirmation
+                held = any((p.get("quantity") or 0) != 0
+                           for p in (self._exec_account(bot_id, (b.get("chain") or "sui")).get("positions") or [])) \
+                    if self._exec_ready() else False
+                warn = ("\n⚠️ You currently have <b>open positions</b>. Switching to "
+                        "paper hides them from the dashboard until you switch back." if held else "")
+                await q.message.edit_text(
+                    "🔴 <b>SWITCH TO LIVE TRADING?</b>\n\n"
+                    f"Bot: <b>{b['bot_name']}</b>\n"
+                    "From now on the bot trades your <b>real on-chain funds</b>:\n"
+                    "• Entries, stops and exits execute for real on "
+                    f"{(b.get('chain') or 'sui').upper()} ({b.get('network') or 'mainnet'})\n"
+                    "• Every trade pays the venue fee + the platform fee\n"
+                    "• Losses are real losses\n" + warn +
+                    "\n\nPaper portfolio stays saved — switch back anytime.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("🔴 Yes, go LIVE",
+                                                       callback_data="sb:mode_live_yes"),
+                         telegram.InlineKeyboardButton("↩️ Stay on paper",
+                                                       callback_data="sb:dash")]]))
+                return
+            if q.data == "sb:mode_live_yes":
+                self.registry.update_bot(bot_id, trading_mode="live")
+                if self.agent_pool:
+                    self.agent_pool.stop(bot_id)
+                    self.agent_pool.start(bot_id)
+                await q.message.edit_text(
+                    "🔴 <b>LIVE MODE ON</b> — the bot now trades your real funds. "
+                    "Trade discipline, stops and the one-shot rule all apply for real. "
+                    "Paper portfolio is saved; switch back anytime.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
+            if q.data == "sb:paper_reset":
+                self.registry.update_bot(bot_id, trading_mode="paper")
+                try:
+                    from paper_store import PaperStore
+                    PaperStore(self.registry.path).reset(bot_id)
+                except Exception as exc:
+                    await q.answer("reset failed")
+                    return
+                await q.message.edit_text(
+                    "🧪 Paper portfolio reset to <b>$1,000.00</b>. Fresh start.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                return
             text = (f"🤖 {b['bot_name']} · bot status\n\n"
                     f"Bot:       {'🟢 ONLINE' if b['is_running'] else '⛔ OFFLINE'}\n"
                     f"Trading:   {'⏸️ PAUSED' if b['paused'] else '🟢 ACTIVE'}\n"
@@ -1914,6 +1989,7 @@ class UserBotController:
                  telegram.InlineKeyboardButton("30x", callback_data="sb:set_leverage:30"),
                  telegram.InlineKeyboardButton("40x", callback_data="sb:set_leverage:40")],
                 [telegram.InlineKeyboardButton("📋 Watchlist", callback_data="sb:watchlist")],
+                [telegram.InlineKeyboardButton("🧪 Reset Paper Portfolio", callback_data="sb:paper_reset")],
                 [telegram.InlineKeyboardButton("🛡️ Execution Risk", callback_data="sb:execrisk")],
                 [telegram.InlineKeyboardButton("🔑 Change AI Key", callback_data="key:start")],
                 [telegram.InlineKeyboardButton("🆘 Contact Support", callback_data="sb:support")],
@@ -3004,7 +3080,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(stocks, pattern=r"^sb:stocks$"))
         app.add_handler(CallbackQueryHandler(trades, pattern=r"^sb:trades$"))
         app.add_handler(CallbackQueryHandler(leaderboard, pattern=r"^sb:lb$"))
-        app.add_handler(CallbackQueryHandler(bot_controls, pattern=r"^sb:(pause|resume|pause_yes|delete|delete_yes)$"))
+        app.add_handler(CallbackQueryHandler(bot_controls, pattern=r"^sb:(pause|resume|pause_yes|delete|delete_yes|mode_live|mode_paper|mode_live_yes|paper_reset)$"))
         app.add_handler(CallbackQueryHandler(settings, pattern=r"^sb:(settings|set_interval:\d+|set_trader_type:\w+|set_leverage:\d+|set_network:\w+)$"))
         app.add_handler(CallbackQueryHandler(inbox, pattern=r"^sb:inbox$"))
         app.add_handler(CallbackQueryHandler(help_screen, pattern=r"^sb:help$"))
