@@ -200,6 +200,53 @@ class PaperStore:
                 (bot_id, today)).fetchall()
             return {r["symbol"] for r in rows}
 
+    def dashboard_account(self, bot_id: int, prices: dict | None = None) -> dict:
+        """Build an account dict compatible with render_production_dashboard().
+
+        Returns the same shape as _exec_account(): balances (USDC, native,
+        realized_pnl), positions list, wallet_address.  USDC = paper cash +
+        unrealized P&L at mark prices = total paper equity.  If `prices` is
+        given (symbol -> float) the positions include mark prices and unrealized
+        PnL; otherwise entry price is shown as the mark."""
+        p = self.ensure_portfolio(bot_id)
+        pos_rows = self.positions(bot_id)
+        positions = []
+        for pos in pos_rows:
+            mark = (prices or {}).get(pos["symbol"], pos["entry_price"])
+            if pos["direction"] == "long":
+                unrealized = pos["qty"] * (mark - pos["entry_price"])
+            else:
+                unrealized = pos["qty"] * (pos["entry_price"] - mark)
+            positions.append({
+                "symbol": pos["symbol"],
+                "side": pos["direction"],
+                "qty": pos["qty"],
+                "entry": pos["entry_price"],
+                "mark_price": mark,
+                "pnl": unrealized,
+                "stop": pos.get("stop_loss"),
+                "target": pos.get("take_profit"),
+            })
+        # Paper USDC = starting + realized_pnl + (cash - starting)
+        # which simplifies to cash (since cash = starting + pnl_delta - fees)
+        # But for the dashboard we show equity = cash + unrealized P&L
+        equity = p["cash"]
+        for pos in pos_rows:
+            mark = (prices or {}).get(pos["symbol"], pos["entry_price"])
+            if pos["direction"] == "long":
+                equity += pos["qty"] * (mark - pos["entry_price"])
+            else:
+                equity += pos["qty"] * (pos["entry_price"] - mark)
+        return {
+            "balances": {
+                "USDC": round(equity, 6),
+                "native": 0.0,
+                "realized_pnl": round(p["realized_pnl"], 6),
+            },
+            "positions": positions,
+            "wallet_address": "",
+        }
+
     # ---------------------------------------------------------- accounting
     def settle(self, bot_id: int, realized_pnl_delta: float, fee: float) -> None:
         """Realized PnL accrues to cash on close (fees already deducted by

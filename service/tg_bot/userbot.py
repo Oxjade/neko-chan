@@ -1297,24 +1297,61 @@ class UserBotController:
             self.registry.update_bot(bot_id, last_heartbeat=utcnow())
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
+            mode = (b.get("trading_mode") or "paper").lower()
             account = {"balances": {}, "positions": []}
-            try:
-                account = self._exec_account(bot_id, chain)
-            except Exception:
-                account = {"balances": {}, "positions": []}
-            # HARD FALLBACK: if _exec_account didn't return a wallet_address,
-            # read it directly from the registry. This ensures the dashboard
-            # ALWAYS shows the wallet address after generation, even if the
-            # ledger read path fails for any reason.
-            if not account.get("wallet_address"):
+            if mode == "paper":
+                # PAPER MODE: build dashboard from virtual portfolio, not chain.
                 try:
-                    _b = self.registry.get_bot(bot_id)
-                    _addr = (_b or {}).get("wallet_addr") or ""
-                    if _addr:
-                        account["wallet_address"] = _addr
+                    from paper_store import PaperStore as _PS
+                    _ps = _PS(self.registry.path)
+                    # Fetch current prices for paper positions via CoinGecko
+                    _paper_prices = {}
+                    _pos_syms = [p["symbol"] for p in _ps.positions(bot_id)]
+                    if _pos_syms:
+                        _CG_IDS = {
+                            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+                            "SUI": "sui", "HYPE": "hyperliquid", "XRP": "ripple",
+                        }
+                        _cg_ids = [_CG_IDS[s] for s in _pos_syms if s in _CG_IDS]
+                        if _cg_ids:
+                            try:
+                                import requests as _req
+                                _r = _req.get(
+                                    "https://api.coingecko.com/api/v3/simple/price",
+                                    params={"ids": ",".join(_cg_ids), "vs_currencies": "usd"},
+                                    timeout=10)
+                                if _r.status_code == 200:
+                                    _cg = _r.json()
+                                    _REVERSE = {v: k for k, v in _CG_IDS.items()}
+                                    for cg_id, px in _cg.items():
+                                        sym = _REVERSE.get(cg_id)
+                                        if sym:
+                                            _paper_prices[sym] = float(px.get("usd", 0))
+                            except Exception:
+                                pass
+                    account = _ps.dashboard_account(bot_id, _paper_prices or None)
                 except Exception:
-                    pass
-            text = render_production_dashboard(b, account, chain, equity=self._equity_snapshot(b))
+                    account = {"balances": {}, "positions": []}
+            else:
+                try:
+                    account = self._exec_account(bot_id, chain)
+                except Exception:
+                    account = {"balances": {}, "positions": []}
+                # HARD FALLBACK: if _exec_account didn't return a wallet_address,
+                # read it directly from the registry. This ensures the dashboard
+                # ALWAYS shows the wallet address after generation, even if the
+                # ledger read path fails for any reason.
+                if not account.get("wallet_address"):
+                    try:
+                        _b = self.registry.get_bot(bot_id)
+                        _addr = (_b or {}).get("wallet_addr") or ""
+                        if _addr:
+                            account["wallet_address"] = _addr
+                    except Exception:
+                        pass
+            # Paper mode: no on-chain equity block — the balances dict IS the paper equity.
+            _eq = None if mode == "paper" else self._equity_snapshot(b)
+            text = render_production_dashboard(b, account, chain, equity=_eq)
             mode = (b.get("trading_mode") or "paper").lower()
             mode_line = ("\n🟢 <b>MODE: LIVE</b> — real funds on-chain" if mode == "live"
                          else "\n🟡 <b>MODE: PAPER</b> — virtual $1,000, no real money")
