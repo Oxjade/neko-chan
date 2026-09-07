@@ -1350,12 +1350,9 @@ class UserBotController:
                     except Exception:
                         pass
             # Paper mode: no on-chain equity block — the balances dict IS the paper equity.
+            mode = (b.get("trading_mode") or "paper").lower()
             _eq = None if mode == "paper" else self._equity_snapshot(b)
             text = render_production_dashboard(b, account, chain, equity=_eq)
-            mode = (b.get("trading_mode") or "paper").lower()
-            mode_line = ("\n🟢 <b>MODE: LIVE</b> — real funds on-chain" if mode == "live"
-                         else "\n🟡 <b>MODE: PAPER</b> — virtual $1,000, no real money")
-            text = text + mode_line
             # Pause now means "pause trading (LLM)" — bot stays online, so use `paused` flag
             is_trading = not b.get("paused") and b.get("is_running")
             start_label = "⏸️ Pause Trading" if is_trading else "▶️ Start Trading"
@@ -1718,11 +1715,44 @@ class UserBotController:
             await q.answer()
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
+            mode = (b.get("trading_mode") or "paper").lower()
             account = {"balances": {}, "positions": []}
-            try:
-                account = self._exec_account(bot_id, chain)
-            except Exception:
-                pass
+            if mode == "paper":
+                try:
+                    from paper_store import PaperStore as _PS
+                    _ps = _PS(self.registry.path)
+                    _paper_prices = {}
+                    _pos_syms = [p["symbol"] for p in _ps.positions(bot_id)]
+                    if _pos_syms:
+                        _CG_IDS = {
+                            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+                            "SUI": "sui", "HYPE": "hyperliquid", "XRP": "ripple",
+                        }
+                        _cg_ids = [_CG_IDS[s] for s in _pos_syms if s in _CG_IDS]
+                        if _cg_ids:
+                            try:
+                                import requests as _req
+                                _r = _req.get(
+                                    "https://api.coingecko.com/api/v3/simple/price",
+                                    params={"ids": ",".join(_cg_ids), "vs_currencies": "usd"},
+                                    timeout=10)
+                                if _r.status_code == 200:
+                                    _cg = _r.json()
+                                    _REVERSE = {v: k for k, v in _CG_IDS.items()}
+                                    for cg_id, px in _cg.items():
+                                        sym = _REVERSE.get(cg_id)
+                                        if sym:
+                                            _paper_prices[sym] = float(px.get("usd", 0))
+                            except Exception:
+                                pass
+                    account = _ps.dashboard_account(bot_id, _paper_prices or None)
+                except Exception:
+                    pass
+            else:
+                try:
+                    account = self._exec_account(bot_id, chain)
+                except Exception:
+                    pass
             positions = account.get("positions") or []
             lines = [f"💰 Active Positions - {b['bot_name']}\n"]
             if not positions:
