@@ -5,6 +5,7 @@ polished dashboard: P&L, positions, live markets with sentiment, trades feed,
 settings, inbox. All data comes from the AI-Trader platform in real time.
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -22,6 +23,13 @@ from telegram.request import HTTPXRequest
 from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
 from store import utcnow
 from provider import validate_key, ProviderError
+
+# Aftermath public perp API — the SAME pricing source the trading agent and
+# paper fills use, so dashboard marks/PnL match real fills. Overridable via
+# env like the agent (AFTERMATH_API_BASE / AFTERMATH_TESTNET_API_BASE).
+AFTERMATH_API = os.getenv("AFTERMATH_API_BASE", "https://aftermath.finance/api").rstrip("/")
+AFTERMATH_TESTNET_API = os.getenv("AFTERMATH_TESTNET_API_BASE",
+                                  "https://testnet.aftermath.finance/api").rstrip("/")
 
 
 def _master_token_fallback() -> str:
@@ -145,11 +153,10 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         if tgt:
             meta += f" · target {tgt}"
         pos_lines.append(f"  {_esc(sym)}  {side.upper()} {qty:g}  {_money(pnl)}{meta}")
-    status = ("⏸️ TRADING PAUSED" if bot.get("paused") else ("🟢 RUNNING" if bot.get("is_running") else "⛔ OFFLINE"))
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
         f"<code>{line}</code>\n"
-        f"{status} · {_chain_label(chain)}\n\n"
+        f"{_chain_label(chain)}\n\n"
         f"<b>💰 BALANCE</b>\n"
         f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
         f"{f'  SUI <code>{native:,.4f}</code>' if native else ''}\n"
@@ -294,6 +301,69 @@ class UserBotController:
         self._lock = threading.Lock()
         import tg_config as _cfg
         self._master_token = _cfg.MASTER_BOT_TOKEN or ""
+        self._paper_store_instance = None  # shared PaperStore (one per process)
+
+    def _paper_store(self):
+        """SHARED PaperStore for the whole bot process. Creating a new
+        PaperStore per dashboard click ran DDL (executescript) and grabbed a
+        write lock on registry.db each time — colliding with the agent's
+        writes and destabilizing the agents. One instance = one connection."""
+        if self._paper_store_instance is None:
+            from paper_store import PaperStore
+            self._paper_store_instance = PaperStore(self.registry.path)
+        return self._paper_store_instance
+
+    def _paper_gateway(self):
+        """PaperGateway over the shared PaperStore (dashboard-side closes)."""
+        if getattr(self, "_paper_gw", None) is None:
+            from paper_gateway import PaperGateway
+            self._paper_gw = PaperGateway(self._paper_store())
+        return self._paper_gw
+
+    def _paper_mark_prices(self, symbols: list[str], network: str = "mainnet") -> dict:
+        """Current prices for paper positions from Aftermath's orderbook —
+        the same venue the agent trades and paper fills on, so dashboard
+        marks and PnL match real fills (CoinGecko can't price XAUT/WTI/
+        stocks and drifts from the venue anyway). Falls back to the
+        testnet API on testnet bots. Returns {} on failure."""
+        if not symbols:
+            return {}
+        base_api = AFTERMATH_TESTNET_API if (network or "mainnet") == "testnet" else AFTERMATH_API
+        prices: dict[str, float] = {}
+        try:
+            import requests as _req
+            r = _req.get(f"{base_api}/ccxt/markets", timeout=10)
+            if r.status_code != 200:
+                return prices
+            markets = r.json() if isinstance(r.json(), list) else []
+            wanted = {s.upper() for s in symbols}
+            ch_by_sym: dict[str, str] = {}
+            for m in markets:
+                b = str(m.get("base") or "").upper()
+                if b in wanted and m.get("swap") and b not in ch_by_sym:
+                    ch_by_sym[b] = m.get("id")
+            for sym, ch_id in ch_by_sym.items():
+                try:
+                    rb = _req.post(f"{base_api}/ccxt/orderbook",
+                                   json={"chId": ch_id}, timeout=10)
+                    if rb.status_code != 200:
+                        continue
+                    data = rb.json()
+                    bids = data.get("bids") or []
+                    asks = data.get("asks") or []
+                    best_bid = max((float(x[0]) for x in bids if x and len(x) > 1), default=None)
+                    best_ask = min((float(x[0]) for x in asks if x and len(x) > 1), default=None)
+                    if best_bid is not None and best_ask is not None:
+                        prices[sym] = (best_bid + best_ask) / 2.0
+                    elif best_bid is not None:
+                        prices[sym] = best_bid
+                    elif best_ask is not None:
+                        prices[sym] = best_ask
+                except Exception:
+                    continue
+        except Exception:
+            return {}
+        return prices
 
     # ---------------- on-chain execution helpers ----------------
 
@@ -1300,35 +1370,14 @@ class UserBotController:
             mode = (b.get("trading_mode") or "paper").lower()
             account = {"balances": {}, "positions": []}
             if mode == "paper":
-                # PAPER MODE: build dashboard from virtual portfolio, not chain.
+                # PAPER MODE: build dashboard from the shared virtual portfolio.
+                # Prices come from Aftermath (the venue the agent trades) so
+                # marks/PnL match real fills.
                 try:
-                    from paper_store import PaperStore as _PS
-                    _ps = _PS(self.registry.path)
-                    # Fetch current prices for paper positions via CoinGecko
-                    _paper_prices = {}
-                    _pos_syms = [p["symbol"] for p in _ps.positions(bot_id)]
-                    if _pos_syms:
-                        _CG_IDS = {
-                            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
-                            "SUI": "sui", "HYPE": "hyperliquid", "XRP": "ripple",
-                        }
-                        _cg_ids = [_CG_IDS[s] for s in _pos_syms if s in _CG_IDS]
-                        if _cg_ids:
-                            try:
-                                import requests as _req
-                                _r = _req.get(
-                                    "https://api.coingecko.com/api/v3/simple/price",
-                                    params={"ids": ",".join(_cg_ids), "vs_currencies": "usd"},
-                                    timeout=10)
-                                if _r.status_code == 200:
-                                    _cg = _r.json()
-                                    _REVERSE = {v: k for k, v in _CG_IDS.items()}
-                                    for cg_id, px in _cg.items():
-                                        sym = _REVERSE.get(cg_id)
-                                        if sym:
-                                            _paper_prices[sym] = float(px.get("usd", 0))
-                            except Exception:
-                                pass
+                    _ps = self._paper_store()
+                    _syms = [p["symbol"] for p in _ps.positions(bot_id)]
+                    _paper_prices = await asyncio.get_running_loop().run_in_executor(
+                        None, self._paper_mark_prices, _syms, (b.get('network') or 'mainnet'))
                     account = _ps.dashboard_account(bot_id, _paper_prices or None)
                 except Exception:
                     account = {"balances": {}, "positions": []}
@@ -1337,18 +1386,15 @@ class UserBotController:
                     account = self._exec_account(bot_id, chain)
                 except Exception:
                     account = {"balances": {}, "positions": []}
-                # HARD FALLBACK: if _exec_account didn't return a wallet_address,
-                # read it directly from the registry. This ensures the dashboard
-                # ALWAYS shows the wallet address after generation, even if the
-                # ledger read path fails for any reason.
-                if not account.get("wallet_address"):
-                    try:
-                        _b = self.registry.get_bot(bot_id)
-                        _addr = (_b or {}).get("wallet_addr") or ""
-                        if _addr:
-                            account["wallet_address"] = _addr
-                    except Exception:
-                        pass
+            # WALLET ADDRESS ALWAYS VISIBLE (paper or live): read straight
+            # from the registry so the dashboard never hides the address.
+            if not account.get("wallet_address"):
+                try:
+                    _addr = (b or {}).get("wallet_addr") or ""
+                    if _addr:
+                        account["wallet_address"] = _addr
+                except Exception:
+                    pass
             # Paper mode: no on-chain equity block — the balances dict IS the paper equity.
             mode = (b.get("trading_mode") or "paper").lower()
             _eq = None if mode == "paper" else self._equity_snapshot(b)
@@ -1719,32 +1765,10 @@ class UserBotController:
             account = {"balances": {}, "positions": []}
             if mode == "paper":
                 try:
-                    from paper_store import PaperStore as _PS
-                    _ps = _PS(self.registry.path)
-                    _paper_prices = {}
-                    _pos_syms = [p["symbol"] for p in _ps.positions(bot_id)]
-                    if _pos_syms:
-                        _CG_IDS = {
-                            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
-                            "SUI": "sui", "HYPE": "hyperliquid", "XRP": "ripple",
-                        }
-                        _cg_ids = [_CG_IDS[s] for s in _pos_syms if s in _CG_IDS]
-                        if _cg_ids:
-                            try:
-                                import requests as _req
-                                _r = _req.get(
-                                    "https://api.coingecko.com/api/v3/simple/price",
-                                    params={"ids": ",".join(_cg_ids), "vs_currencies": "usd"},
-                                    timeout=10)
-                                if _r.status_code == 200:
-                                    _cg = _r.json()
-                                    _REVERSE = {v: k for k, v in _CG_IDS.items()}
-                                    for cg_id, px in _cg.items():
-                                        sym = _REVERSE.get(cg_id)
-                                        if sym:
-                                            _paper_prices[sym] = float(px.get("usd", 0))
-                            except Exception:
-                                pass
+                    _ps = self._paper_store()
+                    _syms = [p["symbol"] for p in _ps.positions(bot_id)]
+                    _paper_prices = await asyncio.get_running_loop().run_in_executor(
+                        None, self._paper_mark_prices, _syms, (b.get('network') or 'mainnet'))
                     account = _ps.dashboard_account(bot_id, _paper_prices or None)
                 except Exception:
                     pass
@@ -1755,6 +1779,7 @@ class UserBotController:
                     pass
             positions = account.get("positions") or []
             lines = [f"💰 Active Positions - {b['bot_name']}\n"]
+            kb_rows = []
             if not positions:
                 lines.append("No open positions.")
             for p in positions[:6]:
@@ -1779,10 +1804,80 @@ class UserBotController:
                 if lev:
                     meta += f" · {lev}x"
                 lines.append(f"  {sym}  {side.upper()} {qty:g}  {_money(pnl)}\n     {meta}")
+                # CLOSE BUTTON: one per position, closes at Aftermath mark.
+                if mode == "paper":
+                    kb_rows.append([telegram.InlineKeyboardButton(
+                        f"❌ Close {sym} {side.upper()}",
+                        callback_data=f"sb:pclose:{sym}")])
+            if mode == "paper" and positions:
+                lines.append("\nTap ❌ below a position to close it at market.")
+            if kb_rows:
+                kb_rows.append([telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pos")])
+                kb_rows.append([telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                                telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")])
+                await q.message.edit_text("\n".join(lines), parse_mode="HTML",
+                                          reply_markup=telegram.InlineKeyboardMarkup(kb_rows))
+                return
             await q.message.edit_text("\n".join(lines), parse_mode="HTML",
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pos")],
                                            [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"), telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
+        async def paper_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Manual close of ONE paper position from the Active Positions
+            view: sb:pclose:<SYMBOL> -> confirm -> sb:pclose_yes:<SYMBOL>."""
+            q = update.callback_query
+            await q.answer()
+            b = self.registry.get_bot(bot_id)
+            mode = (b.get("trading_mode") or "paper").lower()
+            if mode != "paper":
+                await q.answer("Live closes are executed by the bot's exit logic", show_alert=True)
+                return
+            sym = (q.data or "").split(":", 2)[-1].upper()
+            if not q.data.endswith("_yes"):
+                pos = next((p for p in self._paper_store().positions(bot_id)
+                            if p["symbol"] == sym), None)
+                if not pos:
+                    await q.answer(f"No open paper position on {sym}", show_alert=True)
+                    return
+                await q.message.edit_text(
+                    f"❌ <b>Close {sym} {str(pos['direction']).upper()}?</b>\n"
+                    f"entry {pos['entry_price']:,.4f} · qty {pos['qty']:g}\n\n"
+                    "It will close at the current Aftermath market price "
+                    "(exit fee applies).",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("✅ Close position",
+                                                       callback_data=f"sb:pclose_yes:{sym}"),
+                         telegram.InlineKeyboardButton("↩️ Keep it",
+                                                       callback_data="sb:pos")]])
+                )
+                return
+            # confirmed
+            prices = await asyncio.get_running_loop().run_in_executor(
+                None, self._paper_mark_prices, [sym], (b.get('network') or 'mainnet'))
+            ref = prices.get(sym)
+            if not ref:
+                pos = next((p for p in self._paper_store().positions(bot_id)
+                            if p["symbol"] == sym), None)
+                ref = float(pos["entry_price"]) if pos else 0.0
+            if ref <= 0:
+                await q.answer("No price available right now — try again", show_alert=True)
+                return
+            fill = self._paper_gateway().close(
+                bot_id, sym, ref, idempotency_key=f"manual-{bot_id}-{sym}-{int(time.time())}")
+            if not fill.get("ok"):
+                await q.answer(fill.get("error", "close failed"), show_alert=True)
+                return
+            await q.message.edit_text(
+                f"✅ <b>Closed {sym}</b> at {fill['fill_price']:,.4f}\n"
+                f"Realized P&L: <b>{_money(fill['pnl'])}</b> (after exit fee)\n"
+                f"Paper balance updated.",
+                parse_mode="HTML",
+                reply_markup=telegram.InlineKeyboardMarkup([
+                    [telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos"),
+                     telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]])
+            )
 
         async def live_markets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -3143,6 +3238,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(peek, pattern=r"^sb:peek$"))
         app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))
+        app.add_handler(CallbackQueryHandler(paper_close, pattern=r"^sb:pclose(_yes)?:[A-Z0-9]+$"))
         app.add_handler(CallbackQueryHandler(live_markets, pattern=r"^sb:live$"))
         app.add_handler(CallbackQueryHandler(stocks, pattern=r"^sb:stocks$"))
         app.add_handler(CallbackQueryHandler(trades, pattern=r"^sb:trades$"))

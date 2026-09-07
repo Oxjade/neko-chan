@@ -64,6 +64,9 @@ def test_start_spawns_with_user_credentials(env):
 
 
 def test_crash_restart_limited(env):
+    """A crash burst never permanently disables a bot: healthcheck retries up
+    to the per-hour cap, then WAITS (no is_running=0 marking) and resumes
+    automatically once the window clears."""
     reg, bot = env
     pool = AgentPool(reg)
 
@@ -77,11 +80,13 @@ def test_crash_restart_limited(env):
     with patch("agent_pool.subprocess.Popen", DeadProc), \
          patch("agent_pool.sys_executable", return_value="/usr/bin/python3"):
         pool.start(bot["id"])
-        pool.healthcheck(max_restarts_per_hour=3)
-        # crashed proc stays dead; after restart it's still dead -> flagged on next checks
-        pool.healthcheck(max_restarts_per_hour=3)
-        pool.healthcheck(max_restarts_per_hour=3)
-        pool.healthcheck(max_restarts_per_hour=3)
+        pool.healthcheck(max_restarts_per_hour=2)
+        pool.healthcheck(max_restarts_per_hour=2)
+        pool.healthcheck(max_restarts_per_hour=2)  # cap hit -> wait, not kill
+        pool.healthcheck(max_restarts_per_hour=2)  # still waiting
     b = reg.get_bot(bot["id"])
-    assert b["is_running"] == 0
-    assert "crashed" in (b["last_error"] or "")
+    # NEVER permanently flagged dead by the healthcheck
+    assert b["is_running"] == 1
+    assert not (b["last_error"] or "")
+    # restart attempts stopped at the cap (2 restarts + 1 original start)
+    assert pool._procs[bot["id"]].pid == 4243

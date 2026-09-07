@@ -116,20 +116,23 @@ class AgentPool:
         self.registry.update_bot(bot_id, is_running=0, pid=None)
         self._restart_counts[bot_id] = 0
 
-    def healthcheck(self, max_restarts_per_hour: int = 3):
-        """Restart crashed runners up to the limit; flag beyond that."""
+    def healthcheck(self, max_restarts_per_hour: int = 6):
+        """Respawn dead agents. Trading must CONTINUE: a crash burst never
+        permanently disables a bot — when the per-hour cap is hit we simply
+        wait for the window to clear and try again (no is_running=0 marking)."""
         now = time.time()
-        for bot_id, proc in list(self._procs.items()):
-            if proc.poll() is None:
+        for bot in self.registry.all_bots():
+            bot_id = bot["id"]
+            if not bot["is_running"] or bot.get("paused"):
+                continue
+            proc = self._procs.get(bot_id)
+            if proc is not None and proc.poll() is None:
                 continue
             hour_window = [t for t in self._restart_counts.get(bot_id, []) if now - t < 3600]
             if len(hour_window) >= max_restarts_per_hour:
-                self.registry.update_bot(bot_id, is_running=0,
-                                         last_error="crashed too often (paused)")
-                self._procs.pop(bot_id, None)
                 continue
-            self.start(bot_id)
-            self._restart_counts[bot_id] = hour_window + [time.time()]
+            if self.start(bot_id):
+                self._restart_counts[bot_id] = hour_window + [now]
 
     def start_all_active(self):
         for bot in self.registry.all_bots():
