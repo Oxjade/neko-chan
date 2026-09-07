@@ -2016,28 +2016,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                       f"conviction ({best_unwatched:.4f}) - waiting "
                                       f"for a genuinely good setup")
                     # top candidates the LLM will choose among (ranked by conviction).
-                    # WATCHED = WAIT FOR GREAT: a watched asset is only
-                    # actionable when its conviction is at least the best
-                    # unwatched candidate's - "watch" means the user wants a
-                    # genuinely good trade on THAT asset, not a first-come
-                    # entry. Below that bar the watched asset stays cash and
-                    # its one shot is NOT spent.
-                    best_unwatched_conv = max(
-                        (s.conviction for s in actionable if s.symbol not in WATCHED),
-                        default=0.0)
-                    if WATCHED:
-                        watched_ok = {s.symbol for s in actionable
-                                      if s.symbol in WATCHED
-                                      and s.conviction >= best_unwatched_conv}
-                        dropped = sorted({s.symbol for s in actionable
-                                          if s.symbol in WATCHED} - watched_ok)
-                        if dropped:
-                            print(f"[quant] watched {', '.join(dropped)} below the best "
-                                  f"unwatched conviction ({best_unwatched_conv:.4f}) - "
-                                  f"waiting for a genuinely good setup")
-                        actionable = [s for s in actionable
-                                      if s.symbol not in WATCHED or s.symbol in watched_ok]
-                    actionable = sorted(actionable,
+                    actionable = sorted(matrix,
                                         key=lambda s: (s.symbol in WATCHED, s.conviction),
                                         reverse=True)
                     # ALWAYS give the LLM the best LONG and the best SHORT so it
