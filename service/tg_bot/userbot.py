@@ -1445,6 +1445,7 @@ class UserBotController:
             await q.answer()
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
+            mode = (b.get("trading_mode") or "paper").lower()
             watched = _parse_watchlist(b.get("watchlist"))
             default = {
                 "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
@@ -1544,10 +1545,32 @@ class UserBotController:
                         lines.append("\n💰 <b>Live</b>: " + " · ".join(prices))
                 except Exception:
                     pass
-                # Manual Take/Reject buttons for the top pending decision (if any)
+                # Manual Take/Reject buttons for EVERY fresh pending decision.
+                # A decision is stale when the agent has since emitted a hold
+                # for it (cache row replaced) or its ts is older than ~30 min
+                # (cache rows only update when that symbol is re-analyzed, so
+                # an old buy row would otherwise linger forever - the "Take
+                # BTC LONG is stuck" bug). Symbols with an open position are
+                # skipped: one position per symbol, nothing to take.
                 kb_rows = []
                 try:
-                    # Offer Take/Reject for each active symbol that has a buy/short decision
+                    from datetime import datetime as _dt
+                    _now = _dt.now(timezone.utc)
+                    open_syms = set()
+                    if mode == "paper":
+                        try:
+                            open_syms = {p["symbol"].upper()
+                                         for p in self._paper_store().positions(bot_id)
+                                         if p.get("qty")}
+                        except Exception:
+                            open_syms = set()
+                    else:
+                        try:
+                            open_syms = {str(p.get("symbol") or p.get("coin") or "").upper()
+                                         for p in (self._exec_account(bot_id, chain).get("positions") or [])
+                                         if p.get("quantity") not in (0, None, "")}
+                        except Exception:
+                            open_syms = set()
                     for sym in active:
                         row = latest.get(sym.upper()) if 'latest' in locals() else None
                         if not row:
@@ -1555,13 +1578,22 @@ class UserBotController:
                         act = (row.get("action") or "").lower()
                         direction = (row.get("direction") or "").lower()
                         # Only actionable opens (buy/short), not holds/exits
-                        if act in ("buy", "short") or direction in ("long", "short"):
-                            label = "LONG" if (act == "buy" or direction == "long") else "SHORT"
-                            kb_rows.append([
-                                telegram.InlineKeyboardButton(f"✅ Take {sym.upper()} {label}", callback_data=f"trade:take:{sym.upper()}"),
-                                telegram.InlineKeyboardButton(f"❌ Reject", callback_data=f"trade:reject:{sym.upper()}"),
-                            ])
-                            break  # only top one to keep keyboard clean
+                        if act not in ("buy", "short") and direction not in ("long", "short"):
+                            continue
+                        if sym.upper() in open_syms:
+                            continue
+                        # FRESHNESS: ignore decisions older than 30 minutes
+                        try:
+                            _ts = _dt.fromisoformat(str(row.get("ts") or "").replace("Z", "+00:00"))
+                            if (_now - _ts).total_seconds() > 1800:
+                                continue
+                        except Exception:
+                            continue
+                        label = "LONG" if (act == "buy" or direction == "long") else "SHORT"
+                        kb_rows.append([
+                            telegram.InlineKeyboardButton(f"✅ Take {sym.upper()} {label}", callback_data=f"trade:take:{sym.upper()}"),
+                            telegram.InlineKeyboardButton(f"❌ Reject", callback_data=f"trade:reject:{sym.upper()}"),
+                        ])
                 except Exception:
                     pass
                 kb_rows.append([telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")])
@@ -3093,15 +3125,15 @@ class UserBotController:
                 await q.message.edit_text(f"ℹ️ No pending {symbol} decision to take (maybe already held or expired).",
                                           reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
                 return
-            if not self._exec_ready():
+            b = self.registry.get_bot(bot_id) or {}
+            mode = (b.get("trading_mode") or "paper").lower()
+            if mode != "paper" and not self._exec_ready():
                 await q.message.edit_text("⚠️ Real execution not ready — no trading keys configured.",
                                           reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
                 return
-            # Real execution via gateway (Aftermath perp on Sui)
             try:
-                b = self.registry.get_bot(bot_id) or {}
                 chain = (b.get("chain") or "sui")
-                # Fresh price
+                # Fresh price: platform -> Aftermath orderbook -> decision price
                 ref_price = 0.0
                 try:
                     ref_price = float(self.platform.price(self.registry.platform_token(bot_id) or "", "crypto", symbol) or 0)
@@ -3109,11 +3141,9 @@ class UserBotController:
                     pass
                 if ref_price <= 0:
                     try:
-                        # Fallback to Aftermath public price
-                        import sys
-                        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "execution"))
-                        from live_agent import fetch_aftermath_price
-                        ref_price = float(fetch_aftermath_price(symbol) or 0)
+                        ref_price = float((await asyncio.get_running_loop().run_in_executor(
+                            None, self._paper_mark_prices, [symbol],
+                            (b.get("network") or "mainnet"))).get(symbol) or 0)
                     except Exception:
                         pass
                 if ref_price <= 0:
@@ -3122,14 +3152,43 @@ class UserBotController:
                     await q.message.edit_text(f"⚠️ No price for {symbol} — try again in a moment.",
                                               reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
                     return
-                # Recompute size against REAL equity (wallet USDC + collateral) so $0.01 test balance works
-                qty = float(pending.get("quantity") or pending.get("qty") or 0)
+                direction = (pending.get("direction") or "").lower()
                 stop_pct = float(pending.get("stop_pct") or pending.get("stop_loss_pct") or 5.0)
                 take_pct = float(pending.get("take_pct") or pending.get("take_profit_pct") or 8.0)
                 lev = float(pending.get("leverage") or pending.get("lev") or 20.0)
-                # Clamp to risk guard bounds
                 stop_pct = max(2.0, min(stop_pct, 8.0))
                 take_pct = max(4.0, min(take_pct, 24.0))
+                if mode == "paper":
+                    # PAPER TAKE: virtual fill at the live Aftermath price with
+                    # the real cost model, sized off the paper portfolio.
+                    pf = self._paper_store().ensure_portfolio(bot_id)
+                    cash = float(pf.get("cash") or 0.0)
+                    qty = (cash * 0.15) / ref_price if ref_price > 0 and cash > 0 else 0.0
+                    if qty <= 0:
+                        await q.message.edit_text("⚠️ No paper cash available. Reset the paper portfolio in Settings.",
+                                                  reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                        return
+                    lev = max(1.0, min(lev, 20.0))
+                    fill = self._paper_gateway().open(
+                        bot_id, symbol, "long" if direction != "short" else "short",
+                        qty, ref_price, leverage=lev,
+                        stop_loss=round(ref_price * (1 - stop_pct / 100) if direction != "short" else ref_price * (1 + stop_pct / 100), 6),
+                        take_profit=round(ref_price * (1 + take_pct / 100) if direction != "short" else ref_price * (1 - take_pct / 100), 6),
+                        idempotency_key=f"manual-take-paper:{bot_id}:{symbol}:{int(time.time() * 1000)}")
+                    if not fill.get("ok"):
+                        await q.message.edit_text(f"⚠️ Paper take failed: {fill.get('error', 'unknown')[:200]}",
+                                                  reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
+                        return
+                    await q.message.edit_text(
+                        f"🧪 <b>Paper took {symbol} {direction.upper()}</b>\n"
+                        f"Filled <code>{qty:.6f}</code> @ <code>${fill.get('fill_price', ref_price):,.4f}</code> · {lev:g}x\n"
+                        f"⛔ Stop {stop_pct:.1f}% · 🎯 Take {take_pct:.1f}% · fee ${fill.get('fee', 0):,.2f}\n"
+                        f"Virtual — no real money moved.",
+                        parse_mode="HTML",
+                        reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")], [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                    return
+                # Recompute size against REAL equity (wallet USDC + collateral) so $0.01 test balance works
+                qty = float(pending.get("quantity") or pending.get("qty") or 0)
                 # If qty is 0 (was sized at $0 equity), recompute from real equity now
                 if qty <= 0 or qty < 1e-8:
                     try:
