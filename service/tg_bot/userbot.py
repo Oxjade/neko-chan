@@ -2222,9 +2222,10 @@ class UserBotController:
             text = (f"📋 <b>Watchlist</b> - {_chain_label(chain)}\n\n"
                     f"Assets Neko-Chan is analyzing:\n"
                     + "\n".join(f"  • {_esc(s)}" for s in active)
-                    + "\n\nType <b>watch &lt;ASSET&gt;</b> (e.g. <b>watch DEEP</b>) "
-                      "to add a specific asset to your watchlist. Neko-Chan will "
-                      "check it's available on this chain and focus on it.")
+                    + f"\n\nType <b>watch &lt;ASSET&gt;</b> (e.g. <b>watch XRP</b>) "
+                      f"to add an asset. Only assets with an active perp market "
+                      f"on {_chain_label(chain)} can be watched — everything else "
+                      f"is rejected with the supported list.")
             await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton(BACK, callback_data="sb:settings")]]))
 
@@ -2298,11 +2299,36 @@ class UserBotController:
             # Aftermath doesn't list IKA-PERP. If there's no perp market, the
             # agent can't fetch a price or build scenarios, so reject early.
             if not _is_perp_tradeable(chain, asset):
+                perps = _is_perp_tradeable_map().get(chain) or set()
                 await _respond(
-                    f"❌ <b>{asset}</b> is not available for perp trading on {_chain_label(chain)}.\n"
-                    f"Only assets with an active perp market can be analyzed and traded.\n"
-                    f"Check the venue's market list for tradeable symbols.")
+                    f"❌ <b>{asset}</b> is not watchable on {_chain_label(chain)}.\n"
+                    f"Only assets with an active perp market on this chain can be "
+                    f"watched, analyzed, and traded.\n"
+                    f"Supported here: {', '.join(sorted(perps))}")
                 return
+            # CHART-DATA GATE: a perp market without candle data can never be
+            # analyzed (the 4h trend scan would fail) - it would sit 'analyzing…'
+            # forever. Verify the same candle source the agent uses before
+            # accepting the watch.
+            try:
+                import requests as _req
+                _now_ms = int(time.time() * 1000)
+                _cr = _req.post("https://api.hyperliquid.xyz/info", json={
+                    "type": "candleSnapshot",
+                    "req": {"coin": asset, "interval": "4h",
+                            "startTime": _now_ms - 3 * 4 * 3600000,
+                            "endTime": _now_ms},
+                }, timeout=10)
+                _candles = _cr.json() if _cr.status_code == 200 else []
+                if not isinstance(_candles, list) or len(_candles) < 2:
+                    await _respond(
+                        f"❌ <b>{asset}</b> has a perp market but no chart data "
+                        f"available for analysis yet - watching it would never "
+                        f"produce a decision. Try one of: "
+                        f"{', '.join(sorted(_is_perp_tradeable_map().get(chain) or set()))}")
+                    return
+            except Exception:
+                pass  # chart API hiccup - don't block the watch on a timeout
             # Is this asset already in an open position? If so, the agent won't
             # re-analyze it until that trade resolves - adding it to the watch
             # would OVERRIDE that. Ask the user to confirm before overriding.
@@ -2397,34 +2423,20 @@ class UserBotController:
                 return []
 
         def _chain_supported_assets(chain: str) -> list[str] | None:
-            """Return the full list of known tokens on this chain, or None if
-            the chain is not recognized (meaning any asset is allowed)."""
-            known = {
-                # Sui native tokens (from Suiscan / DeFi ecosystem)
-                "sui": ["SUI", "BTC", "ETH", "SOL", "XAUT", "HYPE", "XRP", "UNI",
-                        "XMR", "ZEC", "MON", "XAG", "WTI", "US500", "GOOGL",
-                        "NVDA", "TSLA", "INTC", "MU", "MRVL", "SNDK", "AMC",
-                        "DRAM", "LLY", "IOVA", "SPCX", "PUMP", "CHIP", "LIT",
-                        # Sui native tokens (from Suiscan / DeFi ecosystem)
-                        "ARB", "DOGE", "LINK", "SEI", "OP",
-                        "BNB", "AVAX", "LTC", "MATIC", "DEEP", "IKA", "NS", "SEND",
-                        "BLUE", "CETUS", "SCA", "AFSUI", "HASUI", "FUD", "SPAM",
-                        "TURBOS", "NS", "WAL", "PEPE", "SHIB", "APT", "ATOM", "AAVE",
-                        "MOVE", "USDC", "USDT", "WETH", "WBTC"],
-                # Solana tokens (from Jupiter / Solana ecosystem)
-                "solana": ["SOL", "BTC", "ETH", "SUI", "DOGE", "BONK", "WIF", "JUP",
-                           "PYTH", "JTO", "RENDER"],
-                # Hyperliquid native tokens
-                "hyperliquid": ["HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
-                                "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"],
-            }
-            return known.get(chain)  # None if chain not in dict -> no restriction
+            """Return the tradeable assets for this chain, or None if the chain
+            is not recognized (meaning any asset is allowed).
 
-        def _is_perp_tradeable(chain: str, asset: str) -> bool:
-            """Check if an asset has a perp market on the venue for this chain.
-            Only assets with an active perp market can be priced and traded."""
-            # All 29 Aftermath Perps mainnet markets (verified from /api/ccxt/markets, 2026-09).
-            _perp_syms = {
+            On a recognized chain this is EXACTLY the venue's perp market list:
+            a coin without an Aftermath perp market cannot be priced, analyzed,
+            or traded — so it is NOT watchable in the first place. No more
+            'watching DEEP forever with no decisions'."""
+            perp = _is_perp_tradeable_map()
+            return sorted(perp.get(chain)) if chain in perp else None
+
+        def _is_perp_tradeable_map() -> dict[str, set[str]]:
+            """Venue perp markets per chain (Aftermath Perps mainnet, verified
+            from /api/ccxt/markets, 2026-09)."""
+            return {
                 "sui": {"BTC", "ETH", "SOL", "XAUT", "SUI", "HYPE", "XRP", "UNI",
                         "XMR", "ZEC", "MON", "XAG", "WTI", "US500", "GOOGL",
                         "NVDA", "TSLA", "INTC", "MU", "MRVL", "SNDK", "AMC",
@@ -2433,7 +2445,11 @@ class UserBotController:
                 "hyperliquid": {"HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
                                 "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"},
             }
-            perps = _perp_syms.get(chain)
+
+        def _is_perp_tradeable(chain: str, asset: str) -> bool:
+            """Check if an asset has a perp market on the venue for this chain.
+            Only assets with an active perp market can be priced and traded."""
+            perps = _is_perp_tradeable_map().get(chain)
             if perps is None:
                 return True  # unknown chain, allow
             return asset.upper() in perps
