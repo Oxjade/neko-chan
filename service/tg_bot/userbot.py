@@ -1520,12 +1520,17 @@ class UserBotController:
                             stop = row.get("stop_pct") or ""
                             take = row.get("take_pct") or ""
                             lev = row.get("leverage") or ""
+                            lev_why = str(row.get("lev_why") or "").strip()
                             guard = f" · ⛔ {stop}% / 🎯 {take}%" if stop or take else ""
                             if lev:
                                 guard += f" · ⚡ {float(lev):g}x"
                             lines.append(f"📊 <b>{_esc(sym.upper())}</b> · <b>{_esc(label)}</b> · <code>{qty}</code>\n")
                             if entry:
                                 lines.append(f"  {entry}{guard}")
+                            elif guard:
+                                lines.append(f"  {guard.strip(' ·')}")
+                            if lev_why:
+                                lines.append(f"  ⚡ leverage: {_esc(lev_why)}")
                             if reasoning:
                                 lines.append(f"  💡 {reasoning[:100]}")
                         else:

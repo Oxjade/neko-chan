@@ -192,20 +192,30 @@ def clamp_leverage(symbol: str, market: str, lev: float,
 
 
 def conviction_leverage(symbol: str, market: str, conviction: float,
-                        stop_pct: float | None = None) -> float:
+                        stop_pct: float | None = None,
+                        user_cap: float | None = None) -> float:
     """Leverage measured by conviction - 13x floor on 20x-leverage markets.
 
     Scales linearly from CONVICTION_LEV_FLOOR (13x at floor conviction) to
-    the venue cap (20x at 2x floor conviction), then liq-safety-clamped via
-    clamp_leverage. Conviction below the floor keeps the 13x floor (it is a
-    floor, not a target). 10x-cap markets are exempt: they use the liq-safe
-    margin-fit leverage as before."""
+    the effective cap as conviction doubles above the floor, then liq-safety
+    clamped via clamp_leverage. Conviction below the floor keeps the 13x
+    floor (it is a floor, not a target). 10x-cap markets are exempt: they
+    use the liq-safe margin-fit leverage as before.
+
+    The USER'S Settings leverage is the hard CAP (user_cap): conviction can
+    never trade above what the user set. user_cap defaults to the venue cap
+    (legacy behaviour) when not provided."""
     if market != "crypto":
         return 1.0
-    cap = AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)
+    venue_cap = AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)
+    cap = float(user_cap) if (user_cap and user_cap > 1) else float(venue_cap)
+    # never above the venue's own limit, whatever the user set
+    cap = min(cap, float(venue_cap))
     if cap < CONVICTION_LEV_FLOOR:
-        # 10x markets: no 13x floor - liq-safe margin-fit base
-        return clamp_leverage(symbol, market, 2.25, stop_pct=stop_pct)
+        # cap below the 13x floor (e.g. user chose 5x on a 20x market, or a
+        # 10x venue): the USER CAP WINS - no conviction floor is forced on
+        # top of an explicit lower setting. Liq-safe margin-fit base.
+        return clamp_leverage(symbol, market, max(cap, 2.25), stop_pct=stop_pct)
     f = 0.0
     if conviction > 0:
         f = max(0.0, min(1.0, (conviction - CONVICTION_FLOOR) / CONVICTION_FLOOR))
@@ -500,8 +510,8 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
       - The AMOUNT scales with conviction: higher conviction = larger position.
         Base exposure = 15% of balance; every doubling of conviction above the
         floor adds exposure up to the hard 45% cap.
-      - The LEVERAGE scales with confidence (LLM decides 20-40x; clamped to the
-        venue/asset max: BTC 40x, others 25x).
+      - The LEVERAGE scales with conviction (13x floor on 20x markets) up to
+        the USER'S Settings leverage cap, liq-safety clamped for the stop.
       - Hard caps: notional NEVER exceeds 45% of the total balance, and the
         margin required (notional/lev) must fit inside the wallet cash.
 
@@ -525,17 +535,18 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
             exposure = 0.15
     notional = balance * exposure
     units = notional / entry_price
-    # LEVERAGE MEASURED BY CONVICTION: 13x floor on 20x-leverage markets
-    # (BTC/ETH/SOL/XAUT), scaling linearly to the venue cap as conviction
-    # doubles above the floor. Loss per stop-out = notional x stop% is
-    # unchanged by leverage - leverage only moves the liquidation line, and
-    # clamp_leverage keeps it beyond stop x 1.25 (verified: at 13x liq sits
-    # 5.19% out vs the 4% stop cap; at 20x 2.5% vs tight conviction stops).
-    # 10x-cap markets (SUI/XRP/HYPE) are exempt - they stay liq-safe
-    # margin-fit (~2.25x).
-    # LEVERAGE = the user's Settings value, liq-safety clamped for this
-    # stop (the conviction system scales SIZE, never leverage).
-    lev = clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE, stop_pct=stop_pct)
+    # LEVERAGE MEASURED BY CONVICTION — TRANSPARENT: scales from the 13x
+    # floor toward the USER'S Settings leverage as the hard CAP (never
+    # beyond it), then liq-safety clamped vs this trade's stop. Every
+    # decision message shows the exact value chosen and why.
+    # - 20x-cap markets (BTC/ETH/SOL): conviction scaling 13x -> user cap
+    # - 10x-cap markets (SUI/XRP/HYPE): liq-safe margin-fit, no 13x floor
+    # Loss per stop-out = notional x stop% is unchanged by leverage -
+    # leverage only moves the liquidation line, and clamp_leverage keeps
+    # it beyond stop x 1.25 (verified: at 13x liq sits 5.19% out vs the 4%
+    # stop cap; at 20x 2.5% vs tight conviction stops).
+    lev = conviction_leverage(symbol, market, conviction, stop_pct=stop_pct,
+                              user_cap=LIVE_AGENT_LEVERAGE)
     # margin must still fit inside the balance at this leverage
     if lev > 1 and notional > balance * 0.95 * lev:
         units = (balance * 0.95 * lev) / entry_price
@@ -546,7 +557,8 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
         notional = units * entry_price
     return units, lev, (f"conviction-size {units:.6f}u (~${notional:,.0f} notional = "
                         f"{exposure*100:.0f}% of ${balance:,.0f} balance @ "
-                        f"{lev:g}x, conviction={conviction:.4f})")
+                        f"{lev:g}x lev (conviction {conviction:.3f}, your cap "
+                        f"{min(LIVE_AGENT_LEVERAGE, AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)):g}x))")
 
 
 def market_stats(symbol: str, market: str) -> dict:
@@ -1488,6 +1500,7 @@ def log_decision(row: dict):
             "stop_pct": row.get("stop_pct"),
             "take_pct": row.get("take_pct"),
             "leverage": row.get("leverage"),
+            "lev_why": row.get("lev_why"),
             "fill_ok": row.get("fill_ok"),
             "reasoning": str(row.get("reasoning", "")),
             "error": str(row.get("error", "")),
@@ -2340,18 +2353,27 @@ def run_cycle(token: str, dry: bool = False) -> None:
     take_pct = float(decision.get("take_profit_pct", 0) or 0)
     reasoning = str(decision.get("reasoning", ""))[:300]
     market = dict(UNIVERSE).get(symbol, "crypto")
-    # LEVERAGE POLICY — CLEARLY DEFINED: the leverage the user set in
-    # Settings IS the leverage used on every entry (then clamped for
-    # liquidation safety against this trade's stop). No hidden 13x
-    # conviction floor, no LLM override — what you set is what trades.
+    # LEVERAGE POLICY — CONVICTION-DRIVEN, USER-CAPPED, TRANSPARENT: the
+    # bot picks leverage by trade conviction (13x floor on 20x markets,
+    # scaling toward the cap as conviction rises); the USER'S Settings
+    # leverage is the hard cap it can never exceed; liq-safety clamps
+    # apply last. The chosen value + reasoning are shown in every
+    # notification and stored in the decision log.
     # Closes (sell/cover) always go 1x - leverage only applies to opens.
-    lev_choice = clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE,
-                                stop_pct=stop_pct or None)
+    _conv_for_lev = _last_scenario.conviction if _last_scenario is not None else 0.0
+    lev_choice = conviction_leverage(symbol, market, _conv_for_lev,
+                                     stop_pct=stop_pct or None,
+                                     user_cap=LIVE_AGENT_LEVERAGE) \
+        if action in ("buy", "short") else 1.0
+    lev_explained = (f"{lev_choice:g}x (conviction {_conv_for_lev:.3f}, "
+                     f"floor {CONVICTION_LEV_FLOOR:g}x, cap {min(LIVE_AGENT_LEVERAGE, AFTERMATH_MAX_LEVERAGE.get(symbol.upper(), 10)):g}x)"
+                     if action in ("buy", "short") else "1x (close)")
 
     row = {"symbol": symbol, "action": action, "direction": direction,
            "price": prices.get(symbol, 0),
            "quantity": qty, "stop_pct": stop_pct, "take_pct": take_pct,
            "leverage": lev_choice if action in ("buy", "short") else 1.0,
+           "lev_why": lev_explained,
            "fill_ok": None, "reasoning": reasoning, "error": ""}
 
     # Open-position map for the guard chain below (one position per symbol).
@@ -2458,7 +2480,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                 print(f"[gate] {symbol} {action} blocked: {reason}")
         if dry:
             print(f"[dry] would {action} {qty} {symbol} [{market}] "
-                  f"(stop {stop_pct}%, take {take_pct}%, lev {lev_choice:g}x)")
+                  f"(stop {stop_pct}%, take {take_pct}%, lev {lev_explained})")
             row["fill_ok"] = "dry"
         elif TRADING_MODE == "paper":
             # PAPER MODE: virtual fills at live prices with the REAL cost
@@ -2493,7 +2515,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
             # Pop-up the decided trade BEFORE the order goes out.
             notify_trade(symbol, action, qty, prices.get(symbol, 0) or row["price"] or 0,
                          stop_pct, take_pct, lev_choice,
-                         reasoning=f"[LLM+quant] {reasoning}")
+                         reasoning=f"[LLM+quant] {reasoning} · leverage {lev_explained}")
             # REAL EXECUTION: route through the gateway (VenueRouter -> adapter).
             fill = route_real_order(gw, EXEC_BOT_ID, symbol, market, row["action"], qty,
                                     stop_pct or None, take_pct or None,
