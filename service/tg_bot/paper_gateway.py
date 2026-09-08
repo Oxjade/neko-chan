@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 log = logging.getLogger("paper")
 
@@ -64,10 +65,33 @@ class PaperGateway:
              stop_loss: float | None = None, take_profit: float | None = None,
              order_type: str = "market", limit_price: float | None = None,
              idempotency_key: str = "") -> dict:
-        """Open a paper position. Margin = notional/leverage leaves cash."""
+        """Open a paper position. Margin = notional/leverage leaves cash.
+
+        LIMIT ORDERS BEHAVE LIKE REAL ONES: a marketable limit (buy at/above
+        the market, short at/below) fills immediately at the limit price; a
+        non-marketable limit RESTS in paper_pending until the market touches
+        it (filled by manage_exits). The old instant-fill-at-limit behavior
+        faked fills the market never agreed to."""
+        self.store.ensure_portfolio(bot_id)
+        if order_type == "limit" and limit_price and limit_price > 0:
+            limit_price = float(limit_price)
+            marketable = (limit_price >= ref_price) if direction == "long" \
+                else (limit_price <= ref_price)
+            if not marketable:
+                self.store.upsert_pending(
+                    bot_id, symbol, direction, qty, limit_price, leverage,
+                    stop_loss, take_profit, idempotency_key
+                    or f"paper-pending-{symbol}-{int(time.time() * 1000)}")
+                log.info("[paper] bot %s LIMIT RESTING %s %s qty=%.6f @ %.4f "
+                         "(market %.4f)", bot_id, direction, symbol, qty,
+                         limit_price, ref_price)
+                return {"ok": True, "pending": True, "limit_price": limit_price,
+                        "fill_price": limit_price, "qty": qty, "paper": True}
+            fill = limit_price
+        else:
+            fill = self._fill_price("buy" if direction == "long" else "short",
+                                    ref_price, order_type, limit_price)
         p = self.store.ensure_portfolio(bot_id)
-        fill = self._fill_price("buy" if direction == "long" else "short",
-                                ref_price, order_type, limit_price)
         notional = qty * fill
         fee = self._total_fee(notional)
         margin = notional / max(leverage, 1.0)
@@ -85,7 +109,8 @@ class PaperGateway:
         log.info("[paper] bot %s OPEN %s %s qty=%.6f @ %.4f lev=%.1fx fee=%.4f",
                  bot_id, direction, symbol, qty, fill, leverage, fee)
         return {"ok": True, "fill_price": fill, "fee": fee, "margin": margin,
-                "qty": qty, "paper": True}
+                "qty": qty, "leverage": leverage, "direction": direction,
+                "paper": True}
 
     def close(self, bot_id: int, symbol: str, ref_price: float,
               order_type: str = "market", limit_price: float | None = None,
@@ -114,9 +139,37 @@ class PaperGateway:
 
     # ------------------------------------------------------- maintenance
     def manage_exits(self, bot_id: int, prices: dict) -> list[dict]:
-        """Paper stop/target/trail management for open positions. Returns the
-        closed-trade summaries. Same trailing-stop math as the live path."""
-        closed = []
+        """Paper stop/target/trail management for open positions + resting
+        limit fills. Returns closed-trade summaries and triggered fills
+        (each dict carries a 'kind': 'take_profit' | 'stop_loss' | 'limit_fill').
+        Same trailing-stop math as the live path."""
+        events = []
+        # 1) Resting LIMIT fills: a buy/long limit fills when the market
+        #    drops to it, a short limit when the market rises to it.
+        for pend in self.store.pending_orders(bot_id):
+            mark = prices.get(pend["symbol"])
+            if not mark:
+                continue
+            touched = (mark <= pend["limit_price"]) if pend["direction"] == "long" \
+                else (mark >= pend["limit_price"])
+            if not touched:
+                continue
+            self.store.remove_pending(bot_id, pend["symbol"])
+            fill = self.open(
+                bot_id, pend["symbol"], pend["direction"], pend["qty"], mark,
+                leverage=pend["leverage"], stop_loss=pend["stop_loss"],
+                take_profit=pend["take_profit"], order_type="limit",
+                limit_price=pend["limit_price"],
+                idempotency_key=pend["idempotency_key"])
+            if fill.get("ok"):
+                fill["kind"] = "limit_fill"
+                fill["symbol"] = pend["symbol"]
+                fill["direction"] = pend["direction"]
+                events.append(fill)
+                log.info("[paper] bot %s LIMIT FILLED %s %s qty=%.6f @ %.4f",
+                         bot_id, pend["direction"], pend["symbol"], pend["qty"],
+                         pend["limit_price"])
+        # 2) Stop / target / trail management on open positions
         for pos in self.store.positions(bot_id):
             sym = pos["symbol"]
             mark = prices.get(sym)
@@ -135,7 +188,8 @@ class PaperGateway:
             if hit_stop or hit_tp:
                 res = self.close(bot_id, sym, mark, idempotency_key=f"paper-exit-{sym}-{mark}")
                 if res.get("ok"):
-                    res["reason"] = "take_profit" if hit_tp else "stop_loss"
+                    res["kind"] = "take_profit" if hit_tp else "stop_loss"
+                    res["reason"] = res["kind"]
                     res["symbol"] = sym
-                    closed.append(res)
-        return closed
+                    events.append(res)
+        return events

@@ -13,16 +13,38 @@ from tg_config import RUNNER_SCRIPT, RISK_PRESETS
 from store import utcnow
 
 
-def _symbols_to_universe(symbols: dict, leverage: float) -> str:
-    parts = []
-    if symbols.get("perps"):
-        parts += ["BTC:crypto", "ETH:crypto"]
-    if symbols.get("spot"):
-        parts += ["BTC:crypto", "ETH:crypto"]
+def _symbols_to_universe(symbols: dict, leverage: float,
+                         watchlist: str | None = None) -> str:
+    """Analysis universe for the agent. Crypto mapping must cover the FULL
+    tradable set (BTC/ETH/SOL/SUI/HYPE) — mapping only BTC/ETH meant a newly
+    watched asset (SOL, SUI, HYPE...) was never analyzed and never traded.
+    Watchlist symbols are prepended so they're always considered first.
+    Deduped by base symbol so "BTC" (watchlist) and "BTC:crypto" (default)
+    never both appear — duplicates double the per-cycle candle fetches."""
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def _add(entry: str) -> None:
+        base = entry.split(":")[0].strip().upper()
+        if base and base not in seen:
+            seen.add(base)
+            parts.append(entry)
+
+    if watchlist:
+        for s in (watchlist or "").split(","):
+            s = s.strip().upper()
+            if s:
+                # bare watchlist symbols default to the crypto perp market
+                _add(s if ":" in s else f"{s}:crypto")
+    if symbols.get("perps") or symbols.get("spot"):
+        for c in ("BTC:crypto", "ETH:crypto", "SOL:crypto", "SUI:crypto", "HYPE:crypto"):
+            _add(c)
     if symbols.get("us-stock"):
-        parts += ["AAPL:us-stock", "NVDA:us-stock", "SPY:us-stock"]
+        for s in ("AAPL:us-stock", "NVDA:us-stock", "SPY:us-stock"):
+            _add(s)
     if symbols.get("forex"):
-        parts += ["EURUSD:forex", "USDJPY:forex", "GBPUSD:forex"]
+        for s in ("EURUSD:forex", "USDJPY:forex", "GBPUSD:forex"):
+            _add(s)
     return ",".join(parts) if parts else "BTC:crypto"
 
 
@@ -30,8 +52,16 @@ class AgentPool:
     def __init__(self, registry):
         self.registry = registry
         self._procs: dict[int, subprocess.Popen] = {}
-        self._restart_counts: dict[int, int] = {}
+        self._restart_counts: dict[int, list[float]] = {}
         self._lock = threading.Lock()
+
+        # MIGRATION: stop() used to reset this as an int (0); the healthcheck
+        # iterates it as a list of timestamps. An int here crashed every
+        # healthcheck with "'int' object is not iterable", so dead agents were
+        # never respawned. Coerce any legacy int to an empty list on boot.
+        for _bid, _v in list(self._restart_counts.items()):
+            if not isinstance(_v, list):
+                self._restart_counts[_bid] = []
 
     def start(self, bot_id: int) -> bool:
         """Spawn a runner for the bot with its key/provider/risk config."""
@@ -56,7 +86,9 @@ class AgentPool:
             markets = {"perps": 1, "spot": 0, "us-stock": 0, "forex": 0}
         env = os.environ.copy()
         env.update({
-            "LIVE_AGENT_SYMBOLS": _symbols_to_universe(markets, float(bot.get("leverage") or 1.0)),
+            "LIVE_AGENT_SYMBOLS": _symbols_to_universe(
+                markets, float(bot.get("leverage") or 1.0),
+                bot.get("watchlist") or ""),
             "LIVE_AGENT_INTERVAL": str(bot["interval_sec"]),
             "LIVE_AGENT_ACTIVE_MODE": str(caps["active_mode"]),
             "LIVE_AGENT_MAX_DAILY_TRADES": str(caps["max_daily_trades"]),
@@ -114,7 +146,7 @@ class AgentPool:
                 except ProcessLookupError:
                     pass
         self.registry.update_bot(bot_id, is_running=0, pid=None)
-        self._restart_counts[bot_id] = 0
+        self._restart_counts[bot_id] = []
 
     def healthcheck(self, max_restarts_per_hour: int = 6):
         """Respawn dead agents. Trading must CONTINUE: a crash burst never

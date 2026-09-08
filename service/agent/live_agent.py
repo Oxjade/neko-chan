@@ -533,7 +533,9 @@ def balance_aware_size(equity_val: float, cash: float, entry_price: float,
     # 5.19% out vs the 4% stop cap; at 20x 2.5% vs tight conviction stops).
     # 10x-cap markets (SUI/XRP/HYPE) are exempt - they stay liq-safe
     # margin-fit (~2.25x).
-    lev = conviction_leverage(symbol, market, conviction, stop_pct=stop_pct)
+    # LEVERAGE = the user's Settings value, liq-safety clamped for this
+    # stop (the conviction system scales SIZE, never leverage).
+    lev = clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE, stop_pct=stop_pct)
     # margin must still fit inside the balance at this leverage
     if lev > 1 and notional > balance * 0.95 * lev:
         units = (balance * 0.95 * lev) / entry_price
@@ -1439,7 +1441,7 @@ def log_decision(row: dict):
     """
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        LOG_HEADER = "ts,symbol,direction,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error\n"
+        LOG_HEADER = "ts,symbol,direction,action,price,quantity,stop_pct,take_pct,fill_ok,reasoning,error,leverage\n"
         fresh = not LOG_PATH.exists()
         with open(LOG_PATH, "a+", encoding="utf-8") as f:
             if fresh:
@@ -1461,7 +1463,7 @@ def log_decision(row: dict):
             f.write(f"{ts},{row.get('symbol')},{row.get('direction')},{row.get('action')},{row.get('price')},"
                     f"{row.get('quantity')},{row.get('stop_pct')},{row.get('take_pct')},"
                     f"{row.get('fill_ok')},\"{str(row.get('reasoning','')).replace('\"','\"\"')}\","
-                    f"{str(row.get('error','')).replace(',',';')}\n")
+                    f"{str(row.get('error','')).replace(',',';')},{row.get('leverage')}\n")
     except Exception as exc:
         print(f"[agent log] failed to append decision row: {exc}", file=sys.stderr)
 
@@ -1485,6 +1487,7 @@ def log_decision(row: dict):
             "quantity": row.get("quantity"),
             "stop_pct": row.get("stop_pct"),
             "take_pct": row.get("take_pct"),
+            "leverage": row.get("leverage"),
             "fill_ok": row.get("fill_ok"),
             "reasoning": str(row.get("reasoning", "")),
             "error": str(row.get("error", "")),
@@ -1636,6 +1639,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
         paper_positions = []
         for pos in pg.store.positions(EXEC_BOT_ID):
             paper_positions.append({"symbol": pos["symbol"],
+                                    "side": pos["direction"],
                                     "quantity": pos["qty"] if pos["direction"] == "long"
                                                 else -pos["qty"],
                                     "entry_price": pos["entry_price"],
@@ -1726,7 +1730,8 @@ def run_cycle(token: str, dry: bool = False) -> None:
 
     positions = portfolio.get("positions", [])
     pos_txt = "; ".join(
-        f"{p['symbol']} {p['side']} qty={p['quantity']} entry={p['entry_price']:.2f} "
+        f"{p.get('symbol')} {p.get('side') or ('long' if p.get('quantity', 0) > 0 else 'short')} "
+        f"qty={p.get('quantity')} entry={p.get('entry_price', 0):.2f} "
         f"current={p.get('current_price') or 'n/a'} stop={p.get('stop_loss')} take={p.get('take_profit')}"
         for p in positions
     ) or "none"
@@ -1815,19 +1820,33 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     p["high_price"] = _trailing_high[sym]
 
             # PAPER MODE: manage open paper positions' stop/target/trail
-            # exits through the paper gateway before any new decision.
+            # exits + resting limit fills through the paper gateway before
+            # any new decision.
             if TRADING_MODE == "paper":
                 try:
-                    closed = _paper_gateway().manage_exits(EXEC_BOT_ID, prices)
-                    for c in closed:
-                        print(f"[paper] exit {c.get('symbol')} :: {c.get('reason')} "
-                              f"pnl={c.get('pnl', 0):+.4f}")
-                    if closed:
+                    events = _paper_gateway().manage_exits(EXEC_BOT_ID, prices)
+                    for c in events:
+                        kind = c.get("kind", "exit")
+                        if kind == "limit_fill":
+                            print(f"[paper] LIMIT FILLED {c.get('symbol')} "
+                                  f"@ {c.get('fill_price', 0):.4f}")
+                            notify_trade(c.get("symbol", "?"),
+                                         "buy" if c.get("direction") == "long" else "short",
+                                         c.get("qty", 0) or 0,
+                                         c.get("fill_price", 0) or 0, 0, 0,
+                                         c.get("leverage", 1) or 1,
+                                         reasoning="[paper] resting LIMIT order filled "
+                                                   "at the market price")
+                        else:
+                            print(f"[paper] exit {c.get('symbol')} :: {c.get('reason')} "
+                                  f"pnl={c.get('pnl', 0):+.4f}")
+                    if any(c.get("kind") != "limit_fill" for c in events):
                         # positions changed; refresh before deciding
                         pf = _paper_gateway().store.ensure_portfolio(EXEC_BOT_ID)
                         portfolio = {"cash": pf["cash"],
                                      "positions": [
                                          {"symbol": p["symbol"],
+                                          "side": p["direction"],
                                           "quantity": p["qty"] if p["direction"] == "long" else -p["qty"],
                                           "entry_price": p["entry_price"],
                                           "leverage": p["leverage"],
@@ -2321,14 +2340,18 @@ def run_cycle(token: str, dry: bool = False) -> None:
     take_pct = float(decision.get("take_profit_pct", 0) or 0)
     reasoning = str(decision.get("reasoning", ""))[:300]
     market = dict(UNIVERSE).get(symbol, "crypto")
-    # Balance-aware leverage chosen by the sizing engine (clamped to venue max).
+    # LEVERAGE POLICY — CLEARLY DEFINED: the leverage the user set in
+    # Settings IS the leverage used on every entry (then clamped for
+    # liquidation safety against this trade's stop). No hidden 13x
+    # conviction floor, no LLM override — what you set is what trades.
     # Closes (sell/cover) always go 1x - leverage only applies to opens.
-    lev_choice = float(decision.get("leverage") or 0) or LIVE_AGENT_LEVERAGE
-    lev_choice = clamp_leverage(symbol, market, lev_choice)
+    lev_choice = clamp_leverage(symbol, market, LIVE_AGENT_LEVERAGE,
+                                stop_pct=stop_pct or None)
 
     row = {"symbol": symbol, "action": action, "direction": direction,
            "price": prices.get(symbol, 0),
            "quantity": qty, "stop_pct": stop_pct, "take_pct": take_pct,
+           "leverage": lev_choice if action in ("buy", "short") else 1.0,
            "fill_ok": None, "reasoning": reasoning, "error": ""}
 
     # Open-position map for the guard chain below (one position per symbol).

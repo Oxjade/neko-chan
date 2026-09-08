@@ -1519,7 +1519,10 @@ class UserBotController:
                             entry = f"🚦 LIMIT @ <code>${price:,.4f}</code>" if (order_type == "LIMIT" and price) else f"Market @ <code>${price:,.4f}</code>" if price else ""
                             stop = row.get("stop_pct") or ""
                             take = row.get("take_pct") or ""
+                            lev = row.get("leverage") or ""
                             guard = f" · ⛔ {stop}% / 🎯 {take}%" if stop or take else ""
+                            if lev:
+                                guard += f" · ⚡ {float(lev):g}x"
                             lines.append(f"📊 <b>{_esc(sym.upper())}</b> · <b>{_esc(label)}</b> · <code>{qty}</code>\n")
                             if entry:
                                 lines.append(f"  {entry}{guard}")
@@ -1601,8 +1604,13 @@ class UserBotController:
                     pass
                 kb_rows.append([telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:peek")])
                 kb_rows.append([telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")])
-            await q.message.edit_text("\n".join(lines), parse_mode="HTML",
-                                      reply_markup=telegram.InlineKeyboardMarkup(kb_rows))
+            try:
+                await q.message.edit_text("\n".join(lines), parse_mode="HTML",
+                                          reply_markup=telegram.InlineKeyboardMarkup(kb_rows))
+            except telegram.error.BadRequest as _be:
+                # identical content = nothing changed; answer quietly instead of crashing
+                if "not modified" not in str(_be).lower():
+                    raise
 
         async def _exec_account(self, bot_id: int, chain: str) -> dict:
             """Real on-chain account state for a bot+chain (RPC, not mock).

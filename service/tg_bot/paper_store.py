@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS paper_orders (
 );
 CREATE INDEX IF NOT EXISTS idx_paper_positions_bot ON paper_positions(bot_id);
 CREATE INDEX IF NOT EXISTS idx_paper_orders_bot ON paper_orders(bot_id);
+CREATE TABLE IF NOT EXISTS paper_pending (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,        -- long | short
+    qty REAL NOT NULL,
+    limit_price REAL NOT NULL,      -- the resting limit
+    leverage REAL NOT NULL DEFAULT 1.0,
+    stop_loss REAL,
+    take_profit REAL,
+    idempotency_key TEXT UNIQUE,
+    created_at TEXT NOT NULL,
+    UNIQUE(bot_id, symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_paper_pending_bot ON paper_pending(bot_id);
 """
 
 
@@ -224,6 +239,7 @@ class PaperStore:
                 "entry": pos["entry_price"],
                 "mark_price": mark,
                 "pnl": unrealized,
+                "leverage": pos.get("leverage"),
                 "stop": pos.get("stop_loss"),
                 "target": pos.get("take_profit"),
             })
@@ -246,6 +262,45 @@ class PaperStore:
             "positions": positions,
             "wallet_address": "",
         }
+
+    # -------------------------------------------------- pending limit orders
+    def pending_orders(self, bot_id: int) -> list[dict]:
+        with _LOCK:
+            rows = self._conn.execute(
+                "SELECT * FROM paper_pending WHERE bot_id=? ORDER BY id",
+                (bot_id,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def upsert_pending(self, bot_id: int, symbol: str, direction: str, qty: float,
+                       limit_price: float, leverage: float,
+                       stop_loss: Optional[float], take_profit: Optional[float],
+                       idempotency_key: str) -> None:
+        """Place (or replace) a resting limit order. One per symbol — the
+        one-position-per-symbol discipline applies to pending orders too."""
+        with _LOCK:
+            self._conn.execute(
+                "INSERT INTO paper_pending (bot_id, symbol, direction, qty, limit_price, "
+                "leverage, stop_loss, take_profit, idempotency_key, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(bot_id, symbol) DO UPDATE SET qty=excluded.qty, "
+                "limit_price=excluded.limit_price, leverage=excluded.leverage, "
+                "stop_loss=excluded.stop_loss, take_profit=excluded.take_profit, "
+                "idempotency_key=excluded.idempotency_key",
+                (bot_id, symbol, direction, qty, limit_price, max(leverage, 1.0),
+                 stop_loss, take_profit, idempotency_key, utcnow()))
+            self._conn.commit()
+
+    def remove_pending(self, bot_id: int, symbol: str) -> Optional[dict]:
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT * FROM paper_pending WHERE bot_id=? AND symbol=?",
+                (bot_id, symbol)).fetchone()
+            if row:
+                self._conn.execute(
+                    "DELETE FROM paper_pending WHERE bot_id=? AND symbol=?",
+                    (bot_id, symbol))
+                self._conn.commit()
+            return dict(row) if row else None
 
     # ---------------------------------------------------------- accounting
     def settle(self, bot_id: int, realized_pnl_delta: float, fee: float) -> None:
