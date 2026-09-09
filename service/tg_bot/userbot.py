@@ -1495,8 +1495,39 @@ class UserBotController:
                                         latest[sym] = row
                                     if row.get("reasoning"):
                                         last_reason = row.get("reasoning") or ""
+                    # OPEN POSITIONS (paper or live): those symbols are held, the
+                    # agent intentionally skips re-analyzing them (one position
+                    # per symbol) — so their cache rows are STALE by design.
+                    # Showing yesterday's decision as if fresh is misleading.
+                    open_syms = set()
+                    if mode == "paper":
+                        try:
+                            open_syms = {p["symbol"].upper()
+                                         for p in self._paper_store().positions(bot_id)
+                                         if p.get("qty")}
+                        except Exception:
+                            open_syms = set()
+                    else:
+                        try:
+                            open_syms = {str(p.get("symbol") or p.get("coin") or "").upper()
+                                         for p in (self._exec_account(bot_id, chain).get("positions") or [])
+                                         if p.get("quantity") not in (0, None, "")}
+                        except Exception:
+                            open_syms = set()
                     for sym in active:
                         row = latest.get(sym.upper())
+                        if sym.upper() in open_syms:
+                            # held right now: show live position status, not a stale row
+                            _pos_row = next((p for p in self._paper_store().positions(bot_id)
+                                             if p["symbol"].upper() == sym.upper()), None) \
+                                if mode == "paper" else None
+                            lines.append(
+                                f"📊 <b>{_esc(sym.upper())}</b> · <b>POSITION OPEN</b>"
+                                + (f" · {_esc(str(_pos_row['direction']).upper())} "
+                                   f"entry {_pos_row['entry_price']:,.4f}" if _pos_row else "")
+                                + "\n  Agent is managing this trade (stop/target armed) "
+                                  "— it resolves before {0} is re-analyzed.".format(_esc(sym.upper())))
+                            continue
                         if row:
                             # Display DIRECTION (LONG/SHORT) not the order verb
                             # (buy/sell/short/cover) - that's what the user
@@ -1699,11 +1730,26 @@ class UserBotController:
             await q.answer()
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
+            mode = (b.get("trading_mode") or "paper").lower()
             account = {"balances": {}, "positions": []}
-            try:
-                account = self._exec_account(bot_id, chain)
-            except Exception:
-                pass
+            if mode == "paper":
+                # PAPER MODE: card from the virtual portfolio (cash + unrealized
+                # at Aftermath marks). The old code always read on-chain data,
+                # so paper bots got the empty 'No active P&L yet' card.
+                try:
+                    _ps = self._paper_store()
+                    _syms = [p["symbol"] for p in _ps.positions(bot_id)]
+                    _paper_prices = await asyncio.get_running_loop().run_in_executor(
+                        None, self._paper_mark_prices, _syms,
+                        (b.get("network") or "mainnet"))
+                    account = _ps.dashboard_account(bot_id, _paper_prices or None)
+                except Exception:
+                    pass
+            else:
+                try:
+                    account = self._exec_account(bot_id, chain)
+                except Exception:
+                    pass
             bal = account.get("balances") or {}
             usdc = float(bal.get("USDC", 0))
             native = float(bal.get("native", 0))
@@ -2278,13 +2324,16 @@ class UserBotController:
             raw = (update.message.text or "").strip()
             # "watch <ASSET>" or "watch <ASSET> now" - case-insensitive, any spacing
             import re as _re
-            m = _re.match(r"(?i)^\s*watch\s+([a-z0-9]+)(?:\s+now)?\s*$", raw)
+            m = _re.match(r"(?i)^\s*watch\s+([a-z0-9]+)(?:\s+(now|nwo|nw))?\s*$", raw)
             if not m:
-                await _respond("Type <b>watch &lt;ASSET&gt;</b>, e.g. <b>watch DEEP</b>.")
+                await _respond("Type <b>watch &lt;ASSET&gt;</b>, e.g. <b>watch XRP</b> "
+                               "(add <b>now</b> to demand the trade immediately).")
                 return
             asset = m.group(1).upper()
+            priority = bool(m.group(2))
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
+            mode = (b.get("trading_mode") or "paper").lower()
             # Check the asset is a known token on the chain (not just the venue's
             # perp markets - e.g. IKA is a native Sui token even though Aftermath
             # doesn't list an IKA perp market).
@@ -2342,24 +2391,63 @@ class UserBotController:
             except Exception:
                 held = False
             if held:
-                q = update.message
-                await q.delete()
-                await update.message.reply_text(
-                    f"⚠️ <b>{asset}</b> already has an <b>OPEN position</b>.\n\n"
-                    f"Neko-Chan normally waits for that trade to resolve before "
-                    f"analyzing {asset} again (no stacking low-conviction entries).\n\n"
-                    f"Watch it anyway for the <b>next</b> trade?",
-                    parse_mode="HTML",
-                    reply_markup=telegram.InlineKeyboardMarkup([
-                        [telegram.InlineKeyboardButton("✅ Yes, watch it", callback_data=f"watch:yes:{asset}"),
-                         telegram.InlineKeyboardButton("✖️ No", callback_data=f"watch:no:{asset}")],
-                    ]))
+                if not priority:
+                    q = update.message
+                    await q.delete()
+                    await update.message.reply_text(
+                        f"⚠️ <b>{asset}</b> already has an <b>OPEN position</b>.\n\n"
+                        f"Neko-Chan normally waits for that trade to resolve before "
+                        f"analyzing {asset} again (no stacking low-conviction entries).\n\n"
+                        f"Watch it anyway for the <b>next</b> trade?  "
+                        f"(or <b>watch {asset} now</b> to close it and take {asset} immediately)",
+                        parse_mode="HTML",
+                        reply_markup=telegram.InlineKeyboardMarkup([
+                            [telegram.InlineKeyboardButton("✅ Yes, watch it", callback_data=f"watch:yes:{asset}"),
+                             telegram.InlineKeyboardButton("✖️ No", callback_data=f"watch:no:{asset}")],
+                        ]))
+                    return
+                # PRIORITY WATCH: paper mode frees the one-position slot by
+                # closing open positions at market (with a note about P&L).
+                if mode == "paper":
+                    try:
+                        _ps = self._paper_store()
+                        _syms = [p["symbol"] for p in _ps.positions(bot_id)]
+                        _mk = await asyncio.get_running_loop().run_in_executor(
+                            None, self._paper_mark_prices, _syms,
+                            (b.get("network") or "mainnet"))
+                        _closed, _pnl = 0, 0.0
+                        for _p in _ps.positions(bot_id):
+                            _ref = _mk.get(_p["symbol"]) or _p["entry_price"]
+                            _res = self._paper_gateway().close(
+                                bot_id, _p["symbol"], _ref,
+                                idempotency_key=f"watch-now-close-{bot_id}-{_p['symbol']}-{int(time.time())}")
+                            if _res.get("ok"):
+                                _closed += 1
+                                _pnl += float(_res.get("pnl", 0))
+                        _close_note = (f"closed {_closed} position(s) "
+                                       f"(P&L {_money(_pnl)}) to free the slot"
+                                       if _closed else "no open positions to close")
+                    except Exception as exc:
+                        _close_note = f"close failed ({str(exc)[:60]})"
+                else:
+                    _close_note = ("live mode: close your position(s) from Active "
+                                   f"Positions first — the priority watch will take "
+                                   f"the next {asset} setup once a slot is free")
+                self.registry.update_bot(bot_id, priority_watch=asset)
+                self._restart_agent_for_watch(bot_id, b)
+                await _respond(
+                    f"⚡ <b>PRIORITY WATCH: {asset}</b>\n"
+                    f"{_close_note}.\n"
+                    f"The bot will take the next valid <b>{asset}</b> setup — "
+                    f"its one-shot is reserved for exactly this trade.")
                 return
 
             def _apply_watch():
                 watched = set(_parse_watchlist(b.get("watchlist")))
                 watched.add(asset)
                 self.registry.update_bot(bot_id, watchlist=",".join(sorted(watched)))
+                if priority:
+                    self.registry.update_bot(bot_id, priority_watch=asset)
                 # Restart the agent so it immediately picks up the new watchlist
                 # (WATCHED is read at agent startup). If it's not running, leave it.
                 if self.agent_pool:
@@ -2375,8 +2463,25 @@ class UserBotController:
 
             _apply_watch()
             await _respond(
-                f"✅ <b>{asset}</b> added to your watchlist.\n"
-                f"Neko-Chan is now focused on <b>{asset}</b> for reasoning and trades.")
+                f"✅ <b>{asset}</b> added to your watchlist."
+                + ("\n⚡ <b>PRIORITY:</b> the bot will take the next valid "
+                   f"<b>{asset}</b> setup — other assets wait." if priority else "")
+                + "\nNeko-Chan is now focused on <b>{0}</b> for reasoning and trades.".format(asset))
+
+        def _restart_agent_for_watch(self, bot_id: int, b: dict) -> None:
+            """Restart the agent so it picks up the new watchlist/priority_watch
+            immediately (agent env is read at startup). Keeps is_running state."""
+            if not self.agent_pool:
+                return
+            try:
+                self.agent_pool.stop(bot_id)
+            except Exception:
+                pass
+            if b.get("is_running"):
+                try:
+                    self.agent_pool.start(bot_id)
+                except Exception:
+                    pass
 
         async def watch_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query

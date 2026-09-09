@@ -67,6 +67,10 @@ MAX_DAILY_TRADES = int(os.getenv("LIVE_AGENT_MAX_DAILY_TRADES", "12"))
 # Per-user watchlist: comma-separated symbols the user typed "watch <ASSET>" for.
 # These are PREPENDED to the universe so the agent always considers them first.
 WATCHED = [s.strip().upper() for s in os.getenv("LIVE_AGENT_WATCHLIST", "").split(",") if s.strip()]
+# PRIORITY WATCH: 'watch <ASSET> now' — analyze THIS symbol first and take
+# its next valid setup, overriding cooldown/one-shot/direction locks. Cleared
+# (via the registry) once the trade is taken.
+PRIORITY = os.getenv("LIVE_AGENT_PRIORITY", "").strip().upper()
 MAX_POSITION_PCT = float(os.getenv("LIVE_AGENT_MAX_POSITION_PCT", "45"))
 FORCE_STOP_PCT = float(os.getenv("LIVE_AGENT_FORCE_STOP_PCT", "5"))
 # 1 = active scalper mode: hold a position most of the time (long/short), trade often.
@@ -232,6 +236,25 @@ EXEC_BOT_ID = int(os.getenv("LIVE_AGENT_BOT_ID", "1") or "1")
 # venues). Toggled from the Telegram dashboard, read by the agent each boot.
 TRADING_MODE = os.getenv("LIVE_AGENT_TRADING_MODE", "paper").strip().lower()
 _paper_gw_instance = None
+
+
+def _clear_priority(bot_id: int) -> None:
+    """Clear the bot's priority_watch demand (agent-side, direct DB write to
+    the same registry.db the userbot reads). WAL + short transaction: safe
+    against the bot process's concurrent writes."""
+    _tg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tg_bot")
+    import sqlite3 as _sq
+    for attempt in range(3):
+        try:
+            con = _sq.connect(os.path.join(_tg, "registry.db"), timeout=5)
+            con.execute("PRAGMA busy_timeout=5000")
+            con.execute("UPDATE bots SET priority_watch='' WHERE id=?", (bot_id,))
+            con.commit()
+            con.close()
+            return
+        except _sq.OperationalError:
+            time.sleep(0.4 * (attempt + 1))
+    raise RuntimeError("registry busy - priority_watch not cleared")
 
 
 def _paper_gateway():
@@ -2036,20 +2059,26 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         if WATCHED:
                             best_unwatched = max(
                                 (s.conviction for s in matrix
-                                 if s.symbol not in WATCHED and s.ev > 0),
+                                 if s.symbol not in WATCHED and s.ev > 0
+                                 and s.symbol != PRIORITY),
                                 default=0.0)
                             before = len(matrix)
                             matrix = [s for s in matrix
-                                      if s.symbol not in WATCHED
+                                      if s.symbol == PRIORITY
+                                      or s.symbol not in WATCHED
                                       or s.conviction >= best_unwatched
                                       or s.ev <= 0]
                             if len(matrix) < before:
                                 print(f"[quant] watched asset below best unwatched "
                                       f"conviction ({best_unwatched:.4f}) - waiting "
-                                      f"for a genuinely good setup")
-                    # top candidates the LLM will choose among (ranked by conviction).
+                                      f"for a genuinely good setup"
+                                      + (f" (PRIORITY {PRIORITY} exempt)" if PRIORITY else ""))
+                    # PRIORITY WATCH leads the ranking unconditionally: the user
+                    # explicitly demanded this trade — its scenarios come first.
                     actionable = sorted(matrix,
-                                        key=lambda s: (s.symbol in WATCHED, s.conviction),
+                                        key=lambda s: (s.symbol == PRIORITY,
+                                                       s.symbol in WATCHED,
+                                                       s.conviction),
                                         reverse=True)
                     # ALWAYS give the LLM the best LONG and the best SHORT so it
                     # can choose the more profitable direction instead of being
@@ -2395,15 +2424,16 @@ def run_cycle(token: str, dry: bool = False) -> None:
         elif action in ("buy", "short") and symbol in (
                 traded_symbols_today()
                 | (_paper_gateway().store.filled_symbols_today(EXEC_BOT_ID)
-                   if TRADING_MODE == "paper" else set())):
+                   if TRADING_MODE == "paper" else set())) and symbol != PRIORITY:
             # ONE TRADE PER TOKEN PER DAY: if the bot already opened + filled a
             # position on this symbol today (long OR short), it does NOT flip
             # direction on the same token - it moves on to the next watched
             # token instead. Paper fills count the same as live fills.
+            # PRIORITY WATCH bypasses this: 'watch X now' is an explicit order.
             row["action"] = "hold"
             row["error"] = (f"already traded {symbol} today - one trade per "
                             f"token per day, moving to the next")
-        elif action in ("buy", "short") and symbol in open_symbols:
+        elif action in ("buy", "short") and symbol != PRIORITY and symbol in open_symbols:
             # ONE OPEN POSITION PER SYMBOL: never stack a second position or
             # flip direction while the first is still open. The open trade is
             # left completely alone until its own exit logic (stop/target/
@@ -2411,11 +2441,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"
             row["error"] = (f"position open on {symbol} - committed to this trade, "
                             f"waiting for it to win or stop out")
-        elif action in ("buy", "short") and entry_attempts_today(symbol) >= MAX_ENTRY_ATTEMPTS:
+        elif action in ("buy", "short") and symbol != PRIORITY \
+                and entry_attempts_today(symbol) >= MAX_ENTRY_ATTEMPTS:
             # ONE-SHOT RULE: a single entry decision per symbol per day. The
             # bot takes its best shot, then makes NO further decisions on the
             # asset - no re-entry, no direction flip, no retry spam - until
-            # tomorrow. Win or lose, that symbol's session is over.
+            # tomorrow. PRIORITY WATCH bypasses: an explicit user demand.
             row["action"] = "hold"
             row["error"] = (f"{symbol}'s one trade for today is already decided - "
                             f"no further decisions until tomorrow")
@@ -2509,6 +2540,14 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["error"] = fill.get("error", "")
             row["price"] = fill.get("fill_price", row["price"])
             row["paper"] = True
+            # PRIORITY WATCH fulfilled: clear the demand so normal rules resume.
+            if fill.get("ok") and symbol == PRIORITY:
+                try:
+                    _clear_priority(EXEC_BOT_ID)
+                    print(f"[priority] {symbol} trade taken - priority cleared, "
+                          f"normal discipline resumes")
+                except Exception as _exc:
+                    print(f"[priority] clear failed: {_exc}")
             print(f"[trade][paper] {row['action']} {qty} {symbol} "
                   f"-> {'OK' if fill.get('ok') else fill.get('error')}")
         elif gw:

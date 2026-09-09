@@ -108,6 +108,10 @@ class AgentPool:
             "LIVE_AGENT_NETWORK": bot.get("network") or "mainnet",
             "LIVE_AGENT_CHAIN": bot.get("chain") or "sui",
             "LIVE_AGENT_WATCHLIST": bot.get("watchlist") or "",
+            # PRIORITY WATCH: set by 'watch <ASSET> now' — the agent must
+            # analyze THIS symbol next cycle and take its next valid setup,
+            # overriding cooldown/one-shot/direction locks for it.
+            "LIVE_AGENT_PRIORITY": (bot.get("priority_watch") or "").strip().upper(),
             # trading mode: every new bot defaults to paper ($1,000 virtual);
             # live only after the user flips the dashboard toggle.
             "LIVE_AGENT_TRADING_MODE": bot.get("trading_mode") or "paper",
