@@ -1934,11 +1934,16 @@ class UserBotController:
                     pp = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
                     text += f"\n  {sym} {side.upper()} {qty:g}  {_money(pp)}"
                 text += f"\n<code>{line}</code>"
-                await q.message.edit_text(text, parse_mode="HTML",
-                                          reply_markup=telegram.InlineKeyboardMarkup(
-                                              [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
-                                               [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
-                                                telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                try:
+                    await q.message.edit_text(text, parse_mode="HTML",
+                                              reply_markup=telegram.InlineKeyboardMarkup(
+                                                  [[telegram.InlineKeyboardButton("🖨 Print P&L card", callback_data="sb:pnl_print")],
+                                                   [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
+                                                   [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
+                                                    telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                except telegram.error.BadRequest as _be:
+                    if "not modified" not in str(_be).lower():
+                        raise
 
         async def rewards_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Aftermath points & rewards panel: totals, claimable, claim button."""

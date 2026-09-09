@@ -110,9 +110,30 @@ FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 if not os.path.exists(FONT_TITLE):
     FONT_TITLE = FONT_BOLD  # fallback if Poppins isn't installed
 
+# PIL's BUILT-IN bitmap font can't be sized, so a missing truetype font used
+# to crash the whole card (OSError: cannot open resource -> no P&L print).
+# Ship a guaranteed fallback: find ANY usable ttf on the system, else render
+# with the default font at fixed layout.
+
+
+def _resolve_font(preferred: str) -> str:
+    if os.path.exists(preferred):
+        return preferred
+    import glob
+    for pattern in ("/usr/share/fonts/truetype/dejavu/*.ttf",
+                    "/usr/share/fonts/truetype/*/*.ttf",
+                    "/usr/share/fonts/**/*.ttf"):
+        hits = sorted(glob.glob(pattern, recursive=True))
+        if hits:
+            return hits[0]
+    return ""  # nothing installed -> caller uses ImageFont.load_default()
+
 
 def _font(path, size):
-    return ImageFont.truetype(path, size)
+    resolved = _resolve_font(path) or _resolve_font(FONT_BOLD)
+    if resolved:
+        return ImageFont.truetype(resolved, size)
+    return ImageFont.load_default()
 
 
 def _center_text(draw, text, font, y, W, fill):
