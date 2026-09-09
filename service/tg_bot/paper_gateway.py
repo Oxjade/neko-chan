@@ -188,8 +188,13 @@ class PaperGateway:
             tp = pos.get("take_profit")
             hit_stop = (mark <= stop) if (long and stop) else \
                        (mark >= stop) if (stop and not long) else False
+            # TP for a LONG is ABOVE entry (mark >= tp); for a SHORT the
+            # target sits BELOW entry (mark <= tp). The old code compared
+            # mark >= tp for BOTH sides — a short's target is below entry,
+            # so every short was "in profit" the instant it opened and got
+            # closed on the next manage_exits pass (the 2-minute churn).
             hit_tp = (mark >= tp) if (long and tp) else \
-                     (mark >= tp) if (tp and not long) else False
+                     (mark <= tp) if (tp and not long) else False
             if hit_stop or hit_tp:
                 res = self.close(bot_id, sym, mark, idempotency_key=f"paper-exit-{sym}-{mark}")
                 if res.get("ok"):
