@@ -1894,11 +1894,50 @@ class UserBotController:
                     buy_price = pos_entry
                     sell_price = pos_cur
                 else:
-                    # Portfolio-level: use total P&L as a % of the USDC balance
-                    pnl_pct = (total_pnl / max(usdc, 0.01)) * 100.0 if usdc > 0 else total_pnl
-                    buy_price = usdc or 0.0
-                    sell_price = (usdc + total_pnl) or 0.0
-                token = (p.get("symbol") or b['bot_name']).upper() if p else "PORTFOLIO"
+                    # No open position: show the LAST CLOSED TRADE on the card
+                    # (perp bot: "buy/sell a portfolio" makes no sense). Falls
+                    # back to portfolio-level % only when no history exists.
+                    token = ""
+                    last_trade = None
+                    try:
+                        _ps = self._paper_store()
+                        import sqlite3 as _sq
+                        _con = _sq.connect(self.registry.path)
+                        _con.row_factory = _sq.Row
+                        _r = _con.execute(
+                            "SELECT symbol, side, qty, price FROM paper_orders "
+                            "WHERE bot_id=? AND side IN ('sell','cover') "
+                            "ORDER BY id DESC LIMIT 1", (bot_id,)).fetchone()
+                        if _r:
+                            last_trade = dict(_r)
+                            _con2 = _sq.connect(self.registry.path)
+                            _con2.row_factory = _sq.Row
+                            _er = _con2.execute(
+                                "SELECT price FROM paper_orders WHERE bot_id=? AND "
+                                "symbol=? AND side IN ('buy','short') AND id < "
+                                "(SELECT id FROM paper_orders WHERE bot_id=? AND "
+                                "side IN ('sell','cover') AND symbol=? ORDER BY id DESC LIMIT 1) "
+                                "ORDER BY id DESC LIMIT 1",
+                                (bot_id, last_trade["symbol"], bot_id, last_trade["symbol"])).fetchone()
+                            _entry_px = float(_er["price"]) if _er else 0.0
+                            _con2.close()
+                        _con.close()
+                    except Exception:
+                        last_trade = None
+                    if last_trade:
+                        _exit_px = float(last_trade["price"])
+                        pnl_pct = ((_exit_px / _entry_px - 1.0) * 100.0
+                                   * (1 if last_trade["side"] == "sell" else -1)
+                                   ) if _entry_px > 0 else 0.0
+                        buy_price = _entry_px or _exit_px
+                        sell_price = _exit_px
+                        token = last_trade["symbol"].upper()
+                    else:
+                        pnl_pct = (total_pnl / max(usdc, 0.01)) * 100.0 if usdc > 0 else total_pnl
+                        buy_price = usdc or 0.0
+                        sell_price = (usdc + total_pnl) or 0.0
+                if not locals().get("token"):
+                    token = (p.get("symbol") if positions else b['bot_name']).upper() if (positions or p) else b['bot_name'].upper()
                 generate_pnl_card(
                     avatar_path=random_avatar(),
                     pnl_pct=pnl_pct,
@@ -1966,6 +2005,49 @@ class UserBotController:
                 except telegram.error.BadRequest as _be:
                     if "not modified" not in str(_be).lower():
                         raise
+
+        async def paper_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """✅ Take / ❌ Reject buttons on Neko's pre-trade approval card
+            (paper mode). Flips the paper_decisions row status; the agent's
+            approval gate picks it up within 5s and executes/skips."""
+            q = update.callback_query
+            parts = (q.data or "").split(":", 1)
+            if len(parts) != 2:
+                await q.answer("bad decision key")
+                return
+            verdict = "taken" if parts[0] == "papertake" else "rejected"
+            dk = parts[1]
+            try:
+                _ps = self._paper_store()
+                row = _ps.get_decision(dk)
+                if not row:
+                    await q.answer("Decision expired or unknown", show_alert=True)
+                    return
+                if row["status"] not in ("pending",):
+                    await q.answer(f"Already {row['status']}", show_alert=True)
+                    return
+                _ps.set_decision_status(dk, verdict)
+            except Exception as exc:
+                await q.answer(f"failed: {str(exc)[:80]}", show_alert=True)
+                return
+            sym = row["symbol"]
+            direction = str(row["direction"]).upper()
+            if verdict == "rejected":
+                try:
+                    await q.message.edit_text(
+                        f"❌ <b>Rejected {sym} {direction}</b>\n"
+                        "Neko skips this trade and looks for the next setup.",
+                        parse_mode="HTML")
+                except Exception:
+                    await q.answer("Rejected")
+            else:
+                try:
+                    await q.message.edit_text(
+                        f"✅ <b>Approved {sym} {direction}</b>\n"
+                        "Neko is executing the paper trade now…",
+                        parse_mode="HTML")
+                except Exception:
+                    await q.answer("Approved — executing")
 
         async def rewards_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Aftermath points & rewards panel: totals, claimable, claim button."""
@@ -3619,6 +3701,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(peek, pattern=r"^sb:peek$"))
         app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl(_print)?$"))
         app.add_handler(CallbackQueryHandler(home_delete, pattern=r"^sb:home_del$"))
+        app.add_handler(CallbackQueryHandler(paper_decision, pattern=r"^paper(take|reject):"))
         app.add_handler(CallbackQueryHandler(rewards_view, pattern=r"^sb:rewards$"))
         app.add_handler(CallbackQueryHandler(rewards_claim, pattern=r"^sb:rewards_claim$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))

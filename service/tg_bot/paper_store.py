@@ -72,6 +72,22 @@ CREATE TABLE IF NOT EXISTS paper_pending (
     UNIQUE(bot_id, symbol)
 );
 CREATE INDEX IF NOT EXISTS idx_paper_pending_bot ON paper_pending(bot_id);
+CREATE TABLE IF NOT EXISTS paper_decisions (
+    bot_id INTEGER NOT NULL,
+    decision_key TEXT PRIMARY KEY,  -- agent-generated unique key
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    qty REAL NOT NULL,
+    price REAL NOT NULL,
+    leverage REAL NOT NULL DEFAULT 1.0,
+    stop_loss REAL,
+    take_profit REAL,
+    reasoning TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending|taken|rejected|expired
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_paper_decisions_bot ON paper_decisions(bot_id);
 """
 
 
@@ -263,7 +279,7 @@ class PaperStore:
             "wallet_address": "",
         }
 
-    # -------------------------------------------------- pending limit orders
+    # ------------------------------------------------ pending limit orders
     def pending_orders(self, bot_id: int) -> list[dict]:
         with _LOCK:
             rows = self._conn.execute(
@@ -301,6 +317,39 @@ class PaperStore:
                     (bot_id, symbol))
                 self._conn.commit()
             return dict(row) if row else None
+
+    # -------------------------------------------------- approval decisions
+    def put_decision(self, bot_id: int, decision_key: str, symbol: str,
+                     direction: str, qty: float, price: float, leverage: float,
+                     stop_loss: Optional[float], take_profit: Optional[float],
+                     reasoning: str = "") -> None:
+        with _LOCK:
+            now = utcnow()
+            self._conn.execute(
+                "INSERT INTO paper_decisions (bot_id, decision_key, symbol, direction, "
+                "qty, price, leverage, stop_loss, take_profit, reasoning, status, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                "'pending', ?, ?) "
+                "ON CONFLICT(decision_key) DO UPDATE SET status='pending', "
+                "qty=excluded.qty, price=excluded.price, reasoning=excluded.reasoning, "
+                "updated_at=excluded.updated_at",
+                (bot_id, decision_key, symbol, direction, qty, price, leverage,
+                 stop_loss, take_profit, reasoning, now, now))
+            self._conn.commit()
+
+    def get_decision(self, decision_key: str) -> Optional[dict]:
+        with _LOCK:
+            row = self._conn.execute(
+                "SELECT * FROM paper_decisions WHERE decision_key=?",
+                (decision_key,)).fetchone()
+            return dict(row) if row else None
+
+    def set_decision_status(self, decision_key: str, status: str) -> None:
+        with _LOCK:
+            self._conn.execute(
+                "UPDATE paper_decisions SET status=?, updated_at=? WHERE decision_key=?",
+                (status, utcnow(), decision_key))
+            self._conn.commit()
 
     # ---------------------------------------------------------- accounting
     def settle(self, bot_id: int, realized_pnl_delta: float, fee: float) -> None:

@@ -668,13 +668,27 @@ def scenario_matrix(closes_by_symbol: dict, prices: dict,
 
 def pick_best_scenario(scenarios: list[TradeScenario],
                        has_long: dict, has_short: dict,
-                       conviction_floor: float = 0.0) -> TradeScenario | None:
+                       conviction_floor: float = 0.0,
+                       priority_symbol: str = "") -> TradeScenario | None:
     """Pick the highest-conviction actionable scenario.
 
     Respects position state: skip a long scenario if we're already long that
     symbol (and same for short). Only positive-EV scenarios are candidates —
     a negative-EV trade is a 'hold'. Falls back to the best available.
+
+    PRIORITY SYMBOL: when set ('watch X now'), that symbol's best scenario
+    wins unconditionally (any EV) — the user explicitly demanded this trade.
     """
+    if priority_symbol:
+        pri = [
+            s for s in scenarios
+            if s.symbol == priority_symbol
+            and not (s.direction == "long" and has_long.get(s.symbol))
+            and not (s.direction == "short" and has_short.get(s.symbol))
+        ]
+        if pri:
+            pri.sort(key=lambda s: s.conviction, reverse=True)
+            return pri[0]
     actionable = [
         s for s in scenarios
         if s.ev > 0

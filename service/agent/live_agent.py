@@ -238,6 +238,66 @@ TRADING_MODE = os.getenv("LIVE_AGENT_TRADING_MODE", "paper").strip().lower()
 _paper_gw_instance = None
 
 
+def _request_paper_approval(decision_key: str, symbol: str, direction: str,
+                            qty: float, price: float, leverage: float,
+                            stop_pct: float, take_pct: float,
+                            reasoning: str = "",
+                            timeout_s: int | None = None) -> str:
+    """Send a Take/Reject approval card to the user and wait for the verdict.
+
+    Writes the pending decision to paper_decisions (shared registry.db), sends
+    the Telegram message with ✅/❌ buttons, then polls the row. Returns
+    'taken' | 'rejected' | 'timeout'. The userbot's button handlers flip the
+    row status; the agent only reads.
+
+    Timeout (default PAPER_APPROVAL_TIMEOUT, 300s) auto-executes so the bot
+    stays autonomous when the user is away."""
+    if timeout_s is None:
+        timeout_s = int(os.getenv("PAPER_APPROVAL_TIMEOUT", "300"))
+    side = "LONG" if direction == "long" else "SHORT"
+    reason = reasoning[:140]
+    text = (
+        f"🎯 <b>Neko-Chan wants to {side} {_esc(symbol)}</b>\n\n"
+        f"   {'🟢' if direction == 'long' else '🔴'} <b>{side}</b> <code>{qty:g}</code> "
+        f"{_esc(symbol)} @ <code>${price:,.4f}</code>\n"
+        f"   Leverage <b>{leverage:g}x</b> · ⛔ Stop {stop_pct:.1f}% · 🎯 Take {take_pct:.1f}%\n"
+        f"   ⏱ Auto-executes in ~{timeout_s // 60} min if ignored\n"
+        + (f"\n   💡 {_esc(reason)}" if reason else "")
+    )
+    kb = {"inline_keyboard": [[
+        {"text": "✅ Take", "callback_data": f"papertake:{decision_key}"},
+        {"text": "❌ Reject", "callback_data": f"paperreject:{decision_key}"},
+    ]]}
+    sent_ok = False
+    try:
+        import requests as _r
+        r = _r.post(f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "HTML",
+                          "reply_markup": kb},
+                    timeout=15)
+        sent_ok = r.status_code == 200
+    except Exception as exc:
+        print(f"[paper] approval notify failed: {exc}")
+    if not sent_ok:
+        return "timeout"  # can't ask -> auto-execute
+    # poll the shared DB for the verdict
+    _tg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tg_bot")
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        time.sleep(5)
+        try:
+            from paper_store import PaperStore
+            db_path = os.path.join(_tg, "registry.db")
+            row = PaperStore(db_path).get_decision(decision_key)
+            if row and row.get("status") == "rejected":
+                return "rejected"
+            if row and row.get("status") == "taken":
+                return "taken"
+        except Exception:
+            continue
+    return "timeout"
+
+
 def _clear_priority(bot_id: int) -> None:
     """Clear the bot's priority_watch demand (agent-side, direct DB write to
     the same registry.db the userbot reads). WAL + short transaction: safe
@@ -2129,7 +2189,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     # best scenario deterministically instead of burning another
                     # paid/rate-limited call. The math pick is the same engine the
                     # model is given; this just skips the model's vote for a while.
-                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR)
+                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR, priority_symbol=PRIORITY)
                     if best is None:
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
                                     "stop_loss_pct": 0, "take_profit_pct": 0,
@@ -2340,7 +2400,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         _last_scenario = None
                 else:
                     # no LLM key -> fall back to the math's best scenario
-                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR)
+                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR, priority_symbol=PRIORITY)
                     if best is None:
                         decision = {"action": "hold", "symbol": "", "quantity": 0,
                                     "stop_loss_pct": 0, "take_profit_pct": 0,
@@ -2454,14 +2514,34 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["action"] = "hold"; row["error"] = "position size cap exceeded"
         elif action in ("buy", "short") and stop_pct == 0 and FORCE_STOP_PCT > 0:
             stop_pct = FORCE_STOP_PCT  # mandatory stop-loss on new entries
-        elif action in ("buy", "short") and positions:
+        elif action in ("buy", "short") and positions and symbol != PRIORITY:
             # ONE POSITION RULE (interday): only ONE open position at a time -
             # the bot takes the single best trade and manages it to resolution.
             # No watched-symbol bypass: onboarding marks the whole watchlist
             # as watched, which silently disabled this rule before.
+            # PRIORITY WATCH (watch X now) IS the bypass: the user explicitly
+            # demanded this trade - the old position is closed first (slot
+            # freed below) so the demand is honored instead of blocked.
             row["action"] = "hold"
             row["error"] = ("one-position rule: the current trade must resolve "
                             "before opening another")
+        elif action in ("buy", "short") and positions and symbol == PRIORITY:
+            # PRIORITY + one-position: close the open position(s) at market to
+            # free the slot, then let this trade through on the NEXT guard pass.
+            try:
+                _pg = _paper_gateway()
+                for _p in list(_pg.store.positions(EXEC_BOT_ID)):
+                    _fill = _pg.close(EXEC_BOT_ID, _p["symbol"],
+                                      prices.get(_p["symbol"], 0) or _p["entry_price"],
+                                      idempotency_key=f"priority-slot-{EXEC_BOT_ID}-{_p['symbol']}-{int(time.time())}")
+                    print(f"[priority] freed slot: closed {_p['symbol']} "
+                          f"-> {'OK pnl=' + format(_fill.get('pnl', 0), '+.4f') if _fill.get('ok') else _fill.get('error', '')}")
+                _clear_priority(EXEC_BOT_ID)
+                row["error"] = ("priority watch: previous position closed to "
+                                "make room - re-analyzing next cycle")
+            except Exception as _exc:
+                print(f"[priority] slot free failed: {_exc}")
+                row["error"] = f"priority slot free failed: {str(_exc)[:80]}"
         elif action == "buy" and has_long:
             row["action"] = "hold"; row["error"] = "already long in symbol"
         elif action == "short" and has_short:
@@ -2521,17 +2601,47 @@ def run_cycle(token: str, dry: bool = False) -> None:
             pg = _paper_gateway()
             if row["action"] in ("buy", "short"):
                 lev = lev_choice if action in ("buy", "short") else 1.0
+                # USER APPROVAL GATE: notify with Take/Reject buttons and wait.
+                # Rejected = skipped; timeout = auto-execute (autonomy kept).
+                _dk = f"{symbol}:{'long' if action == 'buy' else 'short'}:{int(time.time() * 1000)}"
+                _entry_px = prices.get(symbol, 0) or row["price"] or 0
+                _sl = _entry_px * (1 - stop_pct / 100) if action == "buy" \
+                    else _entry_px * (1 + stop_pct / 100)
+                _tp = _entry_px * (1 + take_pct / 100) if action == "buy" \
+                    else _entry_px * (1 - take_pct / 100)
+                try:
+                    pg.store.put_decision(
+                        EXEC_BOT_ID, _dk, symbol,
+                        "long" if action == "buy" else "short", qty, _entry_px,
+                        lev, _sl if stop_pct else None, _tp if take_pct else None,
+                        reasoning)
+                    _verdict = _request_paper_approval(
+                        _dk, symbol, "long" if action == "buy" else "short",
+                        qty, _entry_px, lev, stop_pct, take_pct, reasoning)
+                except Exception as _exc:
+                    print(f"[paper] approval gate error (executing): {_exc}")
+                    _verdict = "timeout"
+                if _verdict == "rejected":
+                    row["action"] = "hold"
+                    row["error"] = "rejected by user (paper approval)"
+                    pg.store.set_decision_status(_dk, "rejected")
+                    print(f"[paper] {symbol} REJECTED by user - skipped")
+                    log_decision(row)
+                    return row
                 fill = pg.open(EXEC_BOT_ID, symbol,
                                "long" if action == "buy" else "short", qty,
                                prices.get(symbol, 0) or row["price"] or 0,
                                leverage=lev,
-                               stop_loss=(prices.get(symbol, 0) or 0) * (1 - stop_pct / 100) if action == "buy"
-                                          else (prices.get(symbol, 0) or 0) * (1 + stop_pct / 100) if stop_pct else None,
-                               take_profit=(prices.get(symbol, 0) or 0) * (1 + take_pct / 100) if action == "buy"
-                                           else (prices.get(symbol, 0) or 0) * (1 - take_pct / 100) if take_pct else None,
+                               stop_loss=_sl if stop_pct else None,
+                               take_profit=_tp if take_pct else None,
                                order_type="limit",
                                limit_price=row.get("limit_price") or None,
                                idempotency_key=row.get("idempotency_key", f"paper-{symbol}-{action}-{int(time.time()*1000)}"))
+                if fill.get("ok"):
+                    try:
+                        pg.store.set_decision_status(_dk, "taken")
+                    except Exception:
+                        pass
             else:  # sell / cover
                 fill = pg.close(EXEC_BOT_ID, symbol,
                                 prices.get(symbol, 0) or row["price"] or 0,
