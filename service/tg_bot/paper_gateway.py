@@ -128,8 +128,12 @@ class PaperGateway:
         else:
             pnl = pos["qty"] * (pos["entry_price"] - fill)
         margin = (pos["qty"] * pos["entry_price"]) / max(pos["leverage"], 1.0)
-        # margin returns + pnl - exit fee
-        self.store.settle(bot_id, margin + pnl - fee, fee)
+        # margin returns + pnl - exit fee. ACCOUNTING FIX: the margin return
+        # is your own capital coming back — it must NOT count as realized
+        # profit. settle() records pnl - exit fee only; the margin goes back
+        # to cash separately.
+        self.store.settle(bot_id, pnl - fee, fee)
+        self.store._adjust_cash(bot_id, margin, 0.0)
         self.store.record_order(bot_id, symbol, pos["direction"], exit_side,
                                 pos["qty"], fill, fee, idempotency_key)
         log.info("[paper] bot %s CLOSE %s %s @ %.4f pnl=%+.4f fee=%.4f",
