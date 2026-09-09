@@ -105,7 +105,7 @@ class PaperGateway:
                                  leverage, stop_loss, take_profit)
         self.store.record_order(bot_id, symbol, direction,
                                 "buy" if direction == "long" else "short",
-                                qty, fill, fee, idempotency_key)
+                                qty, fill, fee, idempotency_key, leverage)
         log.info("[paper] bot %s OPEN %s %s qty=%.6f @ %.4f lev=%.1fx fee=%.4f",
                  bot_id, direction, symbol, qty, fill, leverage, fee)
         return {"ok": True, "fill_price": fill, "fee": fee, "margin": margin,
@@ -135,7 +135,8 @@ class PaperGateway:
         self.store.settle(bot_id, pnl - fee, fee)
         self.store._adjust_cash(bot_id, margin, 0.0)
         self.store.record_order(bot_id, symbol, pos["direction"], exit_side,
-                                pos["qty"], fill, fee, idempotency_key)
+                                pos["qty"], fill, fee, idempotency_key,
+                                pos.get("leverage") or 1.0)
         log.info("[paper] bot %s CLOSE %s %s @ %.4f pnl=%+.4f fee=%.4f",
                  bot_id, pos["direction"], symbol, fill, pnl, fee)
         return {"ok": True, "fill_price": fill, "pnl": pnl - fee, "fee": fee,

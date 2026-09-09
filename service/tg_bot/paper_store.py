@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS paper_orders (
     fee REAL NOT NULL,              -- total fees charged on the fill
     status TEXT NOT NULL,           -- filled
     idempotency_key TEXT UNIQUE,
+    leverage REAL NOT NULL DEFAULT 1.0,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_paper_positions_bot ON paper_positions(bot_id);
@@ -100,6 +101,11 @@ class PaperStore:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        # migration for pre-leverage orders tables
+        try:
+            self._conn.execute("ALTER TABLE paper_orders ADD COLUMN leverage REAL NOT NULL DEFAULT 1.0")
+        except Exception:
+            pass  # column already exists
         self._conn.commit()
 
     # ---------------------------------------------------------- portfolio
@@ -201,14 +207,14 @@ class PaperStore:
     # ---------------------------------------------------------- orders
     def record_order(self, bot_id: int, symbol: str, direction: str, side: str,
                      qty: float, price: float, fee: float,
-                     idempotency_key: str) -> int:
+                     idempotency_key: str, leverage: float = 1.0) -> int:
         with _LOCK:
             cur = self._conn.execute(
                 "INSERT INTO paper_orders (bot_id, symbol, direction, side, qty, price, "
-                "fee, status, idempotency_key, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'filled', ?, ?)",
+                "fee, status, idempotency_key, leverage, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'filled', ?, ?, ?)",
                 (bot_id, symbol, direction, side, qty, price, fee,
-                 idempotency_key, utcnow()))
+                 idempotency_key, max(leverage, 1.0), utcnow()))
             self._conn.commit()
             return cur.lastrowid
 

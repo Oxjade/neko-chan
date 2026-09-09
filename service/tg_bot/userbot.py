@@ -147,16 +147,22 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         pnl = float(p.get("pnl") or p.get("unrealized_pnl") or 0)
         entry = float(p.get("entry") or p.get("entry_px") or p.get("entry_price") or 0)
         cur = float(p.get("markPrice") or p.get("mark_price") or p.get("current_price") or entry)
+        lev = float(p.get("leverage") or p.get("lev") or 0)
         stop = p.get("stop") or p.get("stop_loss") or ""
         tgt = p.get("target") or p.get("take_profit") or ""
         meta = ""
         if entry and cur:
             meta += f" entry {entry:,.4f} → {cur:,.4f}"
+            # LEVERAGE-ACCURATE return: price move x leverage = return on margin
+            if lev >= 1:
+                px_move = (cur / entry - 1.0) * (1 if side.lower() == "long" else -1)
+                meta += f" ({px_move * lev:+.2f}% on margin @ {lev:g}x)"
         if stop:
             meta += f" · stop {stop}"
         if tgt:
             meta += f" · target {tgt}"
-        pos_lines.append(f"  {_esc(sym)}  {side.upper()} {qty:g}  {_money(pnl)}{meta}")
+        lev_tag = f" {lev:g}x" if lev >= 1 else ""
+        pos_lines.append(f"  {_esc(sym)}  {side.upper()}{lev_tag} {qty:g}  {_money(pnl)}{meta}")
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
         f"<code>{line}</code>\n"
@@ -1889,8 +1895,11 @@ class UserBotController:
                 pos_cur = float(p.get("markPrice") or p.get("mark_price") or p.get("current_price") or pos_entry)
                 pos_qty = abs(float(p.get("qty") or p.get("szi") or p.get("quantity") or 0))
                 pos_side = str(p.get("side") or "long")
+                pos_lev = float(p.get("leverage") or p.get("lev") or 0)
                 if pos_entry > 0 and pos_cur > 0:
-                    pnl_pct = (pos_cur / pos_entry - 1.0) * 100.0 * (1 if pos_side == "long" else -1)
+                    # LEVERAGE-ACCURATE: the card shows return ON MARGIN
+                    px_move = (pos_cur / pos_entry - 1.0) * (1 if pos_side == "long" else -1)
+                    pnl_pct = px_move * (pos_lev if pos_lev >= 1 else 1.0)
                     buy_price = pos_entry
                     sell_price = pos_cur
                 else:
@@ -1905,7 +1914,7 @@ class UserBotController:
                         _con = _sq.connect(self.registry.path)
                         _con.row_factory = _sq.Row
                         _r = _con.execute(
-                            "SELECT symbol, side, qty, price FROM paper_orders "
+                            "SELECT symbol, side, qty, price, leverage FROM paper_orders "
                             "WHERE bot_id=? AND side IN ('sell','cover') "
                             "ORDER BY id DESC LIMIT 1", (bot_id,)).fetchone()
                         if _r:
@@ -1926,8 +1935,10 @@ class UserBotController:
                         last_trade = None
                     if last_trade:
                         _exit_px = float(last_trade["price"])
-                        pnl_pct = ((_exit_px / _entry_px - 1.0) * 100.0
+                        _lev = float(last_trade.get("leverage") or 1.0)
+                        pnl_pct = ((_exit_px / _entry_px - 1.0)
                                    * (1 if last_trade["side"] == "sell" else -1)
+                                   * (_lev if _lev >= 1 else 1.0)
                                    ) if _entry_px > 0 else 0.0
                         buy_price = _entry_px or _exit_px
                         sell_price = _exit_px
