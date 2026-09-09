@@ -300,6 +300,86 @@ class AftermathAdapter:
             return resp["data"]
         return []
 
+    # ------------------------------------------------------------- rewards
+    # Aftermath points & incentives: bi-weekly epochs, trading rewards
+    # (maker/taker SUI incentives) claim manually. Auth = the same signed
+    # Terms-and-Conditions block our adapter already builds for other reads.
+    # Endpoints verified from /api/openapi/spec.json (2026-09).
+
+    def rewards_points(self) -> float | None:
+        """Total accumulated Aftermath Points across all epochs/domains.
+
+        Requires signed-terms auth. None on auth/API failure (callers show
+        'unavailable' rather than a fake 0)."""
+        try:
+            auth = self._terms_auth_block()
+            resp = self._req_post("/rewards/points", auth)
+            if not resp.get("ok"):
+                return None
+            data = resp.get("data") or {}
+            total = data.get("totalPoints")
+            return float(total) if total is not None else None
+        except Exception:
+            return None
+
+    def rewards_claimable(self) -> list[dict]:
+        """Claimable liquid rewards: [{'coinType', 'amount', 'amount_human'}].
+        Public read (no signature required per the spec)."""
+        try:
+            resp = self._req_post("/rewards/claimable",
+                                  {"walletAddress": self.address})
+            if not resp.get("ok"):
+                return []
+            data = resp.get("data") or {}
+            rows = data.get("rewards") if isinstance(data, dict) else data
+            rows = rows or []
+            out = []
+            for r in rows:
+                if not isinstance(r, dict) or not r.get("coinType"):
+                    continue
+                try:
+                    raw = int(str(r.get("amount") or "0"))
+                except Exception:
+                    raw = 0
+                decimals = 9 if str(r.get("coinType", "")).endswith("::SUI") else 6
+                out.append({"coinType": r["coinType"],
+                            "amount": raw,
+                            "amount_human": raw / (10 ** decimals)})
+            return out
+        except Exception:
+            return []
+
+    def rewards_history(self, limit: int = 20) -> list[dict]:
+        """Recent reward accrual entries (all domains) — signed read."""
+        try:
+            body = self._terms_auth_block()
+            body.update({"limit": int(limit)})
+            resp = self._req_post("/rewards/history", body)
+            if not resp.get("ok"):
+                return []
+            data = resp.get("data")
+            return data if isinstance(data, list) else (data or {}).get("items") or []
+        except Exception:
+            return []
+
+    def rewards_claim(self) -> dict:
+        """Claim liquid SUI trading rewards. Returns the claim-transaction
+        TransactionKind for signing/submission via the wallet, mirroring how
+        our other native endpoints work (the caller signs + submits)."""
+        try:
+            auth = self._terms_auth_block()
+            resp = self._req_post("/rewards/transactions/claim", auth)
+            if not resp.get("ok"):
+                return {"ok": False, "error": str(resp.get("error", "claim failed"))[:160]}
+            data = resp.get("data") or {}
+            tx_kind = data.get("txKind") or data.get("TransactionKind") or ""
+            if not tx_kind:
+                return {"ok": False, "error": "claim returned no transaction"}
+            submitted = self._submit_native_tx(tx_kind)
+            return submitted
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+
     def collateral(self) -> float:
         """Free collateral currently inside the Aftermath account (USDC).
 

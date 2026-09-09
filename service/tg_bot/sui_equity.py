@@ -126,6 +126,46 @@ def _sui_price_usd() -> float:
         return 0.0
 
 
+def aftermath_rewards_snapshot(bot: dict) -> dict:
+    """Public Aftermath points & rewards snapshot for the bot wallet.
+
+    Returns {points_total, points_known, claimable_sui, claimable_raw}:
+    - points_total: accumulated Aftermath Points (None + points_known=False
+      when the signed read is unavailable from the dashboard's public path)
+    - claimable_sui: liquid SUI trading rewards waiting to be claimed
+    (points need a signed Terms read which requires the wallet key, so the
+    dashboard shows claimable rewards reliably and points when available
+    via the adapter path)."""
+    addr = str(bot.get("wallet_addr") or "").strip()
+    if not addr:
+        return {"points_total": None, "points_known": False,
+                "claimable_sui": 0.0, "claimable_raw": 0}
+    network = (bot.get("network") or "mainnet").strip().lower()
+    api = AFTERMATH_TESTNET_API if network != "mainnet" else AFTERMATH_API
+    claimable_sui, claimable_raw = 0.0, 0
+    try:
+        r = requests.post(f"{api}/rewards/claimable",
+                          json={"walletAddress": addr}, timeout=15)
+        if r.status_code == 200:
+            rows = (r.json() or {}).get("rewards") or []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                cty = str(row.get("coinType") or "")
+                if not cty.endswith("::SUI"):
+                    continue
+                try:
+                    raw = int(str(row.get("amount") or "0"))
+                except Exception:
+                    raw = 0
+                claimable_raw += raw
+        claimable_sui = claimable_raw / 1e9
+    except Exception as exc:
+        LOG.warning("[rewards] claimable read failed: %s", exc)
+    return {"points_total": None, "points_known": False,
+            "claimable_sui": claimable_sui, "claimable_raw": claimable_raw}
+
+
 def sui_equity(bot: dict) -> dict:
     """Full real-equity snapshot for a bot (Sui/Aftermath).
 
@@ -137,6 +177,7 @@ def sui_equity(bot: dict) -> dict:
     collateral, unreal, acc_num = _aftermath(bot)
     price = _sui_price_usd()
     equity = usdc + collateral + unreal
+    rewards = aftermath_rewards_snapshot(bot)
     return {
         "usdc": usdc,
         "sui": sui,
@@ -146,4 +187,5 @@ def sui_equity(bot: dict) -> dict:
         "unrealized_pnl": unreal,
         "account_number": acc_num,
         "equity": equity,
+        "rewards": rewards,
     }

@@ -127,6 +127,10 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         e_eq = float(equity.get("equity", 0))
         bits = [f"  Wallet USDC <code>{_money(e_usdc, sign=False)}</code>",
                 f"  Aftermath   <code>{_money(e_coll, sign=False)}</code>"]
+        # Aftermath incentives: liquid rewards waiting to be claimed
+        rewards = equity.get("rewards") or {}
+        if rewards.get("claimable_sui"):
+            bits.append(f"  🎁 Rewards   <code>{rewards['claimable_sui']:.4f} SUI</code> (claimable)")
         if abs(e_unreal) >= 0.005:
             bits.append(f"  Unrealized  <code>{_money(e_unreal)}</code>")
         if e_sui:
