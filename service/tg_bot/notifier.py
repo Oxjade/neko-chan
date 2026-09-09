@@ -132,8 +132,8 @@ class Notifier:
         return False
 
     def daily_summary(self, bot_id: int, tg_id: int, bot_token: str, chat_id: int,
-                      pnl: float, trades: int, win: float, fees: float) -> bool:
+                      pnl: float, trades: int, win: float, fees: float = 0.0) -> bool:
         ref = time.strftime("%Y-%m-%d")
         return self.notify(bot_id, tg_id, bot_token, chat_id, "daily", ref,
                            NOTIF["daily"].format(pnl=f"{pnl:+.2f}", trades=trades,
-                                                 win=f"{win:.0f}", fees=f"{fees:.2f}"))
+                                                 win=f"{win:.0f}"))

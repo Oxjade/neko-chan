@@ -1942,7 +1942,7 @@ class UserBotController:
                     f"❌ <b>Close {sym} {str(pos['direction']).upper()}?</b>\n"
                     f"entry {pos['entry_price']:,.4f} · qty {pos['qty']:g}\n\n"
                     "It will close at the current Aftermath market price "
-                    "(exit fee applies).",
+                    "It closes at the current market price.",
                     parse_mode="HTML",
                     reply_markup=telegram.InlineKeyboardMarkup([
                         [telegram.InlineKeyboardButton("✅ Close position",
@@ -1969,7 +1969,7 @@ class UserBotController:
                 return
             await q.message.edit_text(
                 f"✅ <b>Closed {sym}</b> at {fill['fill_price']:,.4f}\n"
-                f"Realized P&L: <b>{_money(fill['pnl'])}</b> (after exit fee)\n"
+                f"Realized P&L: <b>{_money(fill['pnl'])}</b>\n"
                 f"Paper balance updated.",
                 parse_mode="HTML",
                 reply_markup=telegram.InlineKeyboardMarkup([
@@ -3323,7 +3323,7 @@ class UserBotController:
                     await q.message.edit_text(
                         f"🧪 <b>Paper took {symbol} {direction.upper()}</b>\n"
                         f"Filled <code>{qty:.6f}</code> @ <code>${fill.get('fill_price', ref_price):,.4f}</code> · {lev:g}x\n"
-                        f"⛔ Stop {stop_pct:.1f}% · 🎯 Take {take_pct:.1f}% · fee ${fill.get('fee', 0):,.2f}\n"
+                        f"⛔ Stop {stop_pct:.1f}% · 🎯 Take {take_pct:.1f}%\n"
                         f"Virtual — no real money moved.",
                         parse_mode="HTML",
                         reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")], [telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))

@@ -124,7 +124,7 @@ USERBOT = {
     "welcome_push": "🔔 Every trade lands here. Tap 📊 P&L to start.",
     "positions_header": "Open positions ({n})",
     "close_confirm": "Close {symbol} {side} {qty} now?",
-    "closed_ok": "✅ Closed {symbol} at {price} ({pnl}, fee ${fee})",
+    "closed_ok": "✅ Closed {symbol} at {price} ({pnl})",
     "pause_confirm": "Pause {name}? Positions stay open, no new decisions.",
     "paused": "⏸️ Paused. No new decisions. Positions stay open.",
     "resumed": "▶️ Bot resumed. The cat is back on the clock.",
@@ -232,7 +232,7 @@ ONBOARD = {
     "chain": ("⛓ <b>Which chain will you trade on?</b>\n\n"
               "This is where your orders execute."),
     "chain_sui": ("⛓ <b>Sui</b> (Aftermath perps)\n\n"
-                  "Fully on-chain, low fees, 20+ perp markets "
+                  "Fully on-chain, 20+ perp markets "
                   "(BTC, ETH, SOL, SUI, XRP, HYPE and more).\n"
                   "Live now."),
     "chain_solana": ("⛓ <b>Solana</b> (Jupiter perps)\n\n"
@@ -267,7 +267,7 @@ NOTIF = {
     "paused": "⏸️ Paused. Cat is napping.",
     "error_first": "⚠️ {message} - retrying. No trade this cycle. The cat is unbothered.",
     "error_batch": "⚠️ Still retrying ({n} issues). Neko-Chan is patient.",
-    "daily": "📅 Today: {pnl} · {trades} trades · win {win}% · fees ${fees}",
+    "daily": "📅 Today: {pnl} · {trades} trades · win {win}%",
     "weekly": "📈 Week: {pnl} · {trades} trades · win {win}% · rank #{rank}",
     "milestone": "🚀 +{pct}% ({equity} equity). The cat smells green candles.",
     "milestone_down": "⚠️ -{pct}% - the cat suggests pausing. She's usually right.",

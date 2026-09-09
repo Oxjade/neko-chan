@@ -714,7 +714,7 @@ def profitability_gate(action: str, symbol: str, market: str, prices: dict,
         expected_move = abs(tr) * 100
         cost_floor = (TRADE_FEE_RATE * 4) * 100  # 0.4% round trip incl. slippage
         if 0 < expected_move < cost_floor * 0.75:
-            return False, f"move {expected_move:.2f}% < fee floor ~{cost_floor:.2f}% (churn filter)"
+            return False, f"expected move {expected_move:.2f}% too small vs risk (no-trade zone)"
         # trend alignment: long wants tr > 0, short wants tr < 0
         aligned = (tr > 0 if wanted_long else tr < 0)
         if not aligned and abs(tr) > 1e-6:
