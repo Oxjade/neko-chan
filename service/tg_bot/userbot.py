@@ -693,6 +693,88 @@ class UserBotController:
         except Exception:
             return {}
 
+    def _rewards_snapshot(self, bot: dict | None = None) -> dict:
+        """Aftermath points + claimable rewards for the bot wallet (live bots).
+
+        Signed points read via the exec adapter; falls back to the public
+        claimable-only snapshot when signing isn't available (paper/no key).
+        Returns {points_total, points_known, claimable_sui}."""
+        bot = bot or {}
+        addr = str(bot.get("wallet_addr") or "").strip()
+        out = {"points_total": None, "points_known": False, "claimable_sui": 0.0}
+        if not addr:
+            return out
+        # try the full signed read first
+        try:
+            self._exec_path()
+            from ledger import ExecLedger
+            from exec_vault import ExecVault
+            from aftermath_adapter import build_aftermath
+            led = ExecLedger(os.environ.get("EXEC_LEDGER_PATH",
+                                            os.path.join(os.path.dirname(os.path.dirname(
+                                                os.path.abspath(__file__))), "tg_bot", "exec_ledger.db")))
+            try:
+                row = led._conn.execute(
+                    "SELECT key_enc FROM exec_wallets WHERE bot_id=? AND chain=?",
+                    (bot.get("id"), bot.get("chain") or "sui")).fetchone()
+                if row and row["key_enc"]:
+                    key_bech32 = ExecVault().decrypt(row["key_enc"])
+                    ad = build_aftermath(led, key_bech32,
+                                         network=bot.get("network") or "mainnet")
+                    pts = ad.rewards_points()
+                    if pts is not None:
+                        out["points_total"] = pts
+                        out["points_known"] = True
+                    cl = ad.rewards_claimable()
+                    out["claimable_sui"] = sum(
+                        r.get("amount_human", 0.0) for r in cl
+                        if str(r.get("coinType", "")).endswith("::SUI"))
+                    return out
+            finally:
+                try:
+                    led.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # fallback: public claimable read only
+        try:
+            from sui_equity import aftermath_rewards_snapshot
+            snap = aftermath_rewards_snapshot(bot)
+            out["claimable_sui"] = float(snap.get("claimable_sui") or 0.0)
+        except Exception:
+            pass
+        return out
+
+    def _rewards_claim(self, bot: dict) -> dict:
+        """Claim Aftermath liquid rewards for the bot wallet (live only).
+        Signs and submits the claim transaction via the exec adapter."""
+        try:
+            self._exec_path()
+            from ledger import ExecLedger
+            from exec_vault import ExecVault
+            from aftermath_adapter import build_aftermath
+            led = ExecLedger(os.environ.get("EXEC_LEDGER_PATH",
+                                            os.path.join(os.path.dirname(os.path.dirname(
+                                                os.path.abspath(__file__))), "tg_bot", "exec_ledger.db")))
+            try:
+                row = led._conn.execute(
+                    "SELECT key_enc FROM exec_wallets WHERE bot_id=? AND chain=?",
+                    (bot.get("id"), bot.get("chain") or "sui")).fetchone()
+                if not row or not row["key_enc"]:
+                    return {"ok": False, "error": "no wallet key stored for this bot"}
+                key_bech32 = ExecVault().decrypt(row["key_enc"])
+                ad = build_aftermath(led, key_bech32,
+                                     network=bot.get("network") or "mainnet")
+                return ad.rewards_claim()
+            finally:
+                try:
+                    led.close()
+                except Exception:
+                    pass
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:160]}
+
     def _render_wallet(self, bot_id: int, bot_name: str, paused: int) -> str:
         self._exec_path()
         from wallet_ui import render_wallet_panel
@@ -1417,6 +1499,7 @@ class UserBotController:
                  telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
                 [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
                  telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")],
+                [telegram.InlineKeyboardButton("🎁 Rewards", callback_data="sb:rewards")],
                 [telegram.InlineKeyboardButton("📬 Notifications", callback_data="sb:inbox"),
                  telegram.InlineKeyboardButton("🛑 Kill-Switch", callback_data="sb:kill")],
                 [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
@@ -1761,16 +1844,18 @@ class UserBotController:
             open_pnl = sum(float(p.get("pnl") or p.get("unrealized_pnl") or 0) for p in positions)
             total_pnl = float(bal.get("realized_pnl", 0)) + open_pnl
 
-            # No active P&L: no open position and no realized profit -> show an
-            # honest empty state instead of generating a meaningless card.
-            if not positions and abs(total_pnl) < 0.005:
+            # No active P&L and no realized profit: honest empty state, but the
+            # user can still force-print the portfolio card.
+            force_print = (q.data or "").endswith("_print")
+            if not positions and abs(total_pnl) < 0.005 and not force_print:
                 await q.message.edit_text(
-                    "📭 <b>No active P&L yet</b>\n\n"
+                    "📭 <b>No active P&amp;L yet</b>\n\n"
                     "No open positions and no realized profit so far.\n"
-                    "Once the agent opens a trade, your P&L card will appear here.",
+                    "You can still print your portfolio card:",
                     parse_mode="HTML",
                     reply_markup=telegram.InlineKeyboardMarkup(
-                        [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
+                        [[telegram.InlineKeyboardButton("🖨 Print P&L card", callback_data="sb:pnl_print")],
+                         [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
                           telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
                 return
 
@@ -1817,7 +1902,8 @@ class UserBotController:
                             chat_id=q.message.chat_id, photo=f, caption=caption,
                             parse_mode="HTML",
                             reply_markup=telegram.InlineKeyboardMarkup(
-                                [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
+                                [[telegram.InlineKeyboardButton("🖨 Print again", callback_data="sb:pnl_print")],
+                                 [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
                                   telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
                     if sent and sent.message_id:
                         threading.Thread(
@@ -1853,6 +1939,74 @@ class UserBotController:
                                               [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
                                                [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
                                                 telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+
+        async def rewards_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Aftermath points & rewards panel: totals, claimable, claim button."""
+            q = update.callback_query
+            await q.answer()
+            b = self.registry.get_bot(bot_id)
+            mode = (b.get("trading_mode") or "paper").lower()
+            if mode != "live":
+                await q.message.edit_text(
+                    "🎁 <b>Aftermath Rewards</b>\n\n"
+                    "Points and SUI incentives accrue from <b>live</b> trading on "
+                    "Aftermath Perps (bi-weekly epochs, snapshot Monday 05:00 UTC).\n\n"
+                    "Your bot is in paper mode — virtual trades don't accrue rewards. "
+                    "Switch to LIVE on the dashboard and trade to start earning.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]))
+                return
+            snap = await asyncio.get_running_loop().run_in_executor(
+                None, self._rewards_snapshot, b)
+            lines = ["🎁 <b>Aftermath Rewards</b>\n"]
+            if snap.get("points_known"):
+                lines.append(f"⭐ Points: <b>{float(snap['points_total']):,.0f}</b>")
+            else:
+                lines.append("⭐ Points: see aftermath.finance/rewards (signed read unavailable)")
+            cs = float(snap.get("claimable_sui") or 0.0)
+            lines.append(f"💰 Claimable: <b>{cs:.4f} SUI</b>")
+            lines.append("\nEpochs roll every other Monday (05:00 UTC). "
+                         "Trading rewards must be claimed manually.")
+            kb = [[telegram.InlineKeyboardButton(
+                f"✅ Claim {cs:.4f} SUI", callback_data="sb:rewards_claim")],
+                [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:rewards"),
+                 telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]
+            if cs <= 0:
+                kb = [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:rewards"),
+                       telegram.InlineKeyboardButton(BACK, callback_data="sb:dash")]]
+            await q.message.edit_text("\n".join(lines), parse_mode="HTML",
+                                      reply_markup=telegram.InlineKeyboardMarkup(kb))
+
+        async def rewards_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Claim Aftermath liquid rewards on-chain (live bots only)."""
+            q = update.callback_query
+            await q.answer()
+            b = self.registry.get_bot(bot_id)
+            mode = (b.get("trading_mode") or "paper").lower()
+            if mode != "live":
+                await q.answer("Paper trading doesn't earn rewards", show_alert=True)
+                return
+            await q.message.edit_text("⏳ Claiming rewards on-chain…")
+            res = await asyncio.get_running_loop().run_in_executor(
+                None, self._rewards_claim, b)
+            if res.get("ok"):
+                await q.message.edit_text(
+                    "✅ <b>Rewards claimed</b>\n\nLiquid SUI rewards were sent to "
+                    "your bot wallet. Points keep accruing for the next epoch.\n\n"
+                    f"tx digest: <code>{res.get('digest') or 'submitted'}</code>",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton("🎁 Rewards", callback_data="sb:rewards"),
+                          telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+            else:
+                await q.message.edit_text(
+                    f"⚠️ <b>Claim failed</b>\n{res.get('error', 'unknown')[:200]}\n\n"
+                    "You can always claim manually at aftermath.finance/rewards.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup(
+                        [[telegram.InlineKeyboardButton("🎁 Rewards", callback_data="sb:rewards"),
+                          telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -3436,7 +3590,9 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(dash, pattern=r"^sb:dash$"))
         app.add_handler(CallbackQueryHandler(start_agent, pattern=r"^sb:start_agent$"))
         app.add_handler(CallbackQueryHandler(peek, pattern=r"^sb:peek$"))
-        app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl$"))
+        app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl(_print)?$"))
+        app.add_handler(CallbackQueryHandler(rewards_view, pattern=r"^sb:rewards$"))
+        app.add_handler(CallbackQueryHandler(rewards_claim, pattern=r"^sb:rewards_claim$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))
         app.add_handler(CallbackQueryHandler(paper_close, pattern=r"^sb:pclose(_yes)?:[A-Z0-9]+$"))
         app.add_handler(CallbackQueryHandler(live_markets, pattern=r"^sb:live$"))
