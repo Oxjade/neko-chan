@@ -1811,6 +1811,23 @@ class UserBotController:
             except Exception as exc:
                 return False, f"key verification failed: {exc}"
 
+        async def home_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """HOME on transient panels (P&L cards, rewards): delete the
+            message instead of navigating — the main dashboard survives TTL
+            and stays above. Falls back to a fresh dashboard if deletion is
+            impossible (e.g. the message is already gone)."""
+            q = update.callback_query
+            await q.answer()
+            try:
+                await q.message.delete()
+                return
+            except Exception:
+                pass
+            try:
+                await dash(update, context)
+            except Exception:
+                pass
+
         async def pnl_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """P&L button = print a Neko-Chan PnL card (PNG) right in the chat."""
             q = update.callback_query
@@ -1856,7 +1873,7 @@ class UserBotController:
                     reply_markup=telegram.InlineKeyboardMarkup(
                         [[telegram.InlineKeyboardButton("🖨 Print P&L card", callback_data="sb:pnl_print")],
                          [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
-                          telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                          telegram.InlineKeyboardButton("🗑 Home", callback_data="sb:home_del")]]))
                 return
 
             # Build the card PNG; fall back to a text panel if the renderer fails.
@@ -1904,7 +1921,7 @@ class UserBotController:
                             reply_markup=telegram.InlineKeyboardMarkup(
                                 [[telegram.InlineKeyboardButton("🖨 Print again", callback_data="sb:pnl_print")],
                                  [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl"),
-                                  telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                                  telegram.InlineKeyboardButton("🗑 Home", callback_data="sb:home_del")]]))
                     if sent and sent.message_id:
                         threading.Thread(
                             target=lambda: (_ for _ in ()).throw(TypeError("noop")) if False else _delayed_photo_delete(
@@ -1912,7 +1929,12 @@ class UserBotController:
                                 q.message.chat_id, sent.message_id),
                             daemon=True).start()
                 except Exception:
-                    await q.message.edit_text(caption, parse_mode="HTML")
+                    try:
+                        await q.message.reply_text(caption, parse_mode="HTML",
+                                                   reply_markup=telegram.InlineKeyboardMarkup(
+                                                       [[telegram.InlineKeyboardButton("🗑 Home", callback_data="sb:home_del")]]))
+                    except Exception:
+                        pass
                 try:
                     os.remove(out)
                 except Exception:
@@ -1940,7 +1962,7 @@ class UserBotController:
                                                   [[telegram.InlineKeyboardButton("🖨 Print P&L card", callback_data="sb:pnl_print")],
                                                    [telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:pnl")],
                                                    [telegram.InlineKeyboardButton(BACK, callback_data="sb:dash"),
-                                                    telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+                                                    telegram.InlineKeyboardButton("🗑 Home", callback_data="sb:home_del")]]))
                 except telegram.error.BadRequest as _be:
                     if "not modified" not in str(_be).lower():
                         raise
@@ -3596,6 +3618,7 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(start_agent, pattern=r"^sb:start_agent$"))
         app.add_handler(CallbackQueryHandler(peek, pattern=r"^sb:peek$"))
         app.add_handler(CallbackQueryHandler(pnl_detail, pattern=r"^sb:pnl(_print)?$"))
+        app.add_handler(CallbackQueryHandler(home_delete, pattern=r"^sb:home_del$"))
         app.add_handler(CallbackQueryHandler(rewards_view, pattern=r"^sb:rewards$"))
         app.add_handler(CallbackQueryHandler(rewards_claim, pattern=r"^sb:rewards_claim$"))
         app.add_handler(CallbackQueryHandler(positions, pattern=r"^sb:pos$"))
