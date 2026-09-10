@@ -1931,9 +1931,11 @@ class UserBotController:
                 pos_side = str(p.get("side") or "long")
                 pos_lev = float(p.get("leverage") or p.get("lev") or 0)
                 if pos_entry > 0 and pos_cur > 0:
-                    # LEVERAGE-ACCURATE: the card shows return ON MARGIN
+                    # LEVERAGE-ACCURATE + GROSS: return on margin and the raw
+                    # dollar profit of the trade — fees NOT deducted
                     px_move = (pos_cur / pos_entry - 1.0) * (1 if pos_side == "long" else -1)
                     pnl_pct = px_move * (pos_lev if pos_lev >= 1 else 1.0)
+                    pnl_usd = pos_qty * (pos_cur - pos_entry) * (1 if pos_side == "long" else -1)
                     buy_price = pos_entry
                     sell_price = pos_cur
                 else:
@@ -1974,6 +1976,10 @@ class UserBotController:
                                    * (1 if last_trade["side"] == "sell" else -1)
                                    * (_lev if _lev >= 1 else 1.0)
                                    ) if _entry_px > 0 else 0.0
+                        # GROSS dollar profit of the trade — no fees
+                        pnl_usd = float(last_trade["qty"]) * (_exit_px - _entry_px) \
+                            * (1 if last_trade["side"] == "sell" else -1) \
+                            if _entry_px > 0 else 0.0
                         buy_price = _entry_px or _exit_px
                         sell_price = _exit_px
                         token = last_trade["symbol"].upper()
@@ -1983,6 +1989,8 @@ class UserBotController:
                         sell_price = (usdc + total_pnl) or 0.0
                 if not locals().get("token"):
                     token = (p.get("symbol") if positions else b['bot_name']).upper() if (positions or p) else b['bot_name'].upper()
+                if not locals().get("pnl_usd"):
+                    pnl_usd = None
                 generate_pnl_card(
                     avatar_path=random_avatar(),
                     pnl_pct=pnl_pct,
@@ -1993,10 +2001,13 @@ class UserBotController:
                     out_path=out,
                     bot_name=b['bot_name'].upper(),
                     timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                    pnl_usd=pnl_usd,
+                    leverage=(pos_lev if positions else float(last_trade.get("leverage") or 0)),
                 )
+                _cap_pnl = f"{pnl_usd:+,.2f}" if pnl_usd is not None else _money(total_pnl)
                 caption = (f"📊 <b>P&amp;L — {_esc(b['bot_name'])}</b>\n"
-                           f"💰 USDC <code>${usdc:,.2f}</code> · SUI <code>{native:,.4f}</code>\n"
-                           f"📡 Positions {len(positions)} · P&amp;L <b>{_money(total_pnl)}</b>")
+                           f"💰 USDC <code>${usdc:,.2f}</code>\n"
+                           f"📡 Positions {len(positions)} · Trade P&amp;L <b>{_cap_pnl}</b> (gross)")
                 try:
                     with open(out, "rb") as f:
                         sent = await context.bot.send_photo(

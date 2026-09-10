@@ -156,11 +156,17 @@ def generate_pnl_card(
     handle: str = "@nekochan_trades",
     timestamp: str = None,
     bg_color: tuple = None,
+    pnl_usd: float = None,
+    leverage: float = None,
 ):
     """
     Render a PnL card and save it to out_path.
 
     pnl_pct:    e.g. 269.42 or -12.3  (sign/color handled automatically)
+    pnl_usd:    optional dollar PnL of the trade (e.g. +123.45) — rendered
+                under the % headline when provided (perp mode: GROSS trade
+                profit, fees NOT deducted)
+    leverage:   optional leverage (e.g. 20) — shown next to TOKEN when set
     buy_price:  entry price, in USD
     sell_price: exit price, in USD
     token:      e.g. "$NEKO"
@@ -232,7 +238,13 @@ def generate_pnl_card(
     # PnL headline
     pnl_str = f"{'+' if is_win else ''}{pnl_pct:.2f}%"
     _center_text(draw, pnl_str, _font(FONT_TITLE, 96), 780, W, accent)
-    _center_text(draw, caption, _font(FONT_REG, 30), 895, W, (210, 210, 215))
+    if pnl_usd is not None:
+        usd_str = f"{'+' if pnl_usd >= 0 else ''}${abs(pnl_usd):,.2f}"
+        _center_text(draw, usd_str, _font(FONT_BOLD, 44), 885, W,
+                     accent if is_win else (255, 120, 130))
+        _center_text(draw, caption, _font(FONT_REG, 30), 950, W, (210, 210, 215))
+    else:
+        _center_text(draw, caption, _font(FONT_REG, 30), 895, W, (210, 210, 215))
 
     # stats row
     stats = [
@@ -240,8 +252,10 @@ def generate_pnl_card(
         ("SELL", f"${sell_price:.6f}" if sell_price < 1 else f"${sell_price:,.2f}"),
         ("TOKEN", token),
     ]
-    sx, sy = 60, 970
-    sw = (W - 120) // 3
+    if leverage is not None and leverage >= 1:
+        stats.append(("LEVERAGE", f"{leverage:g}x"))
+    sx, sy = 60, 1000
+    sw = (W - 120) // len(stats)
     for i, (label, val) in enumerate(stats):
         x0 = sx + i * sw
         draw.rounded_rectangle([x0, sy, x0 + sw - 20, sy + 140], radius=20,
