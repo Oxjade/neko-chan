@@ -17,7 +17,8 @@ import telegram
 from telegram import Update
 from telegram.ext import (Application, ContextTypes, CommandHandler,
                           CallbackQueryHandler, ConversationHandler,
-                          MessageHandler, TypeHandler, filters)
+                          MessageHandler, TypeHandler, filters,
+                          ApplicationHandlerStop)
 from telegram.request import HTTPXRequest
 
 from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
@@ -888,6 +889,38 @@ class UserBotController:
 
         return TTLRequest
 
+    def _install_owner_gate(self, app: Application, bot: dict) -> None:
+        """CRITICAL SECURITY GATE: each bot Application serves ONLY its owner.
+
+        Without this, ANY Telegram user who finds the bot by its @username can
+        /start it and get the owner's full dashboard: balances, wallet address,
+        positions, Take/Reject controls, Send/Receive — all bound to the OWNER
+        bot_id/tg_id. This gate drops every update that doesn't originate from
+        the owner's own account, before any handler sees it. Runs in group=-2
+        (before the TTL TypeHandler at -1 and all command handlers at 0)."""
+        owner_tg_id = int(bot["tg_id"])
+        bot_name = bot.get("bot_name") or "this bot"
+
+        async def _owner_gate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            uid = None
+            if update.effective_user:
+                uid = update.effective_user.id
+            elif update.effective_chat:
+                uid = update.effective_chat.id
+            if uid == owner_tg_id:
+                return  # owner — pass through
+            # not the owner: refuse, do not reveal anything
+            try:
+                if update.effective_message:
+                    await update.effective_message.reply_text(
+                        "⛔ This bot belongs to another trader. "
+                        "Each Neko-Chan bot is bound to exactly one owner.")
+            except Exception:
+                pass
+            raise ApplicationHandlerStop
+
+        app.add_handler(TypeHandler(Update, _owner_gate), group=-2)
+
     def _register_user_input_ttl(self, app, bot_token: str) -> None:
         """User-input half of the TTL: the user's own messages (keys, amounts,
         addresses, commands) vanish after the same 3 minutes. Button taps are
@@ -974,6 +1007,7 @@ class UserBotController:
                    .request(TTLRequest())
                    .build())
             self._register_user_input_ttl(app, token)
+            self._install_owner_gate(app, bot)
             self._register_handlers(app, bot)
             self._apps[bot_id] = app
             self.registry.update_bot(bot_id, is_running=1, last_heartbeat=utcnow())
