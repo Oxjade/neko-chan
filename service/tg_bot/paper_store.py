@@ -98,8 +98,12 @@ def utcnow() -> str:
 
 class PaperStore:
     def __init__(self, db_path: str):
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
         self._conn.row_factory = sqlite3.Row
+        # WAL + busy_timeout: shared registry.db with the bot process and
+        # sibling agents — see store.Registry for why this matters.
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=30000")
         self._conn.executescript(_SCHEMA)
         # migration for pre-leverage orders tables
         try:

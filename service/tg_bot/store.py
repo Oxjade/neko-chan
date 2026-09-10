@@ -86,8 +86,15 @@ class Registry:
         self.path = path
         self.vault = vault
         with _LOCK:
-            self._conn = sqlite3.connect(path, check_same_thread=False)
+            self._conn = sqlite3.connect(path, check_same_thread=False, timeout=30)
             self._conn.row_factory = sqlite3.Row
+            # WAL: the registry is written by the bot process AND read/written
+            # by 3 agent subprocesses (paper store, priority clears). Rollback
+            # journal mode serializes EVERYTHING and produces 'database is
+            # locked' storms under load — WAL allows concurrent readers with
+            # one writer. busy_timeout makes writers queue instead of erroring.
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
             self._conn.executescript(_SCHEMA)
             # migrations for pre-existing databases
             for stmt in (

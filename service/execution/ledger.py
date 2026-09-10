@@ -104,7 +104,9 @@ class ExecLedger:
         self.path = path
         self._lock = threading.RLock()
         with self._lock:
-            self._conn = sqlite3.connect(path, check_same_thread=False)
+            self._conn = sqlite3.connect(path, check_same_thread=False, timeout=30)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
             self._conn.row_factory = sqlite3.Row
             self._conn.executescript(_SCHEMA)
             self._conn.commit()

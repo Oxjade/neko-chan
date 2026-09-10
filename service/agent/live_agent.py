@@ -307,7 +307,7 @@ def _clear_priority(bot_id: int) -> None:
     for attempt in range(3):
         try:
             con = _sq.connect(os.path.join(_tg, "registry.db"), timeout=5)
-            con.execute("PRAGMA busy_timeout=5000")
+            con.execute("PRAGMA busy_timeout=30000")
             con.execute("UPDATE bots SET priority_watch='' WHERE id=?", (bot_id,))
             con.commit()
             con.close()
