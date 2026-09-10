@@ -680,13 +680,10 @@ def pick_best_scenario(scenarios: list[TradeScenario],
     wins unconditionally (any EV) — the user explicitly demanded this trade.
     """
     if priority_symbol:
-        pri = [
-            s for s in scenarios
-            if s.symbol == priority_symbol
-            and not (s.direction == "long" and has_long.get(s.symbol))
-            and not (s.direction == "short" and has_short.get(s.symbol))
-        ]
+        pri = [s for s in scenarios if s.symbol == priority_symbol]
         if pri:
+            # user-demanded trade: ignore the already-held filter (multi-
+            # position is allowed for user priority) and the EV floor
             pri.sort(key=lambda s: s.conviction, reverse=True)
             return pri[0]
     actionable = [

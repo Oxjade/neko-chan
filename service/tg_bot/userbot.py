@@ -2711,47 +2711,33 @@ class UserBotController:
                         f"Neko-Chan normally waits for that trade to resolve before "
                         f"analyzing {asset} again (no stacking low-conviction entries).\n\n"
                         f"Watch it anyway for the <b>next</b> trade?  "
-                        f"(or <b>watch {asset} now</b> to close it and take {asset} immediately)",
+                        f"(or <b>watch {asset} now</b> to add another {asset} trade immediately)",
                         parse_mode="HTML",
                         reply_markup=telegram.InlineKeyboardMarkup([
                             [telegram.InlineKeyboardButton("✅ Yes, watch it", callback_data=f"watch:yes:{asset}"),
                              telegram.InlineKeyboardButton("✖️ No", callback_data=f"watch:no:{asset}")],
                         ]))
                     return
-                # PRIORITY WATCH: paper mode frees the one-position slot by
-                # closing open positions at market (with a note about P&L).
-                if mode == "paper":
-                    try:
-                        _ps = self._paper_store()
-                        _syms = [p["symbol"] for p in _ps.positions(bot_id)]
-                        _mk = await asyncio.get_running_loop().run_in_executor(
-                            None, self._paper_mark_prices, _syms,
-                            (b.get("network") or "mainnet"))
-                        _closed, _pnl = 0, 0.0
-                        for _p in _ps.positions(bot_id):
-                            _ref = _mk.get(_p["symbol"]) or _p["entry_price"]
-                            _res = self._paper_gateway().close(
-                                bot_id, _p["symbol"], _ref,
-                                idempotency_key=f"watch-now-close-{bot_id}-{_p['symbol']}-{int(time.time())}")
-                            if _res.get("ok"):
-                                _closed += 1
-                                _pnl += float(_res.get("pnl", 0))
-                        _close_note = (f"closed {_closed} position(s) "
-                                       f"(P&L {_money(_pnl)}) to free the slot"
-                                       if _closed else "no open positions to close")
-                    except Exception as exc:
-                        _close_note = f"close failed ({str(exc)[:60]})"
-                else:
-                    _close_note = ("live mode: close your position(s) from Active "
-                                   f"Positions first — the priority watch will take "
-                                   f"the next {asset} setup once a slot is free")
+                # PRIORITY WATCH ADDS a position: your open trades stay open.
+                # The agent stacks the new {asset} trade on top (user-driven
+                # multi-position); the bot's own picks still follow the
+                # one-position rule.
+                _open_count = 0
+                try:
+                    _open_count = len(self._paper_store().positions(bot_id)) \
+                        if mode == "paper" else 0
+                except Exception:
+                    _open_count = 0
+                _add_note = (f"Your {_open_count} open position(s) stay open — "
+                             f"this <b>adds</b> a {asset} trade on top."
+                             if _open_count else
+                             f"The bot takes the next valid <b>{asset}</b> setup.")
                 self.registry.update_bot(bot_id, priority_watch=asset)
                 self._restart_agent_for_watch(bot_id, b)
                 await _respond(
                     f"⚡ <b>PRIORITY WATCH: {asset}</b>\n"
-                    f"{_close_note}.\n"
-                    f"The bot will take the next valid <b>{asset}</b> setup — "
-                    f"its one-shot is reserved for exactly this trade.")
+                    f"{_add_note}\n"
+                    f"You'll get an approval card (Take/Reject) when the setup fires.")
                 return
 
             def _apply_watch():

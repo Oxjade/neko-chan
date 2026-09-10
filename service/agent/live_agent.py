@@ -2090,10 +2090,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         open_symbols = {p["symbol"] for p in positions
                                         if p.get("quantity") not in (0, None, "")}
                         if open_symbols:
-                            matrix = [s for s in matrix if s.symbol not in open_symbols]
+                            matrix = [s for s in matrix
+                                      if s.symbol not in open_symbols or s.symbol == PRIORITY]
                             print(f"[quant] holding {len(open_symbols)} open position(s) "
                                   f"({', '.join(sorted(open_symbols))}) - one position per "
-                                  f"symbol, waiting for it to resolve")
+                                  f"bot pick, waiting for it to resolve"
+                                  + (f" | PRIORITY {PRIORITY} stays analyzable" if PRIORITY in open_symbols else ""))
                         # ONE TRADE PER TOKEN PER DAY: drop symbols already
                         # filled today so the agent moves on to the next token
                         # instead of flipping direction on the same one.
@@ -2526,22 +2528,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
             row["error"] = ("one-position rule: the current trade must resolve "
                             "before opening another")
         elif action in ("buy", "short") and positions and symbol == PRIORITY:
-            # PRIORITY + one-position: close the open position(s) at market to
-            # free the slot, then let this trade through on the NEXT guard pass.
-            try:
-                _pg = _paper_gateway()
-                for _p in list(_pg.store.positions(EXEC_BOT_ID)):
-                    _fill = _pg.close(EXEC_BOT_ID, _p["symbol"],
-                                      prices.get(_p["symbol"], 0) or _p["entry_price"],
-                                      idempotency_key=f"priority-slot-{EXEC_BOT_ID}-{_p['symbol']}-{int(time.time())}")
-                    print(f"[priority] freed slot: closed {_p['symbol']} "
-                          f"-> {'OK pnl=' + format(_fill.get('pnl', 0), '+.4f') if _fill.get('ok') else _fill.get('error', '')}")
-                _clear_priority(EXEC_BOT_ID)
-                row["error"] = ("priority watch: previous position closed to "
-                                "make room - re-analyzing next cycle")
-            except Exception as _exc:
-                print(f"[priority] slot free failed: {_exc}")
-                row["error"] = f"priority slot free failed: {str(_exc)[:80]}"
+            # PRIORITY WATCH ADDS a position (user-driven multi-position):
+            # 'watch X now' explicitly demands this trade ON TOP of whatever
+            # else is open. The user's own trades stack; the bot's own picks
+            # still follow the one-position rule. Nothing is closed here.
+            print(f"[priority] {symbol} entry alongside {len(positions)} open "
+                  f"position(s) - user-requested multi-position")
         elif action == "buy" and has_long:
             row["action"] = "hold"; row["error"] = "already long in symbol"
         elif action == "short" and has_short:
