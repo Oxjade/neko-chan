@@ -2113,7 +2113,7 @@ class UserBotController:
                 try:
                     await q.message.edit_text(
                         f"✅ <b>Approved {sym} {direction}</b>\n"
-                        "Neko is executing the paper trade now…",
+                        "Neko is executing the trade now…",
                         parse_mode="HTML")
                 except Exception:
                     await q.answer("Approved — executing")
@@ -2697,26 +2697,33 @@ class UserBotController:
                     f"watched, analyzed, and traded.\n"
                     f"Supported here: {', '.join(sorted(perps))}")
                 return
-            # CHART-DATA GATE: a perp market without candle data can never be
-            # analyzed (the 4h trend scan would fail) - it would sit 'analyzing…'
-            # forever. Verify the same candle source the agent uses before
-            # accepting the watch.
+            # CHART-DATA GATE: a perp market without candle history can never
+            # be analyzed (the 4h trend scan needs ~30+ bars) - it would sit
+            # 'analyzing…' forever. Check the SAME source the agent uses:
+            # Aftermath /ccxt/OHLCV.
             try:
                 import requests as _req
-                _now_ms = int(time.time() * 1000)
-                _cr = _req.post("https://api.hyperliquid.xyz/info", json={
-                    "type": "candleSnapshot",
-                    "req": {"coin": asset, "interval": "4h",
-                            "startTime": _now_ms - 3 * 4 * 3600000,
-                            "endTime": _now_ms},
-                }, timeout=10)
-                _candles = _cr.json() if _cr.status_code == 200 else []
-                if not isinstance(_candles, list) or len(_candles) < 2:
+                _ch_id = None
+                _mr = _req.get("https://aftermath.finance/api/ccxt/markets", timeout=15)
+                if _mr.status_code == 200:
+                    for _m in (_mr.json() if isinstance(_mr.json(), list) else []):
+                        if str(_m.get("base") or "").upper() == asset and _m.get("swap"):
+                            _ch_id = _m.get("id")
+                            break
+                _ok = False
+                if _ch_id:
+                    _now_ms = int(time.time() * 1000)
+                    _cr = _req.post("https://aftermath.finance/api/ccxt/OHLCV",
+                                    json={"chId": _ch_id, "timeframe": "4h",
+                                          "since": _now_ms - 120 * 4 * 3600000,
+                                          "limit": 120}, timeout=15)
+                    _candles = _cr.json() if _cr.status_code == 200 else []
+                    _ok = isinstance(_candles, list) and len(_candles) >= 30
+                if not _ok:
                     await _respond(
-                        f"❌ <b>{asset}</b> has a perp market but no chart data "
-                        f"available for analysis yet - watching it would never "
-                        f"produce a decision. Try one of: "
-                        f"{', '.join(sorted(_is_perp_tradeable_map().get(chain) or set()))}")
+                        f"❌ <b>{asset}</b> has a perp market but not enough chart "
+                        f"history for analysis yet ({asset} markets need ~5 days "
+                        f"of 4h candles). Try again soon or pick another asset.")
                     return
             except Exception:
                 pass  # chart API hiccup - don't block the watch on a timeout
@@ -3645,7 +3652,7 @@ class UserBotController:
                                                   reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")]]))
                         return
                     await q.message.edit_text(
-                        f"🧪 <b>Paper took {symbol} {direction.upper()}</b>\n"
+                        f"✅ <b>Took {symbol} {direction.upper()}</b>\n"
                         f"Filled <code>{qty:.6f}</code> @ <code>${fill.get('fill_price', ref_price):,.4f}</code> · {lev:g}x\n"
                         f"⛔ Stop {stop_pct:.1f}% · 🎯 Take {take_pct:.1f}%\n"
                         f"Virtual — no real money moved.",

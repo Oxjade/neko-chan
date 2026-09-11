@@ -1634,65 +1634,78 @@ def fetch_5m_context(symbol: str, market: str, hours: int = 1) -> str:
 
 def fetch_interval_closes(symbol: str, market: str, interval: str,
                           bars: int = 200) -> list[float]:
-    """Closes on an arbitrary candle interval (1h intraday, 1d swing) for the
-    trend-following model. crypto -> Hyperliquid candleSnapshot (1h/1d);
-    others -> yfinance. Returns [] on failure.
+    """Closes on an arbitrary candle interval for the trend-following model.
+
+    ALL candles come from AFTERMATH (the venue we trade): /ccxt/OHLCV with the
+    market's chId and a `since` timestamp spanning the requested bars. This
+    covers every Aftermath perp — BTC/ETH/SOL crypto AND NVDA/TSLA/XAUT/WTI
+    tokenized equities & commodities — from one source, one price truth.
+    Returns [] on failure or when the market is younger than ~30 candles
+    (not enough history to analyze — the market accumulates it over time).
     """
     try:
-        if market == "crypto":
-            import requests as _r
-            now_ms = int(time.time() * 1000)
-            # startTime must span enough bars for the interval. Hyperliquid's
-            # candleSnapshot uses millisecond timestamps; we need ~bars * interval_ms.
-            mult = {"5m": 300000, "1h": 3600000, "4h": 4 * 3600000, "1d": 86400000}
-            span_ms = bars * mult.get(interval, 3600000)
-            r = _r.post("https://api.hyperliquid.xyz/info", json={
-                "type": "candleSnapshot",
-                "req": {"coin": symbol, "interval": interval,
-                        "startTime": now_ms - span_ms,
-                        "endTime": now_ms},
-            }, timeout=15)
-            closes = [float(c["c"]) for c in r.json()]
-        else:
-            import yfinance as yf
-            ticker = f"{symbol}=X" if market == "forex" else symbol
-            period = "1mo" if interval == "5m" else "2y"
-            df = yf.download(ticker, period=period, interval=interval,
-                             progress=False, auto_adjust=True)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            closes = [float(v) for v in df["Close"].dropna().tolist()]
+        import requests as _r
+        ch_id = _aftermath_ch_id(symbol)
+        if not ch_id:
+            return []
+        mult = {"5m": 300000, "1h": 3600000, "4h": 4 * 3600000, "1d": 86400000}
+        span_ms = bars * mult.get(interval, 3600000)
+        since = int(time.time() * 1000) - span_ms
+        r = _r.post(f"{AFTERMATH_API}/ccxt/OHLCV",
+                    json={"chId": ch_id, "timeframe": interval,
+                          "since": since, "limit": bars},
+                    timeout=20)
+        data = r.json() if r.status_code == 200 else []
+        closes = [float(c[4]) for c in (data if isinstance(data, list) else [])
+                  if isinstance(c, (list, tuple)) and len(c) > 4]
         return [c for c in closes if c > 0]
     except Exception:
         return []
+
+
+_AFTERMATH_CH_CACHE: dict = {"ts": 0.0, "ids": {}}
+
+
+def _aftermath_ch_id(symbol: str) -> str | None:
+    """Resolve an Aftermath perp market chId by base symbol (cached 10 min)."""
+    now = time.time()
+    if now - _AFTERMATH_CH_CACHE["ts"] > 600 or symbol not in _AFTERMATH_CH_CACHE["ids"]:
+        try:
+            import requests as _r
+            r = _r.get(f"{AFTERMATH_API}/ccxt/markets", timeout=15)
+            if r.status_code != 200:
+                return _AFTERMATH_CH_CACHE["ids"].get(symbol)
+            ids = {}
+            for m in (r.json() if isinstance(r.json(), list) else []):
+                if m.get("swap"):
+                    ids[str(m.get("base") or "").upper()] = m.get("id")
+            _AFTERMATH_CH_CACHE["ids"] = ids
+            _AFTERMATH_CH_CACHE["ts"] = now
+        except Exception:
+            return _AFTERMATH_CH_CACHE["ids"].get(symbol)
+    return _AFTERMATH_CH_CACHE["ids"].get(symbol)
 
 
 def fetch_5m_closes(symbol: str, market: str,
                     hours: int = SCENARIO_5M_HOURS) -> list[float]:
     """Recent 5-minute closes for the scalp scenario engine's long/short read.
 
-    crypto -> Hyperliquid candleSnapshot "5m"; others -> yfinance 5m. Returns
-    [] on failure (caller falls back to the daily series).
+    ALL candles from Aftermath /ccxt/OHLCV (5m timeframe, `since` window).
+    Returns [] on failure (caller falls back to the daily series).
     """
     try:
-        if market == "crypto":
-            import requests as _r
-            now_ms = int(time.time() * 1000)
-            r = _r.post("https://api.hyperliquid.xyz/info", json={
-                "type": "candleSnapshot",
-                "req": {"coin": symbol, "interval": "5m",
-                        "startTime": now_ms - hours * 3600 * 1000,
-                        "endTime": now_ms},
-            }, timeout=15)
-            closes = [float(c["c"]) for c in r.json()]
-        else:
-            import yfinance as yf
-            ticker = f"{symbol}=X" if market == "forex" else symbol
-            df = yf.download(ticker, period="1d", interval="5m",
-                             progress=False, auto_adjust=True)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            closes = [float(v) for v in df["Close"].dropna().tolist()]
+        ch_id = _aftermath_ch_id(symbol)
+        if not ch_id:
+            return []
+        import requests as _r
+        since = int(time.time() * 1000) - hours * 3600 * 1000
+        r = _r.post(f"{AFTERMATH_API}/ccxt/OHLCV",
+                    json={"chId": ch_id, "timeframe": "5m",
+                          "since": since, "limit": hours * 12},
+                    timeout=20)
+        data = r.json() if r.status_code == 200 else []
+        closes = [float(c[4]) for c in (data if isinstance(data, list) else [])
+                  if isinstance(c, (list, tuple)) and len(c) > 4]
         return [c for c in closes if c > 0]
     except Exception:
         return []
@@ -2620,6 +2633,15 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     print(f"[paper] {symbol} REJECTED by user - skipped")
                     log_decision(row)
                     return row
+                # LIMIT ORDER like live: a marketable limit 2bps inside the
+                # market (fill immediate, maker pricing on the rest). The
+                # old paper path passed limit_price=None -> market fills.
+                _ref_px = prices.get(symbol, 0) or row["price"] or 0
+                _off = ENTRY_OFFSET_BPS / 10000.0
+                _limit = round(_ref_px * (1 - _off) if action == "buy"
+                               else _ref_px * (1 + _off), 6) if _ref_px > 0 else None
+                row["order_type"] = "LIMIT"
+                row["limit_price"] = _limit or row["price"]
                 fill = pg.open(EXEC_BOT_ID, symbol,
                                "long" if action == "buy" else "short", qty,
                                prices.get(symbol, 0) or row["price"] or 0,
@@ -2627,7 +2649,7 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                stop_loss=_sl if stop_pct else None,
                                take_profit=_tp if take_pct else None,
                                order_type="limit",
-                               limit_price=row.get("limit_price") or None,
+                               limit_price=_limit,
                                idempotency_key=row.get("idempotency_key", f"paper-{symbol}-{action}-{int(time.time()*1000)}"))
                 if fill.get("ok"):
                     try:
