@@ -134,6 +134,7 @@ AFTERMATH_MAX_LEVERAGE = {
     "SUI": 10, "HYPE": 10, "XRP": 10, "UNI": 10, "XMR": 10, "ZEC": 10,
     "MON": 10, "XAG": 10, "US500": 10, "GOOGL": 10, "NVDA": 10, "TSLA": 10,
     "INTC": 10, "MU": 10, "MRVL": 10, "PUMP": 10, "SPCX": 10, "LIT": 10,
+    "CARDS": 10, "SKHYNIX": 10,
     "WTI": 5, "AMC": 5, "DRAM": 5, "LLY": 5, "IOVA": 5, "SNDK": 5, "CHIP": 5,
 }
 
@@ -198,14 +199,13 @@ def clamp_leverage(symbol: str, market: str, lev: float,
 def conviction_leverage(symbol: str, market: str, conviction: float,
                         stop_pct: float | None = None,
                         user_cap: float | None = None) -> float:
-    """Leverage measured by conviction - 13x floor on 20x-leverage markets.
+    """Leverage measured by conviction — conviction-scaled within ANY cap.
 
-    Scales linearly from CONVICTION_LEV_FLOOR (13x at floor conviction) to
-    the effective cap as conviction doubles above the floor, then liq-safety
-    clamped via clamp_leverage. Conviction below the floor keeps the 13x
-    floor (it is a floor, not a target). 10x-cap markets are exempt: they
-    use the liq-safe margin-fit leverage as before.
-
+    Scales linearly from a proportionate floor up to the effective cap as
+    conviction rises, then liq-safety clamped via clamp_leverage:
+      - 20x-cap markets (BTC/ETH/SOL): 13x floor -> cap
+      - 10x-cap markets (SUI/HYPE/XRP/US equities): ~6.5x floor -> cap
+      - 5x-cap markets (AMC/LLY/WTI...): ~3.3x floor -> cap
     The USER'S Settings leverage is the hard CAP (user_cap): conviction can
     never trade above what the user set. user_cap defaults to the venue cap
     (legacy behaviour) when not provided."""
@@ -216,10 +216,17 @@ def conviction_leverage(symbol: str, market: str, conviction: float,
     # never above the venue's own limit, whatever the user set
     cap = min(cap, float(venue_cap))
     if cap < CONVICTION_LEV_FLOOR:
-        # cap below the 13x floor (e.g. user chose 5x on a 20x market, or a
-        # 10x venue): the USER CAP WINS - no conviction floor is forced on
-        # top of an explicit lower setting. Liq-safe margin-fit base.
-        return clamp_leverage(symbol, market, max(cap, 2.25), stop_pct=stop_pct)
+        # cap below the 13x floor: conviction scaling is PROPORTIONATE to
+        # the cap (floor = 65% of cap) instead of a flat 2.25x — 10x markets
+        # scale 6.5x -> 10x, 5x markets 3.3x -> 5x. The user's explicit
+        # lower setting still wins as the ceiling.
+        floor = max(cap * 0.65, 2.25)
+        f = 0.0
+        if conviction > 0:
+            span = max(cap - floor, 0.5)
+            f = max(0.0, min(1.0, (conviction - CONVICTION_FLOOR) / max(CONVICTION_FLOOR, 1e-9)))
+        req = floor + f * (cap - floor)
+        return clamp_leverage(symbol, market, req, stop_pct=stop_pct)
     f = 0.0
     if conviction > 0:
         f = max(0.0, min(1.0, (conviction - CONVICTION_FLOOR) / CONVICTION_FLOOR))
