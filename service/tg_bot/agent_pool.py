@@ -64,13 +64,15 @@ class AgentPool:
                 self._restart_counts[_bid] = []
 
     def start(self, bot_id: int) -> bool:
-        """Spawn a runner for the bot with its key/provider/risk config."""
+        """Spawn a runner for the bot with its key/provider/risk config.
+
+        KEYLESS MODE: no AI API key is fine — the agent falls back to the
+        deterministic quant engine (the LLM is an upgrade, not a requirement).
+        Users connect a key later for AI-powered decisions."""
         bot = self.registry.get_bot(bot_id)
         if not bot:
             return False
         key = self.registry.get_active_key(bot["tg_id"])
-        if not key:
-            return False
         token = self.registry.bot_token(bot_id)
         if not token:
             return False
@@ -95,10 +97,10 @@ class AgentPool:
             "LIVE_AGENT_MAX_POSITION_PCT": str(caps["max_position_pct"]),
             "LIVE_AGENT_FORCE_STOP_PCT": str(caps["force_stop_pct"]),
             "LIVE_AGENT_LEVERAGE": str(bot.get("leverage") or 1),
-            "LIVE_AGENT_API_KEY": key["api_key"],
-            "LIVE_AGENT_PROVIDER": key["provider"],
-            "LIVE_AGENT_BASE_URL": key.get("base_url") or "",
-            "LIVE_AGENT_MODEL": key.get("model") or "gpt-4o-mini",
+            "LIVE_AGENT_API_KEY": key["api_key"] if key else "",
+            "LIVE_AGENT_PROVIDER": key["provider"] if key else "",
+            "LIVE_AGENT_BASE_URL": key.get("base_url") or "" if key else "",
+            "LIVE_AGENT_MODEL": key.get("model") or "gpt-4o-mini" if key else "",
             "LIVE_AGENT_TOKEN": bot["platform_token"],
             "LIVE_AGENT_NAME": bot["agent_name"],
             "LIVE_AGENT_BOT_ID": str(bot["id"]),
