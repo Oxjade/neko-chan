@@ -204,7 +204,9 @@ ONBOARD = {
               "stop-loss and take-profit attached. Every trade is risk-capped "
               "before signing.\n\n"
               "🛡️ <b>Control</b> - kill-switch, withdrawal, and full visibility "
-              "of keys and balances are always one tap away."),
+              "of keys and balances are always one tap away.\n\n"
+              "❓ <b>Have an issue setting it up?</b> Contact support: "
+              "<b>Ox_jade</b>"),
     "trader": ("⚡ <b>What type of trader are you?</b>\n\n"
                "This sets how Neko-Chan trades for you (leverage, hold time, "
                "risk). You can change it anytime."),
