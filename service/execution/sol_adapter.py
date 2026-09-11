@@ -43,9 +43,11 @@ TRIGGER_BASE = f"{JUP_API}/trigger/v2"
 SWAP_QUOTE_URL = f"{JUP_API}/swap/v1/quote"
 SWAP_SWAP_URL = f"{JUP_API}/swap/v1/swap"
 TOKENS_SEARCH_URL = f"{JUP_API}/tokens/v2/search"
-PERPS_BASE = "https://jup.ag/api/perp"
-PERPS_POSITIONS_URL = f"{PERPS_BASE}/positions"
-PERPS_ORDERS_URL = f"{PERPS_BASE}/orders"
+PERPS_BASE = "https://perps-api.jup.ag"
+PERPS_POSITIONS_URL = f"{PERPS_BASE}/v1/positions"
+PERPS_INCREASE_URL = f"{PERPS_BASE}/v1/positions/increase"
+PERPS_DECREASE_URL = f"{PERPS_BASE}/v1/positions/decrease"
+PERPS_CLOSE_ALL_URL = f"{PERPS_BASE}/v1/positions/close-all"
 
 SOL_MINT = "So11111111111111111111111111111111111111112"
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -126,11 +128,12 @@ class SOLAdapter:
 
     def get_positions(self) -> list[dict]:
         try:
-            resp = self._request("GET", PERPS_POSITIONS_URL, params={"wallet": self.pubkey})
+            resp = self._request("GET", PERPS_POSITIONS_URL,
+                                 params={"walletAddress": self.pubkey})
         except Exception as exc:  # noqa: BLE001
             log.warning("get_positions failed: %s", exc)
             return []
-        rows = resp.get("positions") if isinstance(resp, dict) else resp
+        rows = (resp.get("dataList") if isinstance(resp, dict) else None) or resp
         if not isinstance(rows, list):
             return []
         return [p for p in (self._normalize_position(r) for r in rows) if p]
@@ -186,19 +189,34 @@ class SOLAdapter:
             return {"ok": False, "error": str(exc)[:300]}
 
     def _place_jup_perp(self, intent: OrderIntent, ref_price: float) -> dict:
-        resp = self._request("POST", PERPS_ORDERS_URL, json={
-            "wallet": self.pubkey,
-            "symbol": intent.symbol,
-            "side": intent.side,
-            "size": intent.qty,
-            "orderType": intent.order_type if intent.order_type in ("market", "limit") else "market",
-            "leverage": intent.leverage,
-            "price": intent.limit_price,
-            "tpPrice": intent.take_profit,
-            "slPrice": intent.stop_loss,
-            "reduceOnly": bool(getattr(intent, "reduce_only", False)),
-            "idempotencyKey": intent.idempotency_key,
-        })
+        """Open/increase a Jupiter Perps position via the v1 API.
+
+        Contract (verified against perps-api.jup.ag, 2026-09):
+          POST /v1/positions/increase
+            {walletAddress, marketMint (perp asset), collateralMint,
+             collateralTokenDelta (raw int), inputMint, maxSlippageBps (str),
+             side (long|short), leverage (str, optional)}
+            LONG: collateralMint must be the MARKET token; SHORT: USDC.
+          Returns a base64 transaction -> sign + broadcast.
+        """
+        market_mint = self._resolve_mint(intent.symbol)
+        market_mint_addr = (market_mint or {}).get("mint") or intent.symbol
+        is_long = intent.side in ("buy", "long")
+        collateral_mint = market_mint_addr if is_long else USDC_MINT
+        # collateral delta: notional / leverage, in raw decimals of the mint
+        raw_coll = int(intent.qty * ref_price / max(intent.leverage, 1.0)
+                       * (10 ** USDC_DECIMALS if collateral_mint == USDC_MINT else 1e9))
+        body = {
+            "walletAddress": self.pubkey,
+            "marketMint": market_mint_addr,
+            "collateralMint": collateral_mint,
+            "collateralTokenDelta": str(raw_coll),
+            "inputMint": USDC_MINT,
+            "maxSlippageBps": str(int(SLIPPAGE_BPS)),
+            "side": "long" if is_long else "short",
+            "leverage": str(int(intent.leverage * 100)),
+        }
+        resp = self._request("POST", PERPS_INCREASE_URL, json=body)
         tx = resp.get("transaction") or resp.get("tx") or resp.get("swapTransaction")
         if not tx:
             return {"ok": False, "error": f"perp open returned no transaction: {resp}"[:300]}
@@ -355,15 +373,22 @@ class SOLAdapter:
         return [self._perp_close_position(pos) for pos in self.get_positions()]
 
     def _perp_close_position(self, pos: dict) -> dict:
-        resp = self._request("POST", PERPS_ORDERS_URL, json={
-            "wallet": self.pubkey,
-            "symbol": pos["symbol"],
-            "side": "sell" if pos["side"] == "buy" else "buy",
-            "size": pos["qty"],
-            "orderType": "market",
-            "reduceOnly": True,
-            "leverage": pos.get("leverage") or 1.0,
-        })
+        """Close via POST /v1/positions/decrease (full size, reduce-only)."""
+        market_mint = self._resolve_mint(pos["symbol"])
+        market_mint_addr = (market_mint or {}).get("address") or pos["symbol"]
+        is_long = pos["side"] == "buy"
+        body = {
+            "walletAddress": self.pubkey,
+            "marketMint": market_mint_addr,
+            "collateralMint": market_mint_addr if is_long else USDC_MINT,
+            "collateralTokenDelta": str(int(pos["qty"] * (pos.get("entry") or 0)
+                                            * (10 ** USDC_DECIMALS
+                                               if not is_long else 1e9))),
+            "inputMint": USDC_MINT,
+            "maxSlippageBps": str(int(SLIPPAGE_BPS)),
+            "side": "long" if is_long else "short",
+        }
+        resp = self._request("POST", PERPS_DECREASE_URL, json=body)
         tx = resp.get("transaction") or resp.get("tx") or resp.get("swapTransaction")
         if not tx:
             return {"symbol": pos["symbol"], "ok": False, "error": "no transaction returned"}

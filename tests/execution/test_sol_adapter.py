@@ -11,7 +11,8 @@ from order_model import OrderIntent
 from sol_adapter import (
     DEVNET_RPC,
     MAINNET_RPC,
-    PERPS_ORDERS_URL,
+    PERPS_DECREASE_URL,
+    PERPS_INCREASE_URL,
     PERPS_POSITIONS_URL,
     SOLAdapter,
     SWAP_QUOTE_URL,
@@ -88,13 +89,16 @@ def test_balance_network_error_returns_zero(monkeypatch):
 
 # ---------------- place_order venue mapping ----------------
 
-def test_place_order_jup_perp_posts_to_perps_orders(monkeypatch):
+def test_place_order_jup_perp_posts_to_perps_increase(monkeypatch):
     urls = []
     bodies = []
 
     def handler(method, url, **kw):
         urls.append(url)
-        bodies.append(kw["json"])
+        bodies.append(kw.get("json") or {})
+        if url == TOKENS_SEARCH_URL:
+            return Resp({"results": [{"address": "So11111111111111111111111111111111111111112",
+                                      "symbol": "SOL", "decimals": 9}]})
         return Resp({"transaction": "dG94"})
 
     a = fake_network(monkeypatch, make_adapter(), handler)
@@ -102,9 +106,13 @@ def test_place_order_jup_perp_posts_to_perps_orders(monkeypatch):
                                stop_loss=140.0, take_profit=160.0), 150.0)
     assert res["ok"] is True
     assert res["tx_hash"] == "sig-broadcast"
-    assert urls == [PERPS_ORDERS_URL]
-    assert bodies[0]["side"] == "buy" and bodies[0]["size"] == 0.1
-    assert bodies[0]["leverage"] == 2 and bodies[0]["reduceOnly"] is False
+    assert urls == [TOKENS_SEARCH_URL, PERPS_INCREASE_URL]
+    body = bodies[1]
+    # v1 contract: long collateral = market token; leverage as str; slippage as str
+    assert body["side"] == "long"
+    assert body["marketMint"] == "So11111111111111111111111111111111111111112"
+    assert body["collateralMint"] == body["marketMint"]
+    assert body["leverage"] == "200" and body["maxSlippageBps"] == "50"
 
 
 def test_place_order_jup_limit_uses_trigger_v2_oco(monkeypatch):
@@ -234,17 +242,21 @@ def test_flat_and_cancel_closes_perps_then_cancels_limits(monkeypatch):
 
     def handler(method, url, **kw):
         calls.append(url)
+        # NOTE: decrease must be checked BEFORE the positions prefix match —
+        # /v1/positions/decrease starts with /v1/positions
+        if url == PERPS_DECREASE_URL:
+            close_bodies.append(kw["json"])
+            return Resp({"transaction": "dG94"})
         if url.startswith(PERPS_POSITIONS_URL):
             position_fetches[0] += 1
             if position_fetches[0] == 1:
-                return Resp({"positions": [
+                return Resp({"dataList": [
                     {"symbol": "SOL", "side": "long", "qty": 2.0, "entryPrice": 150.0, "leverage": 2},
                     {"symbol": "BTC", "side": "short", "qty": 0.5, "entryPrice": 60000.0, "leverage": 3},
                 ]})
-            return Resp({"positions": []})
-        if url == PERPS_ORDERS_URL:
-            close_bodies.append(kw["json"])
-            return Resp({"transaction": "dG94"})
+            return Resp({"dataList": []})
+        if url == TOKENS_SEARCH_URL:
+            return Resp({"results": []})
         if url == f"{TRIGGER_BASE}/auth/challenge":
             return Resp({"message": "m"})
         if url == f"{TRIGGER_BASE}/auth/verify":
@@ -262,13 +274,12 @@ def test_flat_and_cancel_closes_perps_then_cancels_limits(monkeypatch):
     assert res["ok"] is True
     assert len(res["flat"]) == 2
     assert all(c["ok"] for c in res["flat"])
-    close_idx = [i for i, u in enumerate(calls) if u == PERPS_ORDERS_URL]
+    close_idx = [i for i, u in enumerate(calls) if u == PERPS_DECREASE_URL]
     cancel_idx = [i for i, u in enumerate(calls) if "cancel" in u]
     assert close_idx and cancel_idx
     assert max(close_idx) < min(cancel_idx)
-    assert close_bodies[0]["reduceOnly"] is True
-    assert close_bodies[0]["side"] == "sell" and close_bodies[0]["size"] == 2.0
-    assert close_bodies[1]["side"] == "buy" and close_bodies[1]["size"] == 0.5
+    assert close_bodies[0]["side"] == "long" and close_bodies[0]["side"] == "long"
+    assert close_bodies[1]["side"] == "short"
     assert res["cancel"]["limit_cancelled"] == [{"id": "lo-1", "ok": True}]
 
 
@@ -302,7 +313,7 @@ def test_cancel_all_never_closes_positions(monkeypatch):
             return Resp({"positions": [
                 {"symbol": "SOL", "side": "long", "qty": 2.0, "entryPrice": 150.0, "leverage": 2},
             ]})
-        if url == PERPS_ORDERS_URL:
+        if url == PERPS_DECREASE_URL:
             close_bodies.append(kw["json"])
             return Resp({"transaction": "dG94"})
         if url == f"{TRIGGER_BASE}/auth/challenge":
