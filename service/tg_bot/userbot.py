@@ -2255,7 +2255,9 @@ class UserBotController:
 
         async def paper_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Manual close of ONE paper position from the Active Positions
-            view: sb:pclose:<SYMBOL> -> confirm -> sb:pclose_yes:<SYMBOL>."""
+            view: ONE TAP — sb:pclose:<SYMBOL> closes immediately at the best
+            available market price (Aftermath orderbook -> platform API ->
+            entry as last resort). No confirm step: paper mistakes are free."""
             q = update.callback_query
             await q.answer()
             b = self.registry.get_bot(bot_id)
@@ -2264,50 +2266,53 @@ class UserBotController:
                 await q.answer("Live closes are executed by the bot's exit logic", show_alert=True)
                 return
             sym = (q.data or "").split(":", 2)[-1].upper()
-            if not q.data.endswith("_yes"):
-                pos = next((p for p in self._paper_store().positions(bot_id)
-                            if p["symbol"] == sym), None)
-                if not pos:
-                    await q.answer(f"No open paper position on {sym}", show_alert=True)
-                    return
-                await q.message.edit_text(
-                    f"❌ <b>Close {sym} {str(pos['direction']).upper()}?</b>\n"
-                    f"entry {pos['entry_price']:,.4f} · qty {pos['qty']:g}\n\n"
-                    "It will close at the current Aftermath market price "
-                    "It closes at the current market price.",
-                    parse_mode="HTML",
-                    reply_markup=telegram.InlineKeyboardMarkup([
-                        [telegram.InlineKeyboardButton("✅ Close position",
-                                                       callback_data=f"sb:pclose_yes:{sym}"),
-                         telegram.InlineKeyboardButton("↩️ Keep it",
-                                                       callback_data="sb:pos")]])
-                )
+            pos = next((p for p in self._paper_store().positions(bot_id)
+                        if p["symbol"] == sym), None)
+            if not pos:
+                await q.answer(f"No open paper position on {sym}", show_alert=True)
                 return
-            # confirmed
-            prices = await asyncio.get_running_loop().run_in_executor(
-                None, self._paper_mark_prices, [sym], (b.get('network') or 'mainnet'))
-            ref = prices.get(sym)
-            if not ref:
-                pos = next((p for p in self._paper_store().positions(bot_id)
-                            if p["symbol"] == sym), None)
-                ref = float(pos["entry_price"]) if pos else 0.0
+            await q.answer(f"⏳ Closing {sym} at market…")
+            # PRICE CHAIN: Aftermath orderbook -> platform API -> entry
+            ref = 0.0
+            try:
+                px = await asyncio.get_running_loop().run_in_executor(
+                    None, self._paper_mark_prices, [sym], (b.get("network") or "mainnet"))
+                ref = float(px.get(sym) or 0)
+            except Exception:
+                ref = 0.0
+            if ref <= 0:
+                try:
+                    ref = float(self.platform.price(
+                        self.registry.platform_token(bot_id) or "", "crypto", sym) or 0)
+                except Exception:
+                    ref = 0.0
+            if ref <= 0:
+                ref = float(pos["entry_price"])
             if ref <= 0:
                 await q.answer("No price available right now — try again", show_alert=True)
                 return
             fill = self._paper_gateway().close(
                 bot_id, sym, ref, idempotency_key=f"manual-{bot_id}-{sym}-{int(time.time())}")
             if not fill.get("ok"):
+                # double-tap: another tap already closed it — not an error
+                if "no open paper position" in str(fill.get("error", "")).lower():
+                    await q.answer("Already closed ✓", show_alert=True)
+                    return
                 await q.answer(fill.get("error", "close failed"), show_alert=True)
                 return
-            await q.message.edit_text(
-                f"✅ <b>Closed {sym}</b> at {fill['fill_price']:,.4f}\n"
-                f"Realized P&L: <b>{_money(fill['pnl'])}</b>\n"
-                f"Paper balance updated.",
-                parse_mode="HTML",
-                reply_markup=telegram.InlineKeyboardMarkup([
-                    [telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos"),
-                     telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]])
-            )
+            try:
+                await q.message.edit_text(
+                    f"✅ <b>Closed {sym} {str(pos['direction']).upper()}</b> at {fill['fill_price']:,.4f}\n"
+                    f"Trade P&L: <b>{_money(fill['pnl'])}</b>\n"
+                    f"Paper balance updated.",
+                    parse_mode="HTML",
+                    reply_markup=telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos"),
+                         telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]])
+                )
+            except telegram.error.BadRequest as _be:
+                if "not modified" not in str(_be).lower():
+                    raise
 
         async def live_markets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
