@@ -828,13 +828,20 @@ class UserBotController:
         ttl = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
 
         def _keep(payload: dict) -> bool:
-            """The MAIN DASHBOARD is the only survivor: the only panel whose
-            keyboard carries both the Home and the Kill-Switch buttons."""
+            """Survivors of the TTL: (1) the MAIN DASHBOARD (keyboard carries
+            both Home and Kill-Switch), (2) PAPER APPROVAL CARDS — they must
+            outlive the 5-minute approval window or the user never sees the
+            Take/Reject buttons (they self-edit to a result after action)."""
             try:
                 rm = payload.get("reply_markup") or {}
                 rows = rm.get("inline_keyboard") or []
                 cbs = [b.get("callback_data", "") for row in rows for b in row]
-                return "sb:dash" in cbs and "sb:kill" in cbs
+                if "sb:dash" in cbs and "sb:kill" in cbs:
+                    return True
+                if any(c.startswith("papertake:") or c.startswith("paperreject:")
+                       for c in cbs):
+                    return True
+                return False
             except Exception:
                 return False
 
