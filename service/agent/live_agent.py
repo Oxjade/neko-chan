@@ -219,8 +219,9 @@ def conviction_leverage(symbol: str, market: str, conviction: float,
         # cap below the 13x floor: conviction scaling is PROPORTIONATE to
         # the cap (floor = 65% of cap) instead of a flat 2.25x — 10x markets
         # scale 6.5x -> 10x, 5x markets 3.3x -> 5x. The user's explicit
-        # lower setting still wins as the ceiling.
-        floor = max(cap * 0.65, 2.25)
+        # lower setting is the CEILING: the floor is capped at it too
+        # (a 2x setting must never trade 2.25x).
+        floor = min(cap, max(cap * 0.65, 2.25))
         f = 0.0
         if conviction > 0:
             span = max(cap - floor, 0.5)
