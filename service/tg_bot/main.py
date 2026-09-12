@@ -67,39 +67,12 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     # with zero handler rewrites. Registered last in group 0 so specific master
     # commands (/start, nav:, admin:) win first.
     async def _router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        # Every update the master's own handlers did NOT claim is forwarded to
+        # the caller's own dashboard Application. route() is owner-scoped, so a
+        # stranger's update can never reach another trader's bot.
         if await userbot.route(update, context.chat_data.get("active_bot_id")):
             raise ApplicationHandlerStop
-        user = getattr(update, "effective_user", None)
-        if not user:
-            return
-        bots = registry.bots_for(user.id)
-        if len(bots) > 1:
-            # multi-bot owner with no active bot: show a switcher, then route
-            import telegram as _tg
-            kb = [[_tg.InlineKeyboardButton(b["bot_name"],
-                                            callback_data=f"switch:{b['id']}")]
-                  for b in bots]
-            msg = (getattr(update, "effective_message", None)
-                   or getattr(getattr(update, "callback_query", None), "message", None))
-            if msg:
-                await msg.reply_text("🐾 Which cat do you want to drive?",
-                                     reply_markup=_tg.InlineKeyboardMarkup(kb))
 
-    async def _switch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        q = update.callback_query
-        await q.answer()
-        bot_id = int(q.data.split(":", 1)[1])
-        if bot_id not in {b["id"] for b in registry.bots_for(q.from_user.id)}:
-            return
-        context.chat_data["active_bot_id"] = bot_id
-        b = registry.get_bot(bot_id)
-        await q.edit_message_text(f"🐈 Now driving {b['bot_name']}.")
-
-    # Order within group 0 decides precedence: master commands (registered
-    # above) and the switcher win first; the router is the last catch-all, so
-    # only updates nothing else claimed are forwarded to a bot Application.
-    from telegram.ext import CallbackQueryHandler
-    app.add_handler(CallbackQueryHandler(_switch, pattern=r"^switch:\d+$"))
     app.add_handler(TypeHandler(Update, _router))
     return app
 
@@ -113,12 +86,19 @@ def start_watchers(registry: Registry, platform: PlatformClient):
     with the master bot. Deliberately idempotent: watcher watermark + registry
     event ledger mean restarts never double-push.
     """
-    from notifier import Notifier
+    from notifier import Notifier, SendBudget
     from watcher import Watcher
     from tg_config import BASE_DIR
     import threading as _threading
 
-    notifier = Notifier(registry)
+    # ONE shared send budget for the whole fleet: every watcher thread pushes
+    # through the same master token, so a single global+per-chat limiter keeps
+    # us inside Telegram's send limits no matter how many users we onboard.
+    budget = SendBudget(
+        global_rps=float(os.getenv("TG_SEND_GLOBAL_RPS", "25")),
+        per_chat_spacing=float(os.getenv("TG_SEND_CHAT_SPACING_S", "1.0")),
+    )
+    notifier = Notifier(registry, budget=budget)
     paths = {
         "sqlite": str(BASE_DIR / "service" / "server" / "data" / "clawtrader.db"),
     }

@@ -7,6 +7,7 @@ import os
 import sys
 import sqlite3
 import tempfile
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "service", "tg_bot"))
 
@@ -294,9 +295,11 @@ def test_no_per_user_poller():
 
 
 def test_routes_to_owner():
-    """G6 (owner isolation): route() must forward an update only to the caller's
-    OWN bot. Single-bot user auto-routes; a multi-bot user routes only to a bot
-    they explicitly selected AND own; a foreign/absent tg_id resolves to None."""
+    """G6 (owner isolation + no picker): route_target serves the caller's OWN
+    bot deterministically (no @BotFather, no My Bots). Unknown user -> None. A
+    foreign 'active' id is ignored (falls back to the user's own newest bot)."""
+    import asyncio
+    from unittest.mock import AsyncMock
     from userbot import UserBotController
 
     d = tempfile.mkdtemp()
@@ -304,19 +307,131 @@ def test_routes_to_owner():
     a = r.create_bot(700, "A", None, None, "AgentA", "pta", {"perps": 1}, 2.0, 120, "balanced")
     single = UserBotController(r, platform=object())
     single._master_token = "111:master-fake-token"
-    # single bot for 700 -> always that one
-    assert single.route_target(700) == a["id"]
-    # unknown user -> None
-    assert single.route_target(999) is None
 
-    # second bot for 700 -> now multi-bot
+    assert single.route_target(700) == a["id"]     # single bot
+    assert single.route_target(999) is None        # unknown user -> Add flow
+
+    # second (newer) bot for 700 -> deterministically newest wins (no picker)
     b = r.create_bot(700, "B", None, None, "AgentB", "ptb", {"perps": 1}, 2.0, 120, "balanced")
-    assert single.route_target(700) is None                 # multi, none active -> picker
-    assert single.route_target(700, a["id"]) == a["id"]     # explicit + owned -> route
-    assert single.route_target(700, b["id"]) == b["id"]
-    # active id that the caller does NOT own must be ignored (route to picker)
+    assert single.route_target(700) == b["id"]
+    assert single.route_target(700, a["id"]) == a["id"]      # explicit owned honored
     other = r.create_bot(701, "C", None, None, "AgentC", "ptc", {"perps": 1}, 2.0, 120, "balanced")
-    assert single.route_target(700, other["id"]) is None
+    assert single.route_target(700, other["id"]) == b["id"]  # foreign active ignored -> own newest
+
+    # routing round-trip: an owner's update reaches THEIR app; a stranger's does not.
+    # Use a stub Application (the real PTB process_update is slots-read-only) to
+    # prove route()'s owner-scoped dispatch without running the dashboard.
+    # NOTE: a LOCAL event loop — asyncio.run() would clear the thread's current
+    # loop and break other tests that rely on asyncio.get_event_loop().
+    import asyncio as _aio
+    fake = AsyncMock()
+    single._apps[b["id"]] = SimpleNamespace(process_update=fake, stop=None)
+    single._route_managed[b["id"]] = True
+    single._routed_started.add(b["id"])  # skip real app.initialize()
+    loop = _aio.new_event_loop()
+    try:
+        upd = SimpleNamespace(effective_user=SimpleNamespace(id=700), effective_chat=SimpleNamespace(id=700))
+        assert loop.run_until_complete(single.route(upd, b["id"])) is True
+        assert fake.await_count == 1
+        stranger = SimpleNamespace(effective_user=SimpleNamespace(id=888), effective_chat=SimpleNamespace(id=888))
+        assert loop.run_until_complete(single.route(stranger)) is False  # no bot -> nothing forwarded
+        assert fake.await_count == 1                                    # not touched by the stranger
+    finally:
+        loop.close()
+    r.close()
+
+
+def test_retire_and_redirect():
+    """Cutover data step: keep one bot per owner. make_master_only() redirects
+    the kept bots onto the master (nulls their own token, keeps agent/wallet),
+    retire_bot() deletes the dropped one only if it never traded."""
+    d = tempfile.mkdtemp()
+    path = os.path.join(d, "legacy.db")
+    _make_legacy_db(path)
+    r = Registry(path, KeyVault())  # migrates on connect
+    # Kenn owns 3 (Whale) and 4 (SMT); keep 4, retire 3; admin owns 1 (keep).
+    changed = db_migrate.make_master_only(r._conn, [4, 1])
+    assert changed == 2
+    assert r.bot_token(4) is None and r.bot_token(1) is None   # now routed
+    assert r.get_bot(4)["platform_token"] == "ptok-smt"         # metrics/funds intact
+    assert r.get_bot(4)["wallet_addr"] == "0xddd4"
+    # retire the dropped bot: refuse if it traded, delete if it didn't
+    kept = db_migrate.retire_bot(r._conn, 3, has_trades=True)
+    assert kept["action"] == "kept" and r.get_bot(3) is not None
+    gone = db_migrate.retire_bot(r._conn, 3, has_trades=False)
+    assert gone["action"] == "retired" and r.get_bot(3) is None
+    # exactly one bot per owner remains
+    assert [x["id"] for x in r.bots_for(7488318868)] == [4]
+    assert [x["id"] for x in r.bots_for(6698272364)] == [1]
+    r.close()
+
+
+def test_send_budget_paces():
+    """Capacity: one master token for the whole fleet must stay inside Telegram
+    limits. SendBudget enforces per-chat spacing AND a global token rate (proven
+    against a fake clock - no real sleeping)."""
+    from notifier import SendBudget
+
+    class Clock:
+        def __init__(self): self.t = 0.0; self.sleeps = []
+        def sleep(self, s): self.t += s; self.sleeps.append(s)
+        def mono(self): return self.t
+
+    clk = Clock()
+    b = SendBudget(global_rps=5, per_chat_spacing=1.0, _sleep=clk.sleep, _now=clk.mono)
+
+    b.acquire(1)                       # first send: no wait
+    assert clk.sleeps == []
+    b.acquire(1)                       # same chat again -> at least 1s spacing
+    assert clk.sleeps[-1] >= 1.0
+
+    # hammer distinct chats past the 5/sec global bucket -> must pace (>0 sleep)
+    for cid in range(100, 120):
+        b.acquire(cid)
+    assert any(s > 0 for s in clk.sleeps[1:]), "global rate limit never engaged"
+
+    # a real 429 cools down, capped at 30s
+    clk2 = Clock()
+    b2 = SendBudget(_sleep=clk2.sleep, _now=clk2.mono)
+    b2.on_429(120)
+    assert clk2.sleeps == [30.0]
+
+
+def test_notifier_retries_on_429():
+    """Capacity: Notifier honors Telegram's retry_after and resends, so a burst
+    never silently drops a user's fill/close push."""
+    import notifier as N
+    from notifier import Notifier, SendBudget
+
+    d = tempfile.mkdtemp()
+    r = Registry(os.path.join(d, "reg.db"), KeyVault())
+    clk_sleeps = []
+    b = SendBudget(global_rps=100, per_chat_spacing=0.0,
+                   _sleep=lambda s: clk_sleeps.append(s), _now=lambda: 0.0)
+    n = Notifier(r, budget=b)
+    n._token = lambda bt: "MASTER"
+
+    responses = [
+        SimpleNamespace(status_code=429, json=lambda: {"ok": False, "parameters": {"retry_after": 2}}),
+        SimpleNamespace(status_code=200, json=lambda: {"ok": True, "result": {"message_id": 7}}),
+    ]
+    posts = []
+    def fake_post(url, **kw):
+        posts.append(url)
+        return responses.pop(0)
+
+    orig_post, orig_del = N.requests.post, N._schedule_delete
+    N.requests.post = fake_post
+    N._schedule_delete = lambda *a, **k: None
+    try:
+        ok = n.notify(1, 555, None, 555, "fill", "r", "hello")
+    finally:
+        N.requests.post = orig_post
+        N._schedule_delete = orig_del
+
+    assert ok is True
+    assert len(posts) == 2                      # 429 then successful resend
+    assert 2.0 in clk_sleeps                    # honored retry_after via budget.on_429
     r.close()
 
 
@@ -361,4 +476,67 @@ def test_notifier_routes_master():
     assert "/botOWNBOT:tok/sendMessage" in url_own
     assert payload_own["chat_id"] == owner
     r.close()
+
+
+# ---------------------------------------------------------------------------- tour / onboarding
+def test_tour_guides_to_start():
+    """Guided /start tour: page 2 leads to 'Continue'->tour:3, and the LAST tour
+    page's button hands the user into the name step (nav:add) - which creates a
+    token-less bot and then enters the ob:intro onboarding chain."""
+    from handlers.master import tour_nav
+    import messages
+
+    assert len(messages.TOUR) >= 4
+    text, label, cb = tour_nav(2)
+    assert cb == "tour:3" and text == messages.TOUR[2]
+    # intermediate pages say Continue
+    for p in range(2, len(messages.TOUR)):
+        assert tour_nav(p)[2] == f"tour:{p+1}"
+    # final page hands into nav:add (create bot -> name -> ob:intro)
+    _, _, last_cb = tour_nav(len(messages.TOUR))
+    assert last_cb == "nav:add"
+
+
+def test_new_user_setup_hands_into_onboarding():
+    """The name step must end on the guided onboarding (ob:intro -> trader ->
+    chain -> wallet -> dashboard), NOT a bare sb:dash with onboarding_complete=0."""
+    import asyncio
+    from handlers import wizard
+
+    d = tempfile.mkdtemp()
+    r = Registry(os.path.join(d, "reg.db"), KeyVault())
+    r.upsert_user(7, "carrier")
+    r.promote_first_user_to_admin(7)
+
+    class FakePlatform:
+        def register_agent(self, name):
+            return {"name": name, "token": "ptok-123", "agent_id": 42}
+
+    sent = {}
+
+    async def reply_kb(text, reply_markup=None):
+        rows = reply_markup.inline_keyboard if reply_markup else []
+        sent["buttons"] = [b.callback_data for row in rows for b in row]
+        sent["text"] = text
+
+    msg = SimpleNamespace(text="Kitty", reply_text=reply_kb,
+                          effective_user=SimpleNamespace(id=7, username="carrier"))
+    upd = SimpleNamespace(effective_user=SimpleNamespace(id=7, username="carrier"), message=msg)
+    ctx = SimpleNamespace(bot_data={})
+
+    flow = wizard.simple_flow_handlers(r, KeyVault(), FakePlatform(), None, None)
+    handler = flow.states[1][0]
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(handler.callback(upd, ctx))
+    finally:
+        loop.close()
+
+    bots = r.bots_for(7)
+    assert len(bots) == 1 and bots[0]["bot_name"] == "Kitty"
+    assert r.bot_token(bots[0]["id"]) is None          # token-less
+    assert "ob:intro" in sent["buttons"]               # -> guided onboarding to dashboard
+    assert "sb:dash" not in sent["buttons"]            # NOT a bare half-empty dashboard
+    r.close()
+
 

@@ -21,6 +21,59 @@ from messages import NOTIF
 MSG_TTL_SECONDS = int(os.getenv("TG_MSG_TTL_SECONDS", "180"))
 
 
+class SendBudget:
+    """Rate limiter that keeps the SINGLE master bot inside Telegram's send
+    limits when it fans out notifications for many users at once.
+
+    Two independent ceilings (Telegram's documented bot limits, with headroom):
+      * GLOBAL: ~30 messages/sec across all chats -> default `global_rps` 25.
+      * PER-CHAT: ~1 message/sec to one chat, and a slow ~20-30/min burst cap
+        -> default `per_chat_spacing` 1.0s (chat A's flood can't starve chat B).
+
+    `acquire()` BLOCKS the calling (watcher) thread until it is safe to send,
+    which is exactly what we want: pushes are smoothed, never dropped, and one
+    chatty user can't 429 the whole fleet. Injectable clock/sleep for tests."""
+
+    def __init__(self, global_rps: float = 25.0, per_chat_spacing: float = 1.0,
+                 *, _sleep=time.sleep, _now=time.monotonic):
+        self._rate = global_rps
+        self._spacing = per_chat_spacing
+        self._tokens = global_rps          # start with a full second's worth
+        self._last_refill = _now()
+        self._last_per_chat: dict[int, float] = {}
+        self._lock = threading.Lock()
+        self._sleep = _sleep
+        self._now = _now
+
+    def _refill(self, now: float) -> None:
+        self._tokens = min(self._rate, self._tokens + (now - self._last_refill) * self._rate)
+        self._last_refill = now
+
+    def acquire(self, chat_id: int) -> None:
+        # per-chat spacing first (cheap, avoids same-chat pile-ups)
+        with self._lock:
+            now = self._now()
+            wait_chat = max(0.0, self._spacing - (now - self._last_per_chat.get(chat_id, float("-inf"))))
+        if wait_chat:
+            self._sleep(wait_chat)
+        # global budget: wait for a token
+        while True:
+            with self._lock:
+                self._refill(self._now())
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    self._last_per_chat[chat_id] = self._now()
+                    return
+                need = (1.0 - self._tokens) / self._rate
+            self._sleep(max(0.01, need))
+
+    def on_429(self, retry_after: float) -> None:
+        """A real Telegram 429 means we overshot despite the budget: pause all
+        sends for the requested cooldown (capped so one bad actor can't freeze
+        the process)."""
+        self._sleep(min(float(retry_after or 1.0), 30.0))
+
+
 def _schedule_delete(bot_token: str, chat_id: int, message_id: int,
                      ttl: int = MSG_TTL_SECONDS) -> None:
     """Delete a sent message after ttl seconds, in a background thread."""
@@ -61,8 +114,11 @@ def _normalize_buttons(buttons):
 
 
 class Notifier:
-    def __init__(self, registry):
+    def __init__(self, registry, budget: "SendBudget | None" = None):
         self.registry = registry
+        # A shared budget makes one master token safe across many users. When
+        # None (e.g. unit tests, single-legacy-bot use) sends are unpaced.
+        self.budget = budget
 
     def _token(self, bot_token: str | None) -> str:
         """Send identity for the single-master-bot model. A token-less bot
@@ -77,6 +133,28 @@ class Notifier:
         except Exception:
             return ""
 
+    def _post(self, url, *, budget_chat: int | None, **kw):
+        """Single send choke-point: pace via the shared budget, then honor a
+        real Telegram 429 by cooling down once and retrying. Returns the raw
+        response or None on network failure."""
+        if self.budget is not None and budget_chat is not None:
+            self.budget.acquire(budget_chat)
+        try:
+            r = requests.post(url, timeout=20, **kw)
+        except requests.RequestException:
+            return None
+        if r.status_code == 429 and self.budget is not None:
+            try:
+                ra = (r.json().get("parameters") or {}).get("retry_after", 1)
+            except Exception:
+                ra = 1
+            self.budget.on_429(ra)
+            try:
+                r = requests.post(url, timeout=20, **kw)
+            except requests.RequestException:
+                return None
+        return r
+
     def _send(self, bot_token: str, chat_id: int, text: str,
               buttons: list[list[str]] | None = None) -> bool:
         token = self._token(bot_token)
@@ -85,22 +163,21 @@ class Notifier:
         markup = _normalize_buttons(buttons)
         if markup:
             payload["reply_markup"] = markup
-        try:
-            r = requests.post(url, json=payload, timeout=20)
-            if r.status_code == 200:
-                mid = r.json().get("result", {}).get("message_id")
-                if mid:
-                    _schedule_delete(token, chat_id, mid)
-                return True
-            return False
-        except requests.RequestException:
-            return False
+        r = self._post(url, budget_chat=chat_id, json=payload)
+        if r is not None and r.status_code == 200:
+            mid = r.json().get("result", {}).get("message_id")
+            if mid:
+                _schedule_delete(token, chat_id, mid)
+            return True
+        return False
 
     def _send_photo(self, bot_token: str, chat_id: int, photo_path: str,
                     caption: str = "", buttons: list[list[str]] | None = None) -> bool:
         """Send a photo (PNG card) with optional caption + inline buttons."""
         token = self._token(bot_token)
         url = f"https://api.telegram.org/bot{token}/sendPhoto"
+        if self.budget is not None:
+            self.budget.acquire(chat_id)  # cards count against the same global cap
         try:
             with open(photo_path, "rb") as f:
                 files = {"photo": f}

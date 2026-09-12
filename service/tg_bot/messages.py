@@ -1,14 +1,26 @@
 """All user-facing copy for master + user bots. Single source of truth."""
 
-WELCOME_NEW = (
-    "🐾 <b>Neko-Chan</b> - your AI trading cat.\n\n"
-    "I watch real markets, decide with AI, and trade the platform with "
-    "real prices. You bring two keys - I do the rest:\n"
-    "  1️⃣ A Telegram bot token (from @BotFather) → your channel\n"
-    "  2️⃣ An AI API key → my brain\n\n"
-    "⚠️ Trading involves real risk and real money. Not financial advice.\n"
-    "(I'm a cat. I'm not a licensed advisor. I'm just better.)"
-)
+# Guided first-run tour on the master bot: read -> Continue -> read -> ... ->
+# Create my bot. The final page's button hands the user into the name -> chain
+# -> wallet onboarding, which runs all the way to the dashboard.
+TOUR = {
+    1: ("🐾 <b>Welcome to Neko — your AI trading cat.</b>\n\n"
+        "I read real markets, decide with AI, and trade with live prices.\n"
+        "You steer; I do the grunt work.\n\n"
+        "A few taps and you'll have your own bot on a $1,000 paper portfolio."),
+    2: ("⚙️ <b>What your bot does</b>\n\n"
+        "🔍 <b>Scan</b> — builds long + short setups with real probabilities.\n"
+        "🧠 <b>Decide</b> — takes the strongest setup, or stays flat. No FOMO.\n"
+        "⚡ <b>Execute</b> — trades with your stop-loss + take-profit attached.\n"
+        "🛡️ <b>Control</b> — kill-switch, withdrawal and balances always one tap away."),
+    3: ("🧪 <b>Paper first, real later — your call</b>\n\n"
+        "Every new bot starts on a <b>$1,000 paper</b> portfolio: real prices, "
+        "no money risk. Flip to live whenever you're ready, from the dashboard."),
+    4: ("⚠️ <b>Before you start</b>\n\n"
+        "Trading is risky and models make mistakes. This is not financial "
+        "advice. You can pause or delete your bot anytime.\n\n"
+        "Ready? Let's make your cat."),
+}
 
 WELCOME_RETURNING = (
     "🐾 Neko-Chan missed you! You have {n} bot(s): {names}.\n"
@@ -34,26 +46,6 @@ HOW_IT_WORKS = {
 }
 
 WIZARD = {
-    "name": "🤖 Name your bot (3–24 chars, letters/numbers/space)\nExample: BitcoinWhale",
-    "token": ("1️⃣ Send your Telegram bot token - create one first:\n"
-              "  → open @BotFather → /newbot → copy the token (123456789:AA...)\n\nPaste it here:"),
-    "token_ok": "✅ Found @{username}. Good kitty.",
-    "token_bad": "❌ That token didn't work. Check @BotFather - it looks like 123456789:AAExample...",
-    "verify": ("2️⃣ Send this code TO your bot @{username}:\n\n"
-               "  VERIFY-{code_digits}\n\n"
-               "👉 You can send just the numbers (e.g. {code_digits}) or the full "
-               "text - both work.\n"
-               "Order matters: FIRST press Start on @{username} (a bot can't "
-               "receive anything until you start it), THEN send the code above. "
-               "Tap \"I sent it\" ONLY after the code is sent - we'll watch for up "
-               "to 60 seconds.\n\n"
-               "If the code expired, tap the button below for a fresh one."),
-    "verify_ok": "✅ Ownership verified. That's the cat's seal of approval.",
-    "verify_bad": "❌ We didn't receive the code. Send it again to your bot and retry.",
-    "verify_no_chat": ("⚠️ We haven't seen anything from @{username} yet.\n\n"
-                       "Most likely you never pressed Start on it - open the bot in "
-                       "Telegram, tap Start (this activates the chat), then send this code:\n\n"
-                       "  {code}\n\nThen tap \"I sent it\"."),
     "disclaimer": ("⚠️ IMPORTANT - READ BEFORE CONTINUING\n\n"
                    "This bot is an automated trading agent. Before you connect it, "
                    "please understand:\n\n"

@@ -1149,20 +1149,20 @@ class UserBotController:
     # ---------------- master-router dispatch (single-bot serving) ----------------
 
     def route_target(self, tg_id: int, active_bot_id: int | None = None) -> int | None:
-        """Which of this user's bots should serve one master update.
+        """Which bot serves one master update for this user.
 
-        A single-bot user always routes there. A multi-bot user routes to the
-        explicitly active bot (only if it is THEIRS - a stale/foreign id is
-        ignored), else None so the caller can show a bot switcher."""
+        Single-bot model: a user with no bot -> None (they see the Add flow).
+        An explicit active id is honored ONLY if it belongs to them. Otherwise
+        deterministically pick the NEWEST bot (max id) so a stray second bot
+        never strands the chat on a picker that no longer exists. Post-migration
+        everyone has exactly one bot; during it the kept bot is the newer one."""
         bots = self.registry.bots_for(tg_id)
         if not bots:
             return None
         ids = {b["id"] for b in bots}
         if active_bot_id is not None and active_bot_id in ids:
             return active_bot_id
-        if len(ids) == 1:
-            return next(iter(ids))
-        return None
+        return max(ids)
 
     async def route(self, update, active_bot_id: int | None = None) -> bool:
         """Forward one master-bot update into the owning bot's Application via

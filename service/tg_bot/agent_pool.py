@@ -73,9 +73,13 @@ class AgentPool:
         if not bot:
             return False
         key = self.registry.get_active_key(bot["tg_id"])
-        token = self.registry.bot_token(bot_id)
-        if not token:
-            return False
+        # Single-master-bot model: a routed bot has NO @BotFather token of its
+        # own, so it must NOT be skipped for that reason — it trades exactly
+        # like before and pushes error notices via the MASTER token. (Requiring
+        # a per-bot token here silently stopped every migrated bot trading.)
+        send_token = (self.registry.bot_token(bot_id)
+                      or getattr(__import__("tg_config"), "MASTER_BOT_TOKEN", "")
+                      or os.environ.get("TG_BOT_TOKEN", ""))
 
         with self._lock:
             if bot_id in self._procs and self._procs[bot_id].poll() is None:
@@ -118,7 +122,7 @@ class AgentPool:
             # live only after the user flips the dashboard toggle.
             "LIVE_AGENT_TRADING_MODE": bot.get("trading_mode") or "paper",
             # for pushing human-friendly error notifications straight to the user
-            "TG_BOT_TOKEN": self.registry.bot_token(bot_id) or "",
+            "TG_BOT_TOKEN": send_token,
             "TG_CHAT_ID": str(bot["tg_id"]),
         })
         try:

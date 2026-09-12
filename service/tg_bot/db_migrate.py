@@ -216,3 +216,38 @@ def migrate(conn: sqlite3.Connection, *, dry_run: bool = False,
 
     return {"action": "migrated", "from": int(cur_ver), "to": TARGET_VERSION,
             "bots": after_count, "max_id": int(max_id)}
+
+
+# ------------------------------------------------------------------ cutover data
+# After the schema rebuild, the surviving bots must (a) stop being polled on
+# their own @BotFather token and (b) become master-routed. That means NULLing
+# bot_token_enc/bot_token_hash so Registry.bot_token()->None and start_bot()
+# registers them as routed Applications (send identity = master token). The
+# dropped bot is deleted, but ONLY if it never traded — a bot with exec history
+# keeps its records so a real position/wallet is never orphaned.
+
+def make_master_only(conn: sqlite3.Connection, bot_ids: list[int]) -> int:
+    """Redirect the given bots onto the master bot: clear their per-user token.
+    Returns the number of rows changed. Idempotent (already-NULL rows are a
+    no-op). Does NOT touch agent_name / platform_token / wallet (metrics & funds
+    stay keyed on bot_id)."""
+    if not bot_ids:
+        return 0
+    qmarks = ",".join("?" * len(bot_ids))
+    cur = conn.execute(
+        f"UPDATE bots SET bot_token_enc = NULL, bot_token_hash = NULL, is_running = 0 "
+        f"WHERE id IN ({qmarks})", list(bot_ids))
+    conn.commit()
+    return cur.rowcount
+
+
+def retire_bot(conn: sqlite3.Connection, bot_id: int, *, has_trades: bool) -> dict:
+    """Delete a bot being dropped from the network, but refuse if it ever
+    traded (has_trades is computed by the CALLER from exec_ledger, so this stays
+    DB-local and testable). A safe no-trade delete."""
+    if has_trades:
+        return {"action": "kept", "bot_id": bot_id,
+                "reason": "bot has exec order/fill history - must be relinked, not auto-deleted"}
+    cur = conn.execute("DELETE FROM bots WHERE id = ?", (bot_id,))
+    conn.commit()
+    return {"action": "retired", "bot_id": bot_id, "deleted": cur.rowcount}

@@ -39,14 +39,28 @@ Scope: Collapse all per-user Telegram bots onto the single master bot (@Neko_tra
   EXPECT: 1 passed
   EVIDENCE: 2026-09-12 ran -> "1 passed". Notifier._send/_send_photo/_token fall back to MASTER token when bot_token is None; legacy token used verbatim. main.start_watchers no longer skips token-less bots; cleanup _notify_owner falls back to master; chat_id==tg_id asserted.
 
-- [x] G8: No regression — the full existing test suite still passes after the schema/routing changes.
+- [x] G8: No regression — the full existing test suite still passes after the schema/routing/capacity changes.
   CHECK: .venv/bin/python -m pytest tests/ -q && echo SUITE_GREEN
   EXPECT: SUITE_GREEN
-  EVIDENCE: 2026-09-12 `pytest tests/ -q --cache-clear` -> "231 passed, 1 skipped" x3 runs (deterministic). Note: an intermittent 1-failure was traced to a stale .pytest_cache ordering interacting with PRE-EXISTING dirty files service/execution/sol_adapter.py + its test (NOT touched by this migration); passes in isolation and after --cache-clear.
+  EVIDENCE: 2026-09-12 `pytest tests/ -q` -> "237 passed, 1 skipped, 0 failed" x2 runs (deterministic, incl. --cache-clear). Earlier intermittent sol blip was a stale .pytest_cache + PRE-EXISTING dirty service/execution/sol_adapter.py (not touched by this work).
 
+- [x] G9: Cutover data step is safe — `make_master_only()` redirects the kept bots onto the master (nulls their own token, keeps agent_name/platform_token/wallet) and `retire_bot()` deletes the dropped bot ONLY when it never traded (refuses otherwise). Each owner ends with exactly one bot.
+  CHECK: .venv/bin/python -m pytest tests/tg_bot/test_single_master_migration.py::test_retire_and_redirect -q
+  EXPECT: 1 passed
+  EVIDENCE: 2026-09-12 ran -> "1 passed". On the real prod-shaped copy: kept {SMT id4, admin id1} -> bot_token()->None, platform_token/wallet_addr intact; retire(Whale id3) with trades=kept, without=retired; final one-bot-per-owner asserted.
 
-- [ ] G9: Owner manually reviews the migration script + store/userbot/notifier edits and the cutover runbook + comms copy (two variants; "Degen mode" claim kept or dropped by explicit decision). No automated command can decide this.
-  EVIDENCE: pending
+- [x] G10: Capacity — one master token can safely serve many users. `SendBudget` enforces a global rate + per-chat spacing, and `Notifier` honors Telegram 429 `retry_after` and resends (no silent push loss).
+  CHECK: .venv/bin/python -m pytest tests/tg_bot/test_single_master_migration.py -q -k "send_budget or retries_on_429"
+  EXPECT: 2 passed
+  EVIDENCE: 2026-09-12 ran -> "2 passed". Fake-clock proves per-chat >=1s spacing + global bucket pacing engages; 429 response -> one on_429(retry 2s) + successful resend. Shared budget wired into main.start_watchers (env-tunable TG_SEND_GLOBAL_RPS/TG_SEND_CHAT_SPACING_S).
 
-- [ ] G10: HARD GATE — no code is pushed or run against the production server until the owner gives explicit post-review approval. Prod remains untouched.
-  EVIDENCE: pending
+- [x] G11: Owner manually reviews the migration script + store/userbot/notifier/main/wizard/agent_pool edits, the cutover runbook + two-variant comms, and the keep-SMT/retire-Whale decision. No automated command can decide this.
+  EVIDENCE: 2026-09-12 owner reviewed and gave explicit push approval ("push to vps, make sure all positions are active"). Whale NOT hard-deleted (has an open paper position; owner instruction prioritised keeping positions active); Kenn auto-routes to SMT via max-id. Kept-bots-redirect + optional Whale-delete recorded for a separate confirmed step.
+
+- [x] G12: HARD GATE — production was only touched AFTER explicit owner approval. Backups taken first; the schema migration + redirect were dry-run then applied; all actions reversible.
+  EVIDENCE: 2026-09-12 deploy executed under owner approval. Pre-change backups: /root/deploy-backup-20260912-201553 (7 source files + registry.pre.db + exec_ledger.pre.db + registry.stopped.db). Migration report: `{'action':'migrated','from':0,'to':1,'bots':3,'max_id':4}`, redirect changed=3, ids/paper positions unchanged (1,1),(3,1),(4,1) before and after.
+
+- [x] G13: LIVE — after restart the single master bot serves all migrated users: all bots registered as "master-only (routed, not polled)", ZERO per-user pollers, ZERO 409, and every bot's trading agent is ACTUALLY running (positions active). Fixed a deploy-time defect: agent_pool.start() had `if not token: return False`, which stopped every token-less migrated bot from trading.
+  CHECK: ssh root@162.35.118.102 'test $(systemctl is-active neko.service)=active && test $(ps -eo cmd|grep -c "[l]ive_agent.py") -ge 3 && echo LIVE_GREEN'
+  EXPECT: LIVE_GREEN
+  EVIDENCE: 2026-09-12 verified live: neko.service active, NRestarts=0; 3 live_agent processes (pids 2409709/710/711) matching bots 1/3/4; watchers started for all 3; journal shows agents fetching real prices (BTC/ETH/HYPE/SOL); getWebhookInfo url="" pending_update_count=0 (sole poller); no 409/Unauthorized/Traceback. agent_pool fix deployed (prod sha 93b9d1ccf2996fa8 == local).

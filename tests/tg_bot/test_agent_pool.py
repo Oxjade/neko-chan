@@ -35,6 +35,42 @@ def test_universe_mapping():
     assert "NVDA:us-stock" in u and "USDJPY:forex" in u
 
 
+def test_tokenless_bot_still_trades():
+    """A routed (master-only, token-less) bot MUST still spawn its runner.
+    Regression: the old `if not token: return False` gate silently stopped every
+    migrated bot from trading once its @BotFather token was cleared. The runner
+    pushes error notices via the MASTER token instead."""
+    import tg_config
+    tmp = tempfile.mkdtemp()
+    reg = Registry(os.path.join(tmp, "reg.db"), KeyVault())
+    reg.upsert_user(7)
+    b = reg.create_bot(7, "Routed", None, None, "RoutedAgent", "ptok",
+                       {"perps": 1}, 2.0, 120, "balanced")
+    pool = AgentPool(reg)
+    captured = {}
+
+    class FakeProc:
+        def __init__(self, cmd, env, **kw):
+            captured["env"] = env
+            self.pid = 9999
+        def poll(self):
+            return None
+
+    old_master = getattr(tg_config, "MASTER_BOT_TOKEN", "")
+    tg_config.MASTER_BOT_TOKEN = "MASTER:token"
+    try:
+        with patch("agent_pool.subprocess.Popen", FakeProc), \
+             patch("agent_pool.sys_executable", return_value="/usr/bin/python3"):
+            ok = pool.start(b["id"])
+    finally:
+        tg_config.MASTER_BOT_TOKEN = old_master
+    assert ok is True, "token-less bot was refused a runner"
+    assert captured["env"]["TG_BOT_TOKEN"] == "MASTER:token"   # error notices via master
+    assert captured["env"]["LIVE_AGENT_TOKEN"] == "ptok"
+    assert reg.get_bot(b["id"])["is_running"] == 1
+    reg.close()
+
+
 def test_start_spawns_with_user_credentials(env):
     reg, bot = env
     pool = AgentPool(reg)

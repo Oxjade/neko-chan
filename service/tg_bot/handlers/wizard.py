@@ -40,8 +40,8 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
     async def start_wizard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🐾 What should your trading cat be called?\n\n"
-            "Pick a name (3–24 chars, letters/numbers/space), e.g. BitcoinWhale.\n"
-            "No @BotFather needed anymore — it's just you and me now.",
+            "Pick a name (3–24 chars, letters/numbers/space), e.g. BitcoinWhale. "
+            "Then it's just you and me from here.",
             reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(CANCEL, callback_data="wiz:cancel")]]),
         )
         return S_NAME
@@ -108,10 +108,9 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
         except Exception as exc:  # noqa: BLE001 - bot is registered; start is best-effort
             log.error("bot start failed (bot still registered): %s", exc)
         await update.message.reply_text(
-            f"✅ {name} is live! Tap it to open its dashboard.",
+            f"🐾 {name} is here! Let's set it up — takes 30 seconds.",
             reply_markup=telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton(f"🐾 Open {name}", callback_data=f"switch:{bot['id']}")],
-                [telegram.InlineKeyboardButton("🤖 My Bots", callback_data="nav:mybots")],
+                [telegram.InlineKeyboardButton("🚀 Set up my bot", callback_data="ob:intro")],
             ]),
         )
         log.info("token-less bot registered user=%s name=%s bot_id=%s", tg_id, name, bot["id"])

@@ -85,16 +85,49 @@ print('version', c.execute('PRAGMA user_version').fetchone()[0])"
 EXPECT: token_enc/hash notnull=0, bot_username notnull=1 default '',
 ids `[1,3,4]`, seq `4`, version `1`.
 
+## 4b. One bot per owner: redirect the kept bots, retire the extra
+
+Decision (confirmed): **keep admin's `Nekoadmin` (id 1) + Kenn124Y's `SMT` (id
+4); retire `Whale` (id 3)** — it never traded (0 orders/fills/signals), so the
+delete is safe. Both kept bots are redirected onto the master (own token
+cleared → served via the router, send identity = @Neko_tradesbot). Wallets,
+agents, platform tokens and P&L are untouched (keyed on bot_id).
+
+```bash
+cd /root/app
+.venv/bin/python -c "import sqlite3;from service.tg_bot import db_migrate as m;\
+c=sqlite3.connect('service/tg_bot/registry.db');\
+print('redirect:', m.make_master_only(c,[4,1]));\
+o=c.execute('SELECT COUNT(*) FROM exec_orders').fetchone()[0] if c.execute(\"SELECT name FROM sqlite_master WHERE name='exec_orders'\").fetchone() else 0;\
+print('retire:', m.retire_bot(c,3, has_trades=bool(o)))"
+```
+NOTE: `has_trades` MUST be computed against `exec_ledger.db` (the bot_id→orders
+join), not registry.db. Before deleting, verify Whale has no exec history:
+```bash
+python3 -c "import sqlite3;c=sqlite3.connect('file:exec_ledger.db?mode=ro',uri=True);\
+print('bot3 orders', c.execute('SELECT COUNT(*) FROM exec_orders WHERE bot_id=3').fetchone()[0])"
+```
+Expect `0`. If non-zero, DO NOT retire — keep it and relink it manually.
+
+After this step: `SELECT id,tg_id FROM bots` → `1|6698272364`, `4|7488318868`.
+Every owner has exactly one bot → the master routes straight to their dashboard
+(no "My Bots", no switcher).
+
 ## 5. Boot under the master and smoke-test
 ```bash
 systemctl start neko.service
 journalctl -u neko.service -f    # watch for 'registered as master-only (routed, not polled)'
 ```
-- As a migrated owner, open @Neko_tradesbot → `/bots` → Drive your bot →
-  dashboard + wallet + positions render **in the master chat**.
-- As a brand-new user → *Add My Bot* → name → no token asked.
-- The 3 old @BotFather bots (`@Nekochanadminbot`, `@chainprizebot`, `@Nkofbot`)
-  go idle; their tokens are still stored (harmless) and can be nulled later.
+- As a migrated owner, open @Neko_tradesbot → `/start` → **your dashboard
+  renders directly** (same P&L, wallet, positions, buttons as your old bot chat).
+- As a brand-new user → *Add My Bot* → name → no token asked → dashboard.
+- Capacity is automatic: all watcher pushes share one `SendBudget`
+  (`TG_SEND_GLOBAL_RPS`, `TG_SEND_CHAT_SPACING_S`) so one master token stays
+  inside Telegram's limits no matter how many users. Tune for real traffic
+  before a big influx.
+- The old @BotFather bots (`@Nekochanadminbot`, `@chainprizebot`, `@Nkofbot`)
+  go idle; kept bots' tokens are now NULL (routed); `@Nkofbot`/`Whale`'s row is
+  retired. Users can delete them in @BotFather (optional).
 
 ## Rollback (if anything is off)
 ```bash
@@ -113,27 +146,28 @@ NULL file. This is why step 2 backs up before step 4.)
 
 Two audiences, two messages. Do NOT blast one to all 18.
 
-### Variant A — the 2 active owners (Ox_jade, Kenn124Y)
-> 🐾 Quick heads-up, {first}: I've folded everything into this chat.
+### Variant A — the 2 active owners (Ox_jade → Nekoadmin, Kenn124Y → SMT)
+> 🐾 Heads up {name} — **your Neko bot is now @Neko_tradesbot.**
 >
-> **{bot_names} now live right here.** Same wallet, same positions, same P&L,
-> same AI key — nothing moved, nothing was touched. Tap **My Bots → Drive** (or
-> `/bots`) to open your dashboard.
+> That's where {bot_name} lives now: same wallet, same positions, same P&L,
+> same AI key. Nothing moved.
 >
-> Your old standalone bot (@{old_usernames}) isn't used anymore — you can delete
-> it in @BotFather to tidy up, or just ignore it. **Your funds are safe and
-> fully under your control.** 💰
+> Just open **@Neko_tradesbot** and send /start — you'll land on your dashboard. 💰
 >
 > *(Optional teaser, only if we actually ship it — no date promised:)*
-> I'm also cooking up a higher-risk **Degen mode** for you. More soon.
+> I'm also cooking up a higher-risk **Degen mode**. More soon.
 
-### Variant B — the 16 who bounced (never finished)
-> 🐾 You tried Neko a bit ago and got stuck at "paste a bot token" — that step is
-> **gone**.
+Note: for Kenn124Y, `Whale` was retired and only `SMT` was kept — so name
+SMT specifically, and mention that his second (idle) cat was folded away:
+> "…you now have one cat here: **SMT** (your other idle bot was merged in —
+> nothing was lost, funds untouched)."
+
+### Variant B — the 16 who bounced (never finished, nothing to migrate)
+> 🐾 You tried Neko a bit ago and got stuck pasting a bot token — **that step is gone.**
 >
-> Now it's one tap: tap **Add My Bot**, give your cat a name, pick a chain, and
-> you're trading a **$1,000 paper** portfolio in ~30 seconds. No @BotFather, no
-> key, no setup. Come try again? 👉 /start
+> Now your bot is just **@Neko_tradesbot**. Open it, /start, name your cat,
+> pick a chain, and you're trading a **$1,000 paper** portfolio in ~30s. No
+> @BotFather, no key. Come try again? 👉 @Neko_tradesbot
 
 ### On "Degen mode" — decision needed from you (blocks Variant A's last line)
 The codebase has **no** "Degen mode" (only an unrelated `degenerate` comment in

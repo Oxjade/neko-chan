@@ -6,8 +6,18 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 
 from tg_config import ADMIN_TG_IDS
 from key_vault import KeyVault
-from messages import WELCOME_NEW, WELCOME_RETURNING, HOW_IT_WORKS, MENU, ERRORS, humanize_error
+from messages import TOUR, WELCOME_RETURNING, HOW_IT_WORKS, MENU, ERRORS, humanize_error
 from handlers.common import HOME, menu_keyboard, home_keyboard
+
+
+def tour_nav(page: int):
+    """Pure: which callback the current tour page's button leads to.
+    Returns (page_text, button_label, button_callback). The last page hands the
+    user into the name step (nav:add -> wizard -> ob:intro onboarding)."""
+    page = max(2, min(len(TOUR), page))
+    if page < len(TOUR):
+        return TOUR[page], "🐾 Continue", f"tour:{page+1}"
+    return TOUR[page], "🐾 Create my bot", "nav:add"
 
 
 def register_master_handlers(app, registry, platform, userbot_controller):
@@ -16,23 +26,41 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         registry.upsert_user(user.id, user.username or user.first_name)
         promoted = registry.promote_first_user_to_admin(user.id)
         bots = registry.bots_for(user.id)
+        # Single-bot model: an existing user who already has their bot is dropped
+        # straight onto that bot's dashboard (routed into its Application, whose
+        # send identity is the master token) — the chat looks EXACTLY like the
+        # old standalone bot did. Nothing else about the UX changes.
+        if bots and userbot_controller is not None:
+            target = userbot_controller.route_target(user.id, context.chat_data.get("active_bot_id"))
+            if target is not None:
+                context.chat_data["active_bot_id"] = target
+                try:
+                    userbot_controller.start_bot(target)  # idempotent, routed
+                except Exception:
+                    pass
+                if await userbot_controller.route(update, target):
+                    return
         if promoted:
-            text = (f"👑 Welcome, {user.first_name or user.username or 'owner'}! You're now the owner of Neko.\n\n"
-                    "Send /addbot to connect your own trading bot, or browse below. 🐾")
-        elif bots:
-            names = ", ".join(f"{b['bot_name']} {'🟢' if b['is_running'] else '⏸️'}" for b in bots)
-            text = f"🐾 Neko-Chan missed you! You have: {names}"
+            text = (f"👑 Welcome, {user.first_name or user.username or 'owner'}! You're the owner of Neko. 🐾")
         else:
-            text = ("🐾 Welcome to Neko — your AI trading cat.\n\n"
-                    "Run your own bot on real prices in one tap:\n"
-                    "  • No @BotFather, no token — I AM the bot\n"
-                    "  • Just pick a name, a chain, and start\n\n"
-                    "⚠️ Trading involves real risk. Not financial advice.")
+            # Guided tour for new users: a short read->Continue sequence that ends
+            # by handing them into the per-bot onboarding (name -> chain -> wallet)
+            # which itself runs all the way to the dashboard.
+            kb = telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("🐾 Continue", callback_data="tour:2")]])
+            await update.message.reply_text(TOUR[1], reply_markup=kb)
+            return
         kb = [[telegram.InlineKeyboardButton("➕ Add My Bot", callback_data="nav:add"),
                telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="nav:lb")],
-              [telegram.InlineKeyboardButton("🤖 My Bots", callback_data="nav:mybots"),
-               telegram.InlineKeyboardButton("❓ Help", callback_data="nav:help")]]
+              [telegram.InlineKeyboardButton("❓ Help", callback_data="nav:help")]]
         await update.message.reply_text(text, reply_markup=telegram.InlineKeyboardMarkup(kb))
+
+    async def tour_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        q = update.callback_query
+        await q.answer()
+        page = int(q.data.split(":")[1])
+        text, label, cb = tour_nav(page)
+        await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
+            [[telegram.InlineKeyboardButton(label, callback_data=cb)]]))
 
     async def nav_how(update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
@@ -72,7 +100,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             "➕ New trading bot — one tap:\n\n"
             "1. Tap the button below (or type /addbot)\n"
             "2. Send the name you want to trade with\n\n"
-            "No @BotFather, no token. That's the whole setup.",
+            "That's the whole setup.",
             reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("🚀 Create my bot", callback_data="nav:add")]]),
         )
@@ -97,79 +125,17 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             [[telegram.InlineKeyboardButton("↻ Refresh", callback_data="nav:lb")],
              [telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]))
 
-    async def nav_mybots(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        q = update.callback_query
-        await q.answer()
-        bots = registry.bots_for(q.from_user.id)
-        if not bots:
-            await q.message.edit_text("You have no bots yet.", reply_markup=telegram.InlineKeyboardMarkup(
-                [[telegram.InlineKeyboardButton(MENU["main_new"], callback_data="nav:add")], [telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]))
-            return
-        lines = ["🤖 Your bots:"]
-        kb = []
-        for b in bots:
-            mark = "🟢" if b["is_running"] else "⏸️"
-            lines.append(f"{mark} {b['bot_name']}  @{b['bot_username']}")
-            kb.append([telegram.InlineKeyboardButton(f"👁 {b['bot_name']}", callback_data=f"bot:view:{b['id']}")])
-        kb.append([telegram.InlineKeyboardButton(MENU["main_new"], callback_data="nav:add")])
-        kb.append([telegram.InlineKeyboardButton(HOME, callback_data="nav:home")])
-        await q.message.edit_text("\n".join(lines), reply_markup=telegram.InlineKeyboardMarkup(kb))
-
-    async def bot_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        q = update.callback_query
-        await q.answer()
-        _, _, bot_id = q.data.split(":")
-        bot = registry.get_bot(int(bot_id))
-        if not bot or bot["tg_id"] != q.from_user.id:
-            await q.message.edit_text("Bot not found.")
-            return
-        has_own = bool(userbot_controller.registry.bot_token(bot["id"]))
-        status = "🟢 running" if bot["is_running"] else "⏸️ paused"
-        where = (f"all controls live in @{bot['bot_username']}" if has_own
-                 else "tap Drive to open its dashboard here")
-        drive = (telegram.InlineKeyboardButton(f"🔗 Open @{bot['bot_username']}", callback_data=f"none:{bot_id}")
-                 if has_own else
-                 telegram.InlineKeyboardButton(f"🐾 Drive {bot['bot_name']}", callback_data=f"switch:{bot_id}"))
-        line = (f"{bot['bot_name']} — {where}\n"
-                f"Heartbeat: {bot['last_heartbeat'] or 'never'} · interval {bot['interval_sec']}s · "
-                f"profile {bot['risk_profile']}\n"
-                f"Agent: {bot['agent_name']} · {status}")
-        await q.message.edit_text(line, reply_markup=telegram.InlineKeyboardMarkup(
-            [[drive],
-             [telegram.InlineKeyboardButton("🗑️ Remove from network", callback_data=f"bot:remove:{bot_id}")],
-             [telegram.InlineKeyboardButton(BACK, callback_data="nav:mybots"), telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]))
-
-    async def bot_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        q = update.callback_query
-        await q.answer()
-        _, _, bot_id = q.data.split(":")
-        bot = registry.get_bot(int(bot_id))
-        if not bot or bot["tg_id"] != q.from_user.id:
-            return
-        await q.message.edit_text(f"Remove {bot['bot_name']} from the network? This stops its runner and wipes its keys.",
-                                  reply_markup=telegram.InlineKeyboardMarkup(
-                                      [[telegram.InlineKeyboardButton("✅ Yes, remove", callback_data=f"bot:remove_yes:{bot_id}")],
-                                       [telegram.InlineKeyboardButton("↩️ Keep it", callback_data="nav:mybots")]]))
-
-    async def bot_remove_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        q = update.callback_query
-        await q.answer()
-        _, _, bot_id = q.data.split(":")
-        bot = registry.get_bot(int(bot_id))
-        if not bot or bot["tg_id"] != q.from_user.id:
-            return
-        userbot_controller.stop_bot(bot_id)
-        registry.delete_bot(int(bot_id), q.from_user.id)
-        registry.revoke_keys(q.from_user.id)
-        await q.message.edit_text("🗑️ Removed. Your agent history stays on the platform.",
-                                  reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]))
+    # nav_mybots / bot_view / bot_remove removed: single-bot model has no bot
+    # picker. An owner lands directly on their dashboard (see on_start -> route).
+    # The per-bot Application's own Settings screen owns start/pause/delete, so
+    # management is not lost — it just lives inside the dashboard now.
 
     async def nav_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
         await q.answer()
         await q.message.edit_text(
             "❓ Help\n\n"
-            "• Add a bot: tap \"Add My Bot\" → send a name. No @BotFather needed.\n"
+            "• Add a bot: tap \"Add My Bot\" → send a name.\n"
             "• AI key rejected: check the key starts with the right prefix (sk-…)\n"
             "• Trading is live: live prices, live execution — understand the risk\n"
             "• Your cat's dashboard, wallet and positions all live right here in this chat\n\n"
@@ -247,6 +213,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
 
     app.add_handler(CommandHandler("start", on_start))
     app.add_handler(CommandHandler("menu", on_start))
+    app.add_handler(CallbackQueryHandler(tour_page, pattern=r"^tour:\d+$"))
     app.add_handler(CommandHandler("admin", admin_list))
     app.add_handler(CommandHandler("adminkill", admin_killall))
     app.add_handler(CallbackQueryHandler(nav_how, pattern=r"^nav:how$"))
@@ -254,10 +221,6 @@ def register_master_handlers(app, registry, platform, userbot_controller):
     app.add_handler(CallbackQueryHandler(nav_home, pattern=r"^nav:home$"))
     app.add_handler(CallbackQueryHandler(nav_add, pattern=r"^nav:add$"))
     app.add_handler(CallbackQueryHandler(nav_leaderboard, pattern=r"^nav:lb$"))
-    app.add_handler(CallbackQueryHandler(nav_mybots, pattern=r"^nav:mybots$"))
-    app.add_handler(CallbackQueryHandler(bot_view, pattern=r"^bot:view:\d+$"))
-    app.add_handler(CallbackQueryHandler(bot_remove, pattern=r"^bot:remove:\d+$"))
-    app.add_handler(CallbackQueryHandler(bot_remove_yes, pattern=r"^bot:remove_yes:\d+$"))
     app.add_handler(CallbackQueryHandler(nav_help, pattern=r"^nav:help$"))
     app.add_handler(CallbackQueryHandler(admin_killall, pattern=r"^admin:killall$"))
     app.add_handler(CallbackQueryHandler(admin_killall_yes, pattern=r"^admin:killall_yes$"))
