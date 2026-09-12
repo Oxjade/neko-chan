@@ -1179,7 +1179,7 @@ def _expand_universe_from_gateway(gw) -> None:
             # static fallback for the chain's known perp markets
             listed = {
                 "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
-                "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                "solana": ["SOL", "ETH", "BTC"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])
         # only override when the user has not pinned an explicit perp universe
@@ -2737,7 +2737,7 @@ def _scope_universe_to_chain() -> None:
         # chain IS chosen here, so always scope to the chain's perps.
         perp_assets = {
             "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
-            "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+            "solana": ["SOL", "ETH", "BTC"],
             "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
         }.get(chain, ["BTC", "ETH"])
         # Replace the universe: chain perps + user watch picks. Nothing else.

@@ -51,6 +51,14 @@ PERPS_CLOSE_ALL_URL = f"{PERPS_BASE}/v1/positions/close-all"
 
 SOL_MINT = "So11111111111111111111111111111111111111112"
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+# Jupiter Perps v1 markets are exactly these three mints (verified live via
+# the API's own enum validation, 2026-09). BTC's perp mint is the legacy
+# Wormhole one — NOT Jupiter's canonical tokens-search BTC mint.
+JUP_PERP_MINTS = {
+    "SOL": ("So11111111111111111111111111111111111111112", 9),
+    "ETH": ("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", 8),
+    "BTC": ("3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", 8),
+}
 USDC_DECIMALS = 6
 SOL_DECIMALS = 9
 XSTOCK_DECIMALS_FALLBACK = 8
@@ -140,6 +148,11 @@ class SOLAdapter:
 
     @staticmethod
     def _normalize_position(raw: dict) -> dict | None:
+        """Parse a GET /v1/positions item (Jupiter Perps v1).
+
+        All *Usd fields are integers scaled by 1e6 (USDC precision);
+        sizeTokenAmount/collateralTokenAmount are raw token units. The
+        positionPubkey is required by /positions/decrease to close."""
         side = str(raw.get("side") or raw.get("positionSide") or "").lower()
         if side in ("long", "buy"):
             side = "buy"
@@ -147,27 +160,35 @@ class SOLAdapter:
             side = "sell"
         else:
             return None
-        try:
-            qty = float(raw.get("qty") or raw.get("size") or 0.0)
-        except (TypeError, ValueError):
-            return None
-        if qty <= 0:
-            return None
 
-        def f(key: str) -> float | None:
+        def num(key: str) -> float | None:
             try:
-                return float(raw.get(key)) if raw.get(key) is not None else None
+                return float(raw.get(key)) if raw.get(key) not in (None, "") else None
             except (TypeError, ValueError):
                 return None
 
+        entry = (num("entryPriceUsd") or 0.0) / 1e6
+        size_usd = (num("sizeUsd") or 0.0) / 1e6
+        qty = size_usd / entry if entry > 0 else 0.0
+        if qty <= 0:
+            return None
+        pnl = (num("pnlAfterFeesUsd") or num("pnlBeforeFeesUsd")
+               or num("unrealizedPnl") or 0.0) / 1e6
         return {
-            "symbol": raw.get("symbol") or raw.get("mint") or "?",
+            "symbol": raw.get("asset") or raw.get("symbol")
+                      or raw.get("marketMint") or "?",
             "side": side,
             "qty": qty,
-            "entry": f("entryPrice") or f("entry") or 0.0,
-            "leverage": f("leverage") or 1.0,
-            "liq_price": f("liquidationPrice") or f("liqPrice"),
-            "pnl": f("pnl") or f("unrealizedPnl") or 0.0,
+            "entry": entry or ((num("entryPrice") or 0.0) / 1e6),
+            "leverage": num("leverage") or 1.0,
+            "liq_price": (num("liquidationPriceUsd") or num("liqPrice") or 0.0) / 1e6 or None,
+            "pnl": pnl,
+            # raw v1 fields the close path needs
+            "position_pubkey": raw.get("positionPubkey") or "",
+            "size_usd_e6": raw.get("sizeUsd"),
+            "collateral_usd_e6": raw.get("collateralUsd"),
+            "collateral_mint": raw.get("collateralMint") or "",
+            "market_mint": raw.get("assetMint") or raw.get("marketMint") or "",
         }
 
     # ---------------- place order ----------------
@@ -199,13 +220,24 @@ class SOLAdapter:
             LONG: collateralMint must be the MARKET token; SHORT: USDC.
           Returns a base64 transaction -> sign + broadcast.
         """
-        market_mint = self._resolve_mint(intent.symbol)
-        market_mint_addr = (market_mint or {}).get("mint") or intent.symbol
+        sym_u = (intent.symbol or "").upper()
+        perp = JUP_PERP_MINTS.get(sym_u)
+        if perp:
+            market_mint_addr, decimals = perp
+        else:
+            market_mint = self._resolve_mint(intent.symbol)
+            market_mint_addr = (market_mint or {}).get("mint") or intent.symbol
+            decimals = int((market_mint or {}).get("decimals") or 9)
         is_long = intent.side in ("buy", "long")
         collateral_mint = market_mint_addr if is_long else USDC_MINT
-        # collateral delta: notional / leverage, in raw decimals of the mint
-        raw_coll = int(intent.qty * ref_price / max(intent.leverage, 1.0)
-                       * (10 ** USDC_DECIMALS if collateral_mint == USDC_MINT else 1e9))
+        # collateral delta in RAW units of the collateral mint:
+        # LONG: collateral = market token -> qty/leverage (token units)
+        # SHORT: collateral = USDC -> notional/leverage (usd, 6 decimals)
+        if is_long:
+            raw_coll = int(intent.qty / max(intent.leverage, 1.0) * (10 ** decimals))
+        else:
+            raw_coll = int(intent.qty * ref_price / max(intent.leverage, 1.0)
+                           * (10 ** USDC_DECIMALS))
         body = {
             "walletAddress": self.pubkey,
             "marketMint": market_mint_addr,
@@ -373,20 +405,23 @@ class SOLAdapter:
         return [self._perp_close_position(pos) for pos in self.get_positions()]
 
     def _perp_close_position(self, pos: dict) -> dict:
-        """Close via POST /v1/positions/decrease (full size, reduce-only)."""
-        market_mint = self._resolve_mint(pos["symbol"])
-        market_mint_addr = (market_mint or {}).get("address") or pos["symbol"]
-        is_long = pos["side"] == "buy"
+        """Full close via POST /v1/positions/decrease.
+
+        Contract (verified live 2026-09): walletAddress, positionPubkey,
+        entirePosition, sizeUsdDelta + collateralUsdDelta (usd*1e6 strings),
+        desiredMint (collateral asset to receive back)."""
+        pubkey = pos.get("position_pubkey") or ""
+        if not pubkey:
+            return {"symbol": pos.get("symbol"), "ok": False,
+                    "error": "position missing positionPubkey - cannot close"}
         body = {
             "walletAddress": self.pubkey,
-            "marketMint": market_mint_addr,
-            "collateralMint": market_mint_addr if is_long else USDC_MINT,
-            "collateralTokenDelta": str(int(pos["qty"] * (pos.get("entry") or 0)
-                                            * (10 ** USDC_DECIMALS
-                                               if not is_long else 1e9))),
-            "inputMint": USDC_MINT,
+            "positionPubkey": pubkey,
+            "entirePosition": True,
+            "sizeUsdDelta": str(int(float(pos.get("size_usd_e6") or 0))),
+            "collateralUsdDelta": str(int(float(pos.get("collateral_usd_e6") or 0))),
+            "desiredMint": pos.get("collateral_mint") or USDC_MINT,
             "maxSlippageBps": str(int(SLIPPAGE_BPS)),
-            "side": "long" if is_long else "short",
         }
         resp = self._request("POST", PERPS_DECREASE_URL, json=body)
         tx = resp.get("transaction") or resp.get("tx") or resp.get("swapTransaction")

@@ -106,12 +106,14 @@ def test_place_order_jup_perp_posts_to_perps_increase(monkeypatch):
                                stop_loss=140.0, take_profit=160.0), 150.0)
     assert res["ok"] is True
     assert res["tx_hash"] == "sig-broadcast"
-    assert urls == [TOKENS_SEARCH_URL, PERPS_INCREASE_URL]
-    body = bodies[1]
-    # v1 contract: long collateral = market token; leverage as str; slippage as str
+    # SOL is in the perp-mint map: no tokens search needed
+    assert urls == [PERPS_INCREASE_URL]
+    body = bodies[0]
+    # v1 contract: long collateral = market token in TOKEN units (0.1/2 * 1e9)
     assert body["side"] == "long"
     assert body["marketMint"] == "So11111111111111111111111111111111111111112"
     assert body["collateralMint"] == body["marketMint"]
+    assert body["collateralTokenDelta"] == "50000000"
     assert body["leverage"] == "200" and body["maxSlippageBps"] == "50"
 
 
@@ -250,9 +252,18 @@ def test_flat_and_cancel_closes_perps_then_cancels_limits(monkeypatch):
         if url.startswith(PERPS_POSITIONS_URL):
             position_fetches[0] += 1
             if position_fetches[0] == 1:
+                # v1 GET /positions item shape (usd fields are *1e6 strings)
                 return Resp({"dataList": [
-                    {"symbol": "SOL", "side": "long", "qty": 2.0, "entryPrice": 150.0, "leverage": 2},
-                    {"symbol": "BTC", "side": "short", "qty": 0.5, "entryPrice": 60000.0, "leverage": 3},
+                    {"asset": "SOL", "assetMint": "So11111111111111111111111111111111111111112",
+                     "collateralMint": "So11111111111111111111111111111111111111112",
+                     "positionPubkey": "PPSOL", "side": "long", "leverage": "2",
+                     "sizeUsd": "300000000", "entryPriceUsd": "150000000",
+                     "collateralUsd": "150000000"},
+                    {"asset": "BTC", "assetMint": "BTCMINT",
+                     "collateralMint": USDC_MINT,
+                     "positionPubkey": "PPBTC", "side": "short", "leverage": "3",
+                     "sizeUsd": "30000000", "entryPriceUsd": "60000000000",
+                     "collateralUsd": "10000000"},
                 ]})
             return Resp({"dataList": []})
         if url == TOKENS_SEARCH_URL:
@@ -278,8 +289,14 @@ def test_flat_and_cancel_closes_perps_then_cancels_limits(monkeypatch):
     cancel_idx = [i for i, u in enumerate(calls) if "cancel" in u]
     assert close_idx and cancel_idx
     assert max(close_idx) < min(cancel_idx)
-    assert close_bodies[0]["side"] == "long" and close_bodies[0]["side"] == "long"
-    assert close_bodies[1]["side"] == "short"
+    # v1 close contract: positionPubkey + entirePosition + usd*1e6 deltas
+    assert close_bodies[0]["positionPubkey"] == "PPSOL"
+    assert close_bodies[0]["entirePosition"] is True
+    assert close_bodies[0]["sizeUsdDelta"] == "300000000"
+    assert close_bodies[0]["collateralUsdDelta"] == "150000000"
+    assert close_bodies[0]["desiredMint"] == "So11111111111111111111111111111111111111112"
+    assert close_bodies[1]["positionPubkey"] == "PPBTC"
+    assert close_bodies[1]["desiredMint"] == USDC_MINT
     assert res["cancel"]["limit_cancelled"] == [{"id": "lo-1", "ok": True}]
 
 

@@ -14,6 +14,7 @@ import time
 from datetime import datetime, timezone
 
 import telegram
+import requests
 from telegram import Update
 from telegram.ext import (Application, ContextTypes, CommandHandler,
                           CallbackQueryHandler, ConversationHandler,
@@ -309,6 +310,9 @@ class UserBotController:
         self.agent_pool = agent_pool
         self.gateway = gateway  # ExecGateway (on-chain execution) or None
         self._apps: dict[int, Application] = {}
+        # bots served through the master router (token-less) vs their own poller
+        self._route_managed: dict[int, bool] = {}
+        self._routed_started: set[int] = set()  # lazy app.initialize() once
         self._lock = threading.Lock()
         import tg_config as _cfg
         self._master_token = _cfg.MASTER_BOT_TOKEN or ""
@@ -966,58 +970,82 @@ class UserBotController:
             if not bot:
                 return False
             token = self.registry.bot_token(bot_id)
-            if not token:
+            # Single-master-bot model: a token-less bot has no @BotFather token
+            # of its own, so it SERVES through the MASTER token (its send
+            # identity) but is NEVER independently polled — the master router
+            # feeds it updates via route()/process_update(). A legacy bot that
+            # still carries its own token keeps its dedicated poller unchanged.
+            self_token = token  # None for master-only bots
+            send_token = token or self._master_token or _master_token_fallback()
+            if not send_token:
+                log.warning("bot %s has no token and no master token configured", bot_id)
                 return False
             # SESSION UNIQUENESS: one poller per Telegram token. Two bot rows
             # sharing a token = Telegram 409 conflicts, dropped updates, and
             # cross-user session bleed (bots 2/4 both held @Nkofbot).
-            other = self.registry.bot_token_owner(token, exclude_bot_id=bot_id)
-            if other is not None:
-                log.warning("bot %s shares its Telegram token with bot %s - refusing to start a second poller",
-                            bot_id, other)
-                self.registry.update_bot(
-                    bot_id, is_running=0,
-                    last_error=f"token already polled by bot {other} - relink this bot with its own token")
-                return False
-            # PRE-FLIGHT: validate the token before spawning the poll thread.
-            # A dead token (regenerated in @BotFather) polls 'Unauthorized'
-            # forever - the user can NEVER reach the bot to change anything
-            # (their API key included). Fail fast, mark the bot, and tell the
-            # user through the MASTER bot (which is always alive) how to fix it.
-            # ONLY a confirmed 401 marks the token dead: a network hiccup here
-            # must not disable a healthy bot.
-            try:
-                r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
-                body = r.json() if r.status_code == 200 else {}
-                if r.status_code in (401, 403) or (
-                        isinstance(body, dict) and body.get("error_code") in (401, 403)):
+            # The one-poller-per-token uniqueness + getMe pre-flight only apply
+            # to a LEGACY bot that polls its OWN token. A master-only bot has no
+            # token to be 409-conflicted or dead — the master is already proven
+            # alive by serving the update that created the need for this bot.
+            if self_token:
+                other = self.registry.bot_token_owner(self_token, exclude_bot_id=bot_id)
+                if other is not None:
+                    log.warning("bot %s shares its Telegram token with bot %s - refusing to start a second poller",
+                                bot_id, other)
                     self.registry.update_bot(
                         bot_id, is_running=0,
-                        last_error="bot token invalid - relink required (recreate the token "
-                                   "in @BotFather, then send /relink to @Nekochanadminbot)")
-                    log.warning("bot %s (@%s) token rejected by Telegram - not starting, user notified",
-                                bot_id, bot.get("bot_username"))
-                    self._notify_dead_token(bot, bot_id)
+                        last_error=f"token already polled by bot {other} - relink this bot with its own token")
                     return False
-                # any other status (429/5xx/timeout): let the poll retry loop handle it
-            except Exception:
-                pass  # network error - don't mislabel a healthy token as dead
+                # PRE-FLIGHT: validate the token before spawning the poll thread.
+                # A dead token (regenerated in @BotFather) polls 'Unauthorized'
+                # forever - the user can NEVER reach the bot to change anything
+                # (their API key included). Fail fast, mark the bot, and tell the
+                # user through the MASTER bot (which is always alive) how to fix it.
+                # ONLY a confirmed 401 marks the token dead: a network hiccup here
+                # must not disable a healthy bot.
+                try:
+                    r = requests.get(f"https://api.telegram.org/bot{self_token}/getMe", timeout=10)
+                    body = r.json() if r.status_code == 200 else {}
+                    if r.status_code in (401, 403) or (
+                            isinstance(body, dict) and body.get("error_code") in (401, 403)):
+                        self.registry.update_bot(
+                            bot_id, is_running=0,
+                            last_error="bot token invalid - relink required (recreate the token "
+                                       "in @BotFather, then send /relink to @Nekochanadminbot)")
+                        log.warning("bot %s (@%s) token rejected by Telegram - not starting, user notified",
+                                    bot_id, bot.get("bot_username"))
+                        self._notify_dead_token(bot, bot_id)
+                        return False
+                    # any other status (429/5xx/timeout): let the poll retry loop handle it
+                except Exception:
+                    pass  # network error - don't mislabel a healthy token as dead
             # 3-MINUTE MESSAGE TTL: every message the bot SENDS (notifications,
             # confirmations, prompts) and every USER INPUT (pasted keys,
             # amounts) self-destructs after TG_MSG_TTL_SECONDS. Only the MAIN
             # DASHBOARD persists. TTLRequest is injected at build time -
             # PTB's ExtBot and HTTPXRequest are frozen and cannot be
             # monkey-patched (that crash-looped the service on 2026-09-06).
-            TTLRequest = self._install_message_ttl(token)
+            # send_token == the master token for master-only bots, so TTL deletes
+            # and all dashboard sends go out as @Neko_tradesbot.
+            TTLRequest = self._install_message_ttl(send_token)
             app = (Application.builder()
-                   .token(token)
+                   .token(send_token)
                    .request(TTLRequest())
                    .build())
-            self._register_user_input_ttl(app, token)
+            self._register_user_input_ttl(app, send_token)
             self._install_owner_gate(app, bot)
             self._register_handlers(app, bot)
             self._apps[bot_id] = app
+            # A master-only bot is fed by the router, not by its own poller.
+            self._route_managed[bot_id] = (self_token is None)
             self.registry.update_bot(bot_id, is_running=1, last_heartbeat=utcnow())
+
+        # Only a legacy own-token bot gets a dedicated poller thread. Master-only
+        # bots are served by the master router (route/process_update) and start
+        # "connected" here.
+        if self_token is None:
+            log.info("bot %s registered as master-only (routed, not polled)", bot_id)
+            return True
 
         def _poll():
             import asyncio
@@ -1107,6 +1135,8 @@ class UserBotController:
     def stop_bot(self, bot_id: int):
         with self._lock:
             app = self._apps.pop(bot_id, None)
+            self._route_managed.pop(bot_id, None)
+            self._routed_started.discard(bot_id)
         if app:
             app.stop()
             self.registry.update_bot(bot_id, is_running=0)
@@ -1115,6 +1145,56 @@ class UserBotController:
         for bot in self.registry.all_bots():
             if not bot.get("paused"):
                 self.start_bot(bot["id"])
+
+    # ---------------- master-router dispatch (single-bot serving) ----------------
+
+    def route_target(self, tg_id: int, active_bot_id: int | None = None) -> int | None:
+        """Which of this user's bots should serve one master update.
+
+        A single-bot user always routes there. A multi-bot user routes to the
+        explicitly active bot (only if it is THEIRS - a stale/foreign id is
+        ignored), else None so the caller can show a bot switcher."""
+        bots = self.registry.bots_for(tg_id)
+        if not bots:
+            return None
+        ids = {b["id"] for b in bots}
+        if active_bot_id is not None and active_bot_id in ids:
+            return active_bot_id
+        if len(ids) == 1:
+            return next(iter(ids))
+        return None
+
+    async def route(self, update, active_bot_id: int | None = None) -> bool:
+        """Forward one master-bot update into the owning bot's Application via
+        process_update. Returns True if a routed Application handled it.
+
+        The routed Application was built with the MASTER token as its send
+        identity (start_bot), so every reply/keyboard it emits appears as
+        @Neko_tradesbot. Its owner-gate, TTL wrapper and conversation state all
+        run exactly as in the per-token model - no dashboard code is rewritten.
+        This is why the 3,800-line dashboard can move to one bot untouched.
+        """
+        uid = None
+        if getattr(update, "effective_user", None) is not None:
+            uid = update.effective_user.id
+        elif getattr(update, "effective_chat", None) is not None:
+            uid = update.effective_chat.id
+        if uid is None:
+            return False
+        bot_id = self.route_target(uid, active_bot_id)
+        if bot_id is None:
+            return False
+        app = self._apps.get(bot_id)
+        if app is None or not self._route_managed.get(bot_id):
+            return False  # legacy own-poller bot: it already got its own update
+        if bot_id not in self._routed_started:
+            try:
+                await app.initialize()
+            except Exception:
+                pass
+            self._routed_started.add(bot_id)
+        await app.process_update(update)
+        return True
 
     # ---------------- handlers ----------------
 
@@ -1434,7 +1514,7 @@ class UserBotController:
             if not _parse_watchlist((b_now or {}).get("watchlist")):
                 _def_watch = {
                     "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
-                    "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                    "solana": ["SOL", "ETH", "BTC"],
                     "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
                 }.get(chain, ["BTC", "ETH"])
                 self.registry.update_bot(bot_id,
@@ -1589,7 +1669,7 @@ class UserBotController:
             watched = _parse_watchlist(b.get("watchlist"))
             default = {
                 "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
-                "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                "solana": ["SOL", "ETH", "BTC"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])
             active = (watched or default)[:5]
@@ -2602,7 +2682,7 @@ class UserBotController:
             watched = _parse_watchlist(b.get("watchlist"))
             default = {
                 "sui": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
-                "solana": ["BTC", "ETH", "SOL", "SUI", "DOGE"],
+                "solana": ["SOL", "ETH", "BTC"],
                 "hyperliquid": ["BTC", "ETH", "SOL", "SUI", "HYPE"],
             }.get(chain, ["BTC", "ETH"])
             active = watched or default
@@ -2881,7 +2961,7 @@ class UserBotController:
                         "XMR", "ZEC", "MON", "XAG", "WTI", "US500", "GOOGL",
                         "NVDA", "TSLA", "INTC", "MU", "MRVL", "SNDK", "AMC",
                         "DRAM", "LLY", "IOVA", "SPCX", "PUMP", "CHIP", "LIT"},
-                "solana": {"BTC", "ETH", "SOL", "SUI", "DOGE"},
+                "solana": {"SOL", "ETH", "BTC"},
                 "hyperliquid": {"HYPE", "BTC", "ETH", "SOL", "SUI", "ARB", "DOGE",
                                 "LINK", "SEI", "NEAR", "ATOM", "AAVE", "UNI", "PURR"},
             }

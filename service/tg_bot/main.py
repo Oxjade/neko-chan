@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 
 from telegram import Update
-from telegram.ext import Application, ContextTypes
+from telegram.ext import Application, ContextTypes, TypeHandler, ApplicationHandlerStop
 
 import tg_config as cfg
 from key_vault import KeyVault
@@ -59,6 +59,48 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     app.add_error_handler(_error_handler)
     app.add_handler(simple_flow_handlers(registry, vault, platform, userbot, agent_pool))
     register_master_handlers(app, registry, platform, userbot)
+
+    # Master router: single-bot serving. Every update the master's own handlers
+    # did NOT claim (dashboard callbacks, onboarding, text on a bot screen) is
+    # forwarded into the OWNING bot's Application, whose send identity is the
+    # master token - so the whole per-bot dashboard runs inside @Neko_tradesbot
+    # with zero handler rewrites. Registered last in group 0 so specific master
+    # commands (/start, nav:, admin:) win first.
+    async def _router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if await userbot.route(update, context.chat_data.get("active_bot_id")):
+            raise ApplicationHandlerStop
+        user = getattr(update, "effective_user", None)
+        if not user:
+            return
+        bots = registry.bots_for(user.id)
+        if len(bots) > 1:
+            # multi-bot owner with no active bot: show a switcher, then route
+            import telegram as _tg
+            kb = [[_tg.InlineKeyboardButton(b["bot_name"],
+                                            callback_data=f"switch:{b['id']}")]
+                  for b in bots]
+            msg = (getattr(update, "effective_message", None)
+                   or getattr(getattr(update, "callback_query", None), "message", None))
+            if msg:
+                await msg.reply_text("🐾 Which cat do you want to drive?",
+                                     reply_markup=_tg.InlineKeyboardMarkup(kb))
+
+    async def _switch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        q = update.callback_query
+        await q.answer()
+        bot_id = int(q.data.split(":", 1)[1])
+        if bot_id not in {b["id"] for b in registry.bots_for(q.from_user.id)}:
+            return
+        context.chat_data["active_bot_id"] = bot_id
+        b = registry.get_bot(bot_id)
+        await q.edit_message_text(f"🐈 Now driving {b['bot_name']}.")
+
+    # Order within group 0 decides precedence: master commands (registered
+    # above) and the switcher win first; the router is the last catch-all, so
+    # only updates nothing else claimed are forwarded to a bot Application.
+    from telegram.ext import CallbackQueryHandler
+    app.add_handler(CallbackQueryHandler(_switch, pattern=r"^switch:\d+$"))
+    app.add_handler(TypeHandler(Update, _router))
     return app
 
 
@@ -85,9 +127,10 @@ def start_watchers(registry: Registry, platform: PlatformClient):
     for bot in registry.all_bots():
         if not bot.get("is_running") or not bot.get("agent_id"):
             continue
+        # Master-only model: a token-less bot pushes via the master token
+        # (Notifier resolves the fallback). Do NOT skip it — that would leave
+        # migrated users silent. chat_id is the owner's own tg_id.
         bot_token = registry.bot_token(bot["id"])
-        if not bot_token:
-            continue
         watcher = Watcher(
             db_path=db_path,
             notify=notifier,
@@ -120,6 +163,11 @@ def start_bot_cleanup(registry: Registry, userbot: UserBotController,
     import threading as _threading
 
     def _notify_owner(bot: dict, message: str):
+        # token-less (master-only) bot: fall back to the master sender so the
+        # owner still receives the deletion notice.
+        if not registry.bot_token(bot["id"]):
+            _notify_owner_via_master(bot, message)
+            return
         try:
             token = registry.bot_token(bot["id"])
             if not token:

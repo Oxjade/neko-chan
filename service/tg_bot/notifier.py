@@ -64,9 +64,23 @@ class Notifier:
     def __init__(self, registry):
         self.registry = registry
 
+    def _token(self, bot_token: str | None) -> str:
+        """Send identity for the single-master-bot model. A token-less bot
+        (created without a @BotFather token) pushes through the MASTER token;
+        a legacy bot that still has its own token keeps using it. This keeps
+        per-user @BotFather tokens optional without breaking existing pushes."""
+        if bot_token:
+            return bot_token
+        try:
+            import tg_config as _cfg
+            return _cfg.MASTER_BOT_TOKEN or _cfg.require_master_token()
+        except Exception:
+            return ""
+
     def _send(self, bot_token: str, chat_id: int, text: str,
               buttons: list[list[str]] | None = None) -> bool:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        token = self._token(bot_token)
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
         markup = _normalize_buttons(buttons)
         if markup:
@@ -76,7 +90,7 @@ class Notifier:
             if r.status_code == 200:
                 mid = r.json().get("result", {}).get("message_id")
                 if mid:
-                    _schedule_delete(bot_token, chat_id, mid)
+                    _schedule_delete(token, chat_id, mid)
                 return True
             return False
         except requests.RequestException:
@@ -85,7 +99,8 @@ class Notifier:
     def _send_photo(self, bot_token: str, chat_id: int, photo_path: str,
                     caption: str = "", buttons: list[list[str]] | None = None) -> bool:
         """Send a photo (PNG card) with optional caption + inline buttons."""
-        url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+        token = self._token(bot_token)
+        url = f"https://api.telegram.org/bot{token}/sendPhoto"
         try:
             with open(photo_path, "rb") as f:
                 files = {"photo": f}
@@ -97,7 +112,7 @@ class Notifier:
                 if r.status_code == 200:
                     mid = r.json().get("result", {}).get("message_id")
                     if mid:
-                        _schedule_delete(bot_token, chat_id, mid)
+                        _schedule_delete(token, chat_id, mid)
                     return True
                 return False
         except requests.RequestException:

@@ -6,9 +6,13 @@ import threading
 from datetime import datetime, timezone
 
 from key_vault import KeyVault
+from db_migrate import BOTS_TABLE_DDL, TARGET_VERSION, migrate, needs_migration
 
 _LOCK = threading.RLock()
 
+# The bots table is defined in db_migrate.py (single source of truth) so a fresh
+# install and a migrated legacy DB are byte-identical in shape. All OTHER
+# tables stay here.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     tg_id INTEGER PRIMARY KEY,
@@ -31,37 +35,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
     revoked_at TEXT,
     UNIQUE(tg_id, revoked_at)
 );
-CREATE TABLE IF NOT EXISTS bots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tg_id INTEGER NOT NULL,
-    bot_name TEXT NOT NULL,
-    bot_token_enc BLOB NOT NULL,
-    bot_token_hash TEXT NOT NULL UNIQUE,
-    bot_username TEXT NOT NULL,
-    agent_name TEXT NOT NULL UNIQUE,
-    agent_id INTEGER,
-    platform_token TEXT NOT NULL,
-    symbols TEXT NOT NULL,          -- JSON {"perps":1,"spot":0,"us-stock":1,"forex":0}
-    leverage REAL NOT NULL DEFAULT 1.0,
-    interval_sec INTEGER NOT NULL DEFAULT 120,
-    risk_profile TEXT NOT NULL,
-    risk_caps TEXT NOT NULL,        -- JSON preset values
-    is_running INTEGER DEFAULT 0,
-    paused INTEGER DEFAULT 0,
-    pid INTEGER,
-    last_heartbeat TEXT,
-    last_error TEXT,
-    scheduled_deletion_at TEXT,
-    trader_type TEXT DEFAULT 'scalp',
-    chain TEXT DEFAULT 'sui',
-    network TEXT DEFAULT 'mainnet',
-    watchlist TEXT DEFAULT '',
-    onboarding_complete INTEGER DEFAULT 0,
-    wallet_addr TEXT DEFAULT '',
-    trading_mode TEXT DEFAULT 'paper',
-    priority_watch TEXT DEFAULT '',
-    created_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tg_id INTEGER NOT NULL,
@@ -72,7 +45,6 @@ CREATE TABLE IF NOT EXISTS events (
     UNIQUE(tg_id, kind, ref_id)
 );
 CREATE INDEX IF NOT EXISTS idx_keys_owner ON api_keys(tg_id);
-CREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(tg_id);
 CREATE INDEX IF NOT EXISTS idx_events_owner ON events(tg_id);
 """
 
@@ -96,6 +68,23 @@ class Registry:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA busy_timeout=30000")
             self._conn.executescript(_SCHEMA)
+            # bots table from the shared DDL (single source of truth). Fresh DB:
+            # created in the target shape and stamped. Legacy DB: left as-is so
+            # the guarded migration below rebuilds it (fail-closed).
+            self._conn.executescript(
+                BOTS_TABLE_DDL.replace("CREATE TABLE bots",
+                                       "CREATE TABLE IF NOT EXISTS bots", 1)
+                + ";\nCREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(tg_id);")
+            if needs_migration(self._conn):
+                # The app must never boot against an unmigrated registry: a
+                # half-migrated DB is worse than a crash-loop. Migration is
+                # guarded + idempotent; a failed invariant raises here.
+                migrate(self._conn)
+            else:
+                cur_ver = self._conn.execute("PRAGMA user_version").fetchone()[0]
+                if int(cur_ver) < TARGET_VERSION:
+                    self._conn.execute(f"PRAGMA user_version = {TARGET_VERSION}")
+            self._conn.commit()
             # migrations for pre-existing databases
             for stmt in (
                 "ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0",
@@ -217,17 +206,27 @@ class Registry:
 
     # ---------------- bots ----------------
 
-    def create_bot(self, tg_id: int, bot_name: str, bot_token: str, bot_username: str,
+    def create_bot(self, tg_id: int, bot_name: str, bot_token: str | None, bot_username: str | None,
                    agent_name: str, platform_token: str, symbols: dict, leverage: float,
                    interval_sec: int, risk_profile: str, agent_id: int | None = None) -> dict:
-        enc_token = self.vault.encrypt(bot_token)
-        token_hash = self.vault.hash_key(bot_token)
+        # Master-only model: a bot no longer needs its own Telegram token. When
+        # bot_token is None we store NULLs and a synthesized handle so nothing
+        # downstream renders '@None'. A provided token still works (legacy rows).
+        if bot_token is not None:
+            enc_token = self.vault.encrypt(bot_token)
+            token_hash = self.vault.hash_key(bot_token)
+        else:
+            enc_token = None
+            token_hash = None
+        if not bot_username:
+            bot_username = "neko-" + str(agent_name).replace(" ", "_")[:24]
         with _LOCK:
-            dup = self._conn.execute(
-                "SELECT id FROM bots WHERE bot_token_hash = ?", (token_hash,)
-            ).fetchone()
-            if dup:
-                raise ValueError("this Telegram bot token is already registered")
+            if token_hash is not None:
+                dup = self._conn.execute(
+                    "SELECT id FROM bots WHERE bot_token_hash = ?", (token_hash,)
+                ).fetchone()
+                if dup:
+                    raise ValueError("this Telegram bot token is already registered")
             cur = self._conn.execute(
                 "INSERT INTO bots (tg_id, bot_name, bot_token_enc, bot_token_hash, bot_username, agent_name, "
                 "agent_id, platform_token, symbols, leverage, interval_sec, risk_profile, risk_caps, created_at) "
@@ -257,7 +256,9 @@ class Registry:
     def bot_token(self, bot_id: int) -> str | None:
         with _LOCK:
             row = self._conn.execute("SELECT bot_token_enc FROM bots WHERE id = ?", (bot_id,)).fetchone()
-            return self.vault.decrypt(row["bot_token_enc"]) if row else None
+        if not row or row["bot_token_enc"] is None:
+            return None  # master-only bot: no per-user Telegram token
+        return self.vault.decrypt(row["bot_token_enc"])
 
     def bot_token_owner(self, token: str, exclude_bot_id: int | None = None) -> int | None:
         """Return the bot_id already running this Telegram token, if any.

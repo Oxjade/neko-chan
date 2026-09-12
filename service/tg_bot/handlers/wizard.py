@@ -1,13 +1,12 @@
-"""Simple Add-My-Bot flow for Neko (master bot).
+"""Single-bot onboarding: create your Neko trading bot with just a NAME.
 
-User journey:
-  1. /start  -> welcome message (id auto-captured; first user becomes owner)
-  2. paste their @BotFather bot token  -> validated + ownership check
-  3. type the name they want to trade with -> agent registered on the platform,
-     bot added to the network.
+The @BotFather token + VERIFY-code challenge are gone. The master bot
+(@Neko_tradesbot) IS the bot the user talks to; adding a "trading bot" now
+means creating an agent + a token-less registry row that the master router
+serves (see UserBotController.route). Signup is: tap Add -> type a name -> done.
 
-The AI key / risk profile / markets are configured later inside the user's own
-bot (Settings) - signup stays minimal.
+The AI key / risk profile / markets are configured later on the bot's dashboard,
+so signup stays minimal.
 """
 
 import re
@@ -16,14 +15,13 @@ import telegram
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
-from tg_config import REGISTRY_PATH
 from messages import WIZARD, MENU, mask_key
 from handlers.common import (
     HOME, CANCEL, menu_keyboard, cancel_keyboard,
-    generate_verify_code, get_bot_username, poll_for_verify_code,
 )
 
-# conversation states
+# S_TOKEN kept as a stable id (== 1) only so state numbering is unchanged; the
+# name step is the single step now.
 S_TOKEN, S_NAME = range(2)
 
 NAME_RE = re.compile(r"^[A-Za-z0-9 _\-]{3,24}$")
@@ -37,14 +35,16 @@ def validate_name(name: str) -> str | None:
 
 
 def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
-    """Register the 3-step Add-My-Bot conversation."""
+    """Register the token-less 'Add my bot' conversation (name only)."""
 
     async def start_wizard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            WIZARD["token"],
+            "🐾 What should your trading cat be called?\n\n"
+            "Pick a name (3–24 chars, letters/numbers/space), e.g. BitcoinWhale.\n"
+            "No @BotFather needed anymore — it's just you and me now.",
             reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(CANCEL, callback_data="wiz:cancel")]]),
         )
-        return S_TOKEN
+        return S_NAME
 
     async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -56,85 +56,6 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
             await update.message.reply_text(WIZARD["cancel"])
         return ConversationHandler.END
 
-    async def on_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        token = (update.message.text or "").strip()
-        if len(token) < 20 or ":" not in token:
-            await update.message.reply_text(WIZARD["token_bad"],
-                                            reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("↻ Retry", callback_data="wiz:retry")]]))
-            return S_TOKEN
-        username = get_bot_username(token)
-        if not username:
-            await update.message.reply_text(WIZARD["token_bad"],
-                                            reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("↻ Retry", callback_data="wiz:retry")]]))
-            return S_TOKEN
-        # duplicate check before ownership proof
-        for b in registry.all_bots():
-            if registry.bot_token(b["id"]) == token:
-                await update.message.reply_text("This bot is already registered.")
-                return S_TOKEN
-        context.bot_data["pending"] = {"token": token, "username": username,
-                                       "verify_code": generate_verify_code()}
-        await _send_verify_screen(update.message, context.bot_data["pending"])
-        return S_TOKEN
-
-    async def _send_verify_screen(msg, pending: dict):
-        """Shows the code + buttons. New code on every request (no reuse)."""
-        pending["verify_code"] = generate_verify_code()
-        code_digits = "".join(ch for ch in pending["verify_code"] if ch.isdigit())
-        await msg.reply_text(
-            WIZARD["verify"].format(username=pending["username"], code_digits=code_digits),
-            reply_markup=telegram.InlineKeyboardMarkup([
-                [telegram.InlineKeyboardButton("✅ I sent it", callback_data="wiz:verify_ok")],
-                [telegram.InlineKeyboardButton("🔄 Send code again", callback_data="wiz:resend_code")],
-                [telegram.InlineKeyboardButton(CANCEL, callback_data="wiz:cancel")],
-            ]),
-        )
-
-    async def on_resend(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        pending = context.bot_data.get("pending")
-        await query.answer()
-        if not pending:
-            await query.message.reply_text("Session expired - use /start to begin again.")
-            return ConversationHandler.END
-        await _send_verify_screen(query.message, pending)
-        return S_TOKEN
-
-    async def on_verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        pending = context.bot_data.get("pending")
-        await query.answer()
-        if not pending:
-            await query.message.reply_text("Session expired - use /start to begin again.")
-            return ConversationHandler.END
-        await query.message.edit_text("⏳ Watching your bot for the code (up to 60s)…")
-        result = poll_for_verify_code(pending["token"], pending["verify_code"], timeout_s=60)
-        import logging
-
-        logging.getLogger("tg_bot").info(
-            "verify result=%s user=%s bot=%s", result, query.from_user.id, pending["username"])
-        if result == "no_updates":
-            code_digits = "".join(ch for ch in pending["verify_code"] if ch.isdigit())
-            await query.message.edit_text(
-                WIZARD["verify_no_chat"].format(username=pending["username"],
-                                                code=code_digits),
-                reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("✅ I sent it", callback_data="wiz:verify_ok")],
-                                                            [telegram.InlineKeyboardButton("🔄 Send code again", callback_data="wiz:resend_code")],
-                                                            [telegram.InlineKeyboardButton(CANCEL, callback_data="wiz:cancel")]]),
-            )
-            return S_TOKEN
-        if result != "verified":
-            await query.message.edit_text(WIZARD["verify_bad"],
-                                          reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("🔄 Send code again", callback_data="wiz:resend_code")],
-                                                                                      [telegram.InlineKeyboardButton("↻ Retry check", callback_data="wiz:verify_ok")]]))
-            return S_TOKEN
-        await query.message.edit_text(WIZARD["verify_ok"])
-        await query.message.reply_text(
-            "Now send the name you want to trade with (3–24 chars, e.g. BitcoinWhale):",
-            reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(CANCEL, callback_data="wiz:cancel")]]),
-        )
-        return S_NAME
-
     async def on_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import logging
 
@@ -142,14 +63,14 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
         name = (update.message.text or "").strip()
         err = validate_name(name)
         if err:
-            await update.message.reply_text(f"❌ {err}")
+            await update.message.reply_text(f"❌ {err}",
+                                            reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(CANCEL, callback_data="wiz:cancel")]]))
             return S_NAME
-        pending = context.bot_data.get("pending")
-        if not pending:
-            await update.message.reply_text("Session expired - use /start to begin again.")
-            return ConversationHandler.END
         tg_id = update.effective_user.id
         registry.upsert_user(tg_id, update.effective_user.username or update.effective_user.first_name)
+
+        # a per-user unique agent handle so the platform leaderboard can tell
+        # two people's "Whale" apart (mirrors the legacy naming rule).
         agent_name = name
         try:
             agent = platform.register_agent(agent_name)
@@ -167,8 +88,9 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
                 await update.message.reply_text(f"⚠️ Platform error: {exc}")
                 return S_NAME
         try:
+            # token-less bot: no @BotFather token, master serves it via router.
             bot = registry.create_bot(
-                tg_id, name, pending["token"], pending["username"],
+                tg_id, name, None, None,
                 agent.get("name", agent_name), agent["token"],
                 {"perps": 0, "spot": 1, "us-stock": 1, "forex": 1},
                 1.0, 120, "balanced",
@@ -177,30 +99,28 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
         except ValueError as exc:
             log.warning("bot create failed: %s", exc)
             await update.message.reply_text(str(exc))
-            return S_TOKEN
+            return S_NAME
         try:
             if userbot:
-                userbot.start_bot(bot["id"])
+                userbot.start_bot(bot["id"])  # master-only: routed, not polled
             if agent_pool:
                 agent_pool.start(bot["id"])
         except Exception as exc:  # noqa: BLE001 - bot is registered; start is best-effort
             log.error("bot start failed (bot still registered): %s", exc)
         await update.message.reply_text(
-            WIZARD["done"].format(name=name, username=pending["username"]),
-            reply_markup=telegram.ReplyKeyboardMarkup(menu_keyboard(), resize_keyboard=True),
+            f"✅ {name} is live! Tap it to open its dashboard.",
+            reply_markup=telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton(f"🐾 Open {name}", callback_data=f"switch:{bot['id']}")],
+                [telegram.InlineKeyboardButton("🤖 My Bots", callback_data="nav:mybots")],
+            ]),
         )
-        log.info("bot registered user=%s name=%s username=%s", tg_id, name, pending["username"])
-        context.bot_data.pop("pending", None)
+        log.info("token-less bot registered user=%s name=%s bot_id=%s", tg_id, name, bot["id"])
         return ConversationHandler.END
 
     return ConversationHandler(
-        entry_points=[CommandHandler("addbot", start_wizard)],
+        entry_points=[CommandHandler("addbot", start_wizard),
+                      CallbackQueryHandler(start_wizard, pattern=r"^nav:add$")],
         states={
-            S_TOKEN: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_token),
-                CallbackQueryHandler(on_verify, pattern=r"^wiz:verify_ok$"),
-                CallbackQueryHandler(on_resend, pattern=r"^wiz:resend_code$"),
-            ],
             S_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, on_name)],
         },
         fallbacks=[CallbackQueryHandler(cancel, pattern=r"^wiz:cancel$")],

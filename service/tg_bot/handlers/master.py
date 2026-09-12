@@ -23,11 +23,10 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             names = ", ".join(f"{b['bot_name']} {'🟢' if b['is_running'] else '⏸️'}" for b in bots)
             text = f"🐾 Neko-Chan missed you! You have: {names}"
         else:
-            text = ("🐾 Welcome to Neko — the AI trader bot network.\n\n"
-                    "Run your own AI trading bot on a platform with real prices.\n"
-                    "You bring two keys — I do the rest:\n"
-                    "  1️⃣ A Telegram bot token (from @BotFather) → your channel\n"
-                    "  2️⃣ An AI API key → my brain\n\n"
+            text = ("🐾 Welcome to Neko — your AI trading cat.\n\n"
+                    "Run your own bot on real prices in one tap:\n"
+                    "  • No @BotFather, no token — I AM the bot\n"
+                    "  • Just pick a name, a chain, and start\n\n"
                     "⚠️ Trading involves real risk. Not financial advice.")
         kb = [[telegram.InlineKeyboardButton("➕ Add My Bot", callback_data="nav:add"),
                telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="nav:lb")],
@@ -70,10 +69,12 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         q = update.callback_query
         await q.answer()
         await q.message.reply_text(
-            "➕ Add your bot:\n\n"
-            "1. Create it in @BotFather → /newbot → copy the token\n"
-            "2. Type /addbot here and paste it\n\n"
-            "Then send the name you want to trade with. That's it.",
+            "➕ New trading bot — one tap:\n\n"
+            "1. Tap the button below (or type /addbot)\n"
+            "2. Send the name you want to trade with\n\n"
+            "No @BotFather, no token. That's the whole setup.",
+            reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton("🚀 Create my bot", callback_data="nav:add")]]),
         )
 
     async def nav_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,12 +123,19 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         if not bot or bot["tg_id"] != q.from_user.id:
             await q.message.edit_text("Bot not found.")
             return
-        line = (f"{bot['bot_name']} — all controls live in @{bot['bot_username']}\n"
+        has_own = bool(userbot_controller.registry.bot_token(bot["id"]))
+        status = "🟢 running" if bot["is_running"] else "⏸️ paused"
+        where = (f"all controls live in @{bot['bot_username']}" if has_own
+                 else "tap Drive to open its dashboard here")
+        drive = (telegram.InlineKeyboardButton(f"🔗 Open @{bot['bot_username']}", callback_data=f"none:{bot_id}")
+                 if has_own else
+                 telegram.InlineKeyboardButton(f"🐾 Drive {bot['bot_name']}", callback_data=f"switch:{bot_id}"))
+        line = (f"{bot['bot_name']} — {where}\n"
                 f"Heartbeat: {bot['last_heartbeat'] or 'never'} · interval {bot['interval_sec']}s · "
                 f"profile {bot['risk_profile']}\n"
-                f"Agent: {bot['agent_name']} · {('🟢 running' if bot['is_running'] else '⏸️ paused')}")
+                f"Agent: {bot['agent_name']} · {status}")
         await q.message.edit_text(line, reply_markup=telegram.InlineKeyboardMarkup(
-            [[telegram.InlineKeyboardButton(f"🔗 Open @{bot['bot_username']}", callback_data=f"none:{bot_id}")],
+            [[drive],
              [telegram.InlineKeyboardButton("🗑️ Remove from network", callback_data=f"bot:remove:{bot_id}")],
              [telegram.InlineKeyboardButton(BACK, callback_data="nav:mybots"), telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]))
 
@@ -161,10 +169,10 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         await q.answer()
         await q.message.edit_text(
             "❓ Help\n\n"
-            "• Get a bot token: open @BotFather → /newbot → copy the token\n"
+            "• Add a bot: tap \"Add My Bot\" → send a name. No @BotFather needed.\n"
             "• AI key rejected: check the key starts with the right prefix (sk-…)\n"
             "• Trading is live: live prices, live execution — understand the risk\n"
-            "• Lost your bot in BotFather: re-create it, then re-verify the token here\n\n"
+            "• Your cat's dashboard, wallet and positions all live right here in this chat\n\n"
             "Contact: @support",
             reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]),
         )
