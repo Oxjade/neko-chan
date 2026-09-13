@@ -1749,6 +1749,14 @@ def market_open(market: str) -> bool:
     return True
 
 
+def ai_gate_blocks_entry(action: str, has_ai_key: bool) -> bool:
+    """Pure policy: under the momentum20 engine an OPEN-side action (buy/short)
+    may proceed only when an AI key is connected - the bot never trades on the
+    quant matrix alone. Closes (sell/cover) are never blocked (capital safety).
+    Returns True if the action must be blocked."""
+    return action in ("buy", "short") and not has_ai_key
+
+
 def run_cycle(token: str, dry: bool = False) -> None:
     global _last_llm_at
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -2213,35 +2221,17 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 "reasoning": "scenario matrix: no positive-EV trade right now - cash"}
                     _last_scenario = None
                 elif LIVE_AGENT_API_KEY and time.time() - _last_llm_at < LLM_COOLDOWN_SECONDS:
-                    # AI-key cooldown: the model was asked recently, so pick the
-                    # best scenario deterministically instead of burning another
-                    # paid/rate-limited call. The math pick is the same engine the
-                    # model is given; this just skips the model's vote for a while.
-                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR, priority_symbol=PRIORITY)
-                    if best is None:
-                        decision = {"action": "hold", "symbol": "", "quantity": 0,
-                                    "stop_loss_pct": 0, "take_profit_pct": 0,
-                                    "reasoning": "AI-key cooldown - no strong scenario, cash"}
-                        _last_scenario = None
-                    else:
-                        side = "buy" if best.direction == "long" else "short"
-                        stop_pct = abs(best.entry - best.stop) / best.entry * 100
-                        take_pct = abs(best.target - best.entry) / best.entry * 100
-                        # Clamp to REACHABLE interday levels so the trade
-                        # actually executes against real USDC and the target
-                        # can hit within hours-to-days.
-                        stop_pct, take_pct = clamp_risk_levels(stop_pct, take_pct)
-                        qty, lev, why = balance_aware_size(
-                            eq, portfolio.get('cash', eq), best.entry, stop_pct,
-                            best.symbol, conviction=best.conviction, p_win=best.p_win)
-                        decision = {"action": side, "symbol": best.symbol,
-                                    "quantity": qty,
-                                    "stop_loss_pct": round(stop_pct, 2),
-                                    "take_profit_pct": round(take_pct, 2),
-                                    "leverage": lev,
-                                    "reasoning": f"[quant/cooldown] best scenario {best.direction} "
-                                                 f"{best.symbol} EV={best.ev:+.2f}R | {why}"}
-                        _last_scenario = best
+                    # AI-key cooldown: the model was asked recently. Entries are
+                    # NOT opened on the math engine here - an entry is made only
+                    # when the model actually decides (the elif LIVE_AGENT_API_KEY
+                    # branch below). Until the next model call this cycle holds
+                    # new positions (existing positions are still managed by the
+                    # exit checks above). Operator policy: quant never trades.
+                    decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                "stop_loss_pct": 0, "take_profit_pct": 0,
+                                "reasoning": "AI model deciding - holding new entries "
+                                             "until the next model call (quant never trades)"}
+                    _last_scenario = None
                 elif LIVE_AGENT_API_KEY:
                     # LLM compiles the matrix and picks the best trade
                     _last_llm_at = time.time()
@@ -2427,30 +2417,19 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                         "reasoning": f"[LLM] {llm_reasoning[:200]}"}
                         _last_scenario = None
                 else:
-                    # no LLM key -> fall back to the math's best scenario
-                    best = pick_best_scenario(matrix, has_long, has_short, CONVICTION_FLOOR, priority_symbol=PRIORITY)
-                    if best is None:
-                        decision = {"action": "hold", "symbol": "", "quantity": 0,
-                                    "stop_loss_pct": 0, "take_profit_pct": 0,
-                                    "reasoning": "best scenario has non-positive EV - cash"}
-                        _last_scenario = None
-                    else:
-                        # OPEN-SIDE action: a SHORT scenario opens a real short.
-                        side = "buy" if best.direction == "long" else "short"
-                        stop_pct = abs(best.entry - best.stop) / best.entry * 100
-                        take_pct = abs(best.target - best.entry) / best.entry * 100
-                        stop_pct, take_pct = clamp_risk_levels(stop_pct, take_pct)
-                        qty, lev, why = balance_aware_size(
-                            eq, portfolio.get('cash', eq), best.entry, stop_pct,
-                            best.symbol, conviction=best.conviction, p_win=best.p_win)
-                        decision = {"action": side, "symbol": best.symbol,
-                                    "quantity": qty,
-                                    "stop_loss_pct": round(stop_pct, 2),
-                                    "take_profit_pct": round(take_pct, 2),
-                                    "leverage": lev,
-                                    "reasoning": f"[quant] best scenario {best.direction} "
-                                                 f"{best.symbol} EV={best.ev:+.2f}R | {why}"}
-                        _last_scenario = best
+                    # NO AI KEY CONNECTED -> never open a position on the
+                    # deterministic quant engine. The math matrix is still built
+                    # and shown (Peek), and exits still run (they protect
+                    # capital), but ENTRY decisions require a connected AI brain.
+                    # Operator policy: the bot must not silently trade without
+                    # the model actually deciding.
+                    decision = {"action": "hold", "symbol": "", "quantity": 0,
+                                "stop_loss_pct": 0, "take_profit_pct": 0,
+                                "reasoning": "AI key not connected - Neko does not "
+                                             "trade on quant alone. Connect an AI key "
+                                             "in Settings to enable trading."}
+                    _last_scenario = None
+                    print("[agent] HOLD: no AI key - entries disabled (quant-only trading not allowed)")
         except Exception as exc:
             print(f"[quant] engine failed, holding: {exc}")
             decision = {"action": "hold", "symbol": "", "quantity": 0,
@@ -2569,6 +2548,18 @@ def run_cycle(token: str, dry: bool = False) -> None:
         elif action == "cover" and not has_short:
             row["action"] = "hold"; row["error"] = f"no short position in {symbol}"
 
+    if row["action"] in ("buy", "sell", "short", "cover"):
+        # HARD AI-GATE (defense-in-depth): under the momentum20 engine an OPEN
+        # position requires a connected AI key - the bot must never trade on the
+        # quant matrix alone. The decision block already holds without a key;
+        # this guarantees it even if a decision ever slips through. Exits
+        # (sell/cover) are never blocked - they only protect capital.
+        if ai_gate_blocks_entry(row["action"], bool(LIVE_AGENT_API_KEY)):
+            row["action"] = "hold"
+            row["error"] = "AI key not connected - entries blocked (never trades on quant)"
+            print(f"[gate] {symbol} {action} blocked: no AI key")
+            log_decision(row)
+            return row
     if row["action"] in ("buy", "sell", "short", "cover"):
         # PROFITABILITY GATE (SCALPER ONLY): new entries must clear regime + fee
         # floor. momentum20 has its OWN validated gate (20d > 2% long) - the 5m
