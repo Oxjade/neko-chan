@@ -64,3 +64,8 @@ Scope: Collapse all per-user Telegram bots onto the single master bot (@Neko_tra
   CHECK: ssh root@162.35.118.102 'test $(systemctl is-active neko.service)=active && test $(ps -eo cmd|grep -c "[l]ive_agent.py") -ge 3 && echo LIVE_GREEN'
   EXPECT: LIVE_GREEN
   EVIDENCE: 2026-09-12 verified live: neko.service active, NRestarts=0; 3 live_agent processes (pids 2409709/710/711) matching bots 1/3/4; watchers started for all 3; journal shows agents fetching real prices (BTC/ETH/HYPE/SOL); getWebhookInfo url="" pending_update_count=0 (sole poller); no 409/Unauthorized/Traceback. agent_pool fix deployed (prod sha 93b9d1ccf2996fa8 == local).
+
+- [x] G14: New-user tour is crash-free and renders HTML — a brand-new (non-admin) user's `/start` shows the guided tour with `parse_mode=HTML` (no floating `<b>`/`<code>`), every page uses a plain "Continue" button (no "Create my bot"), and the final Continue enters the name step via the callback path WITHOUT the `update.message is None` crash, handing into ob:intro -> trader/chain/wallet -> dashboard.
+  CHECK: .venv/bin/python -m pytest tests/tg_bot/test_single_master_migration.py -q -k "tour or hands_into_onboarding"
+  EXPECT: 2 passed
+  EVIDENCE: 2026-09-13 ran -> "2 passed". Local repro confirmed: /start sends parse_mode=HTML; nav:add via a CallbackQueryHandler now returns S_NAME (no AttributeError). Fixed in wizard.start_wizard (effective_message + answer) and master tour handlers (parse_mode, relabel). Deployed + restarted; commit 28b4742e.
