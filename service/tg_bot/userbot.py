@@ -1209,7 +1209,7 @@ class UserBotController:
 
             Signup is friction-free: bot token -> name -> terms -> dashboard.
             The AI key is prompted later (dashboard banner + Start Trading)
-            since the bot trades on the quant engine without it."""
+            since the bot needs an AI key before it will open any trade."""
             b = self.registry.get_bot(bot_id)
             if (b or {}).get("onboarding_complete"):
                 await dash(update, context)
@@ -1219,7 +1219,7 @@ class UserBotController:
                 f"🐾 Welcome to {bot['bot_name']} - your AI trading cat.\n\n"
                 "Setup takes 30 seconds: pick a style, a chain, back up your "
                 "wallet — then you're on the dashboard with a $1,000 paper "
-                "portfolio. No API keys needed to start.\n\n"
+                "portfolio. (You'll connect an AI key so your bot can trade.)\n\n"
                 "⚠️ Trading involves real risk. (I'm a cat, not an advisor.)"
             )
             kb = telegram.InlineKeyboardMarkup([
@@ -1614,9 +1614,10 @@ class UserBotController:
             # keyless — the dashboard tells them exactly what to do next.
             has_key = bool(self.registry.get_active_key(tg_id))
             if not has_key:
-                text += ("\n\n🔑 <b>Connect an AI API key to enable AI-powered "
-                         "trades</b> — until then the bot trades on the built-in "
-                         "quant engine.")
+                text += ("\n\n⛔ <b>NOT TRADING — connect your AI key to start.</b>\n"
+                         "Your bot scans the markets but will NOT open any trade "
+                         "until you connect an AI key (it powers every decision). "
+                         "Tap the button below — takes 30 seconds.")
             # Pause now means "pause trading (LLM)" — bot stays online, so use `paused` flag
             is_trading = not b.get("paused") and b.get("is_running")
             start_label = "⏸️ Pause Trading" if is_trading else "▶️ Start Trading"
@@ -1624,7 +1625,7 @@ class UserBotController:
             mode_label = "🧪 Switch to PAPER" if mode == "live" else "🔴 Switch to LIVE"
             mode_cb = "sb:mode_paper" if mode == "live" else "sb:mode_live"
             key_row = [] if has_key else [[telegram.InlineKeyboardButton(
-                "🔑 Connect AI Key — unlock AI trades", callback_data="key:start")]]
+                "🔑 Connect AI Key to Start Trading", callback_data="key:start")]]
             kb = telegram.InlineKeyboardMarkup(key_row + [
                 [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
                  telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
@@ -1648,10 +1649,11 @@ class UserBotController:
         async def start_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            # KEYLESS OK: no AI key means the quant engine makes the calls.
+            # Without an AI key the bot will NOT trade - tell the user plainly
+            # and send them to connect one instead of a misleading "quant mode".
             if not self.registry.get_active_key(tg_id):
-                await q.answer("Quant engine mode — connect an AI key for AI trades",
-                               show_alert=True)
+                await q.answer("🔑 Connect your AI key first — your bot won't "
+                               "trade without it.", show_alert=True)
             self.registry.update_bot(bot_id, paused=0, is_running=1)
             if self.agent_pool:
                 self.agent_pool.start(bot_id)
@@ -2703,9 +2705,13 @@ class UserBotController:
             if raw in ("start", "resume", "go", "trade"):
                 if not self.registry.get_active_key(tg_id):
                     await update.message.reply_text(
-                        "🧠 Quant engine mode (no AI key yet) — trading on the "
-                        "built-in math. Connect an AI key in Settings for "
-                        "AI-powered decisions.")
+                        "⛔ Your bot won't trade until you connect an AI key — "
+                        "it powers every decision. Open Settings → Set AI Key "
+                        "(takes 30 seconds), then start trading.",
+                        reply_markup=telegram.InlineKeyboardMarkup(
+                            [[telegram.InlineKeyboardButton(
+                                "🔑 Connect AI Key to Start Trading", callback_data="key:start")]]))
+                    return
                 self.registry.update_bot(bot_id, paused=0, is_running=1)
                 if self.agent_pool:
                     self.agent_pool.start(bot_id)
