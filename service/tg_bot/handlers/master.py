@@ -12,12 +12,14 @@ from handlers.common import HOME, menu_keyboard, home_keyboard
 
 def tour_nav(page: int):
     """Pure: which callback the current tour page's button leads to.
-    Returns (page_text, button_label, button_callback). The last page hands the
-    user into the name step (nav:add -> wizard -> ob:intro onboarding)."""
+    Returns (page_text, button_label, button_callback). Every page uses the same
+    "Continue" affordance; the last page's Continue hands the user into the name
+    step (nav:add) which creates a token-less bot and enters the ob:intro
+    onboarding - so it reads as one Continue-through to the dashboard."""
     page = max(2, min(len(TOUR), page))
     if page < len(TOUR):
         return TOUR[page], "🐾 Continue", f"tour:{page+1}"
-    return TOUR[page], "🐾 Create my bot", "nav:add"
+    return TOUR[page], "🐾 Continue", "nav:add"
 
 
 def register_master_handlers(app, registry, platform, userbot_controller):
@@ -47,7 +49,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
             # by handing them into the per-bot onboarding (name -> chain -> wallet)
             # which itself runs all the way to the dashboard.
             kb = telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("🐾 Continue", callback_data="tour:2")]])
-            await update.message.reply_text(TOUR[1], reply_markup=kb)
+            await update.message.reply_text(TOUR[1], parse_mode="HTML", reply_markup=kb)
             return
         kb = [[telegram.InlineKeyboardButton("➕ Add My Bot", callback_data="nav:add"),
                telegram.InlineKeyboardButton("🏆 Leaderboard", callback_data="nav:lb")],
@@ -59,7 +61,7 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         await q.answer()
         page = int(q.data.split(":")[1])
         text, label, cb = tour_nav(page)
-        await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=telegram.InlineKeyboardMarkup(
             [[telegram.InlineKeyboardButton(label, callback_data=cb)]]))
 
     async def nav_how(update: Update, context: ContextTypes.DEFAULT_TYPE):

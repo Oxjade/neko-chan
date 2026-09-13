@@ -38,7 +38,13 @@ def simple_flow_handlers(registry, vault, platform, userbot, agent_pool):
     """Register the token-less 'Add my bot' conversation (name only)."""
 
     async def start_wizard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(
+        # Entered BOTH by /addbot (a text message) and by the tour's "Continue"
+        # button (a callback query -> update.message is None). Answer the query
+        # and reply on the effective message so neither path crashes.
+        if update.callback_query:
+            await update.callback_query.answer()
+        msg = update.effective_message
+        await msg.reply_text(
             "🐾 What should your trading cat be called?\n\n"
             "Pick a name (3–24 chars, letters/numbers/space), e.g. BitcoinWhale. "
             "Then it's just you and me from here.",
