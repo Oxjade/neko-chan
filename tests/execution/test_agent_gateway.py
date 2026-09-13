@@ -110,6 +110,29 @@ def test_route_real_order_open_attaches_stop_and_tp():
     assert intent.idempotency_key.startswith("agent:TestAgent:BTC:buy:")
 
 
+def test_entry_limit_is_marketable_not_resting():
+    """A marketable limit CROSSES the spread so it fills immediately.
+    Regression: the old sign made BUY rest BELOW the market and SHORT rest
+    ABOVE it -> entries silently never filled (the 'limit order isn't working'
+    and 'not decisive' symptoms). Buy limit must be >= ref; short limit <= ref."""
+    gw = _gw()
+    # BUY (long entry): bid above market -> guaranteed to cross
+    live_agent.route_real_order(gw, 7, "BTC", "crypto", "buy", 0.01,
+                                stop_pct=5.0, take_pct=10.0, ref_price=80000, leverage=20)
+    _, intent, _ = gw.router.last
+    assert intent.order_type == "limit"
+    assert intent.limit_price >= 80000.0, "buy limit must cross (at/above market)"
+
+    # SHORT entry: ask below market -> guaranteed to cross
+    gw2 = _gw()
+    live_agent.route_real_order(gw2, 7, "ETH", "crypto", "short", 0.01,
+                                stop_pct=5.0, take_pct=10.0, ref_price=2500, leverage=10)
+    _, intent2, _ = gw2.router.last
+    assert intent2.order_type == "limit"
+    assert intent2.limit_price <= 2500.0, "short limit must cross (at/below market)"
+
+
+
 def test_route_real_order_close_is_1x_no_rearmed_stops():
     gw = _gw()
     res = live_agent.route_real_order(

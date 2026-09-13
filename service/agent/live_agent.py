@@ -1330,9 +1330,14 @@ def route_real_order(gw, bot_id: int, symbol: str, market: str, action: str,
     lev = clamp_leverage(symbol, market, leverage, stop_pct=stop_pct if is_entry else None)
     _entry_off = ENTRY_OFFSET_BPS / 10000.0
     if is_entry:
-        # cross-inside slightly: fills immediately, earns maker pricing on the rest
-        limit_price = round(ref_price * (1 - _entry_off) if side == "buy"
-                            else ref_price * (1 + _entry_off), 6)
+        # MARKETABLE limit entry: bid slightly ABOVE the ask (long) or ASK
+        # slightly BELOW the bid (short) so it crosses and fills immediately,
+        # exactly like a market order but with a price ceiling/floor protecting
+        # against slippage between decision and send. (The old sign placed the
+        # buy BELOW market / short ABOVE market = a resting maker order that the
+        # market rarely crossed -> entries silently never filled.)
+        limit_price = round(ref_price * (1 + _entry_off) if side == "buy"
+                            else ref_price * (1 - _entry_off), 6)
     else:
         # CLOSE: cross the spread so the exit cannot rest unfilled
         limit_price = round(ref_price * (1 - _entry_off) if side == "sell"
@@ -2641,13 +2646,14 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     print(f"[paper] {symbol} REJECTED by user - skipped")
                     log_decision(row)
                     return row
-                # LIMIT ORDER like live: a marketable limit 2bps inside the
-                # market (fill immediate, maker pricing on the rest). The
-                # old paper path passed limit_price=None -> market fills.
+                # LIMIT ORDER like live, MARKETABLE so it fills immediately:
+                # buy at/above market, short at/below. The old sign made every
+                # entry a resting maker order that rarely crossed -> paper
+                # positions silently never opened.
                 _ref_px = prices.get(symbol, 0) or row["price"] or 0
                 _off = ENTRY_OFFSET_BPS / 10000.0
-                _limit = round(_ref_px * (1 - _off) if action == "buy"
-                               else _ref_px * (1 + _off), 6) if _ref_px > 0 else None
+                _limit = round(_ref_px * (1 + _off) if action == "buy"
+                               else _ref_px * (1 - _off), 6) if _ref_px > 0 else None
                 row["order_type"] = "LIMIT"
                 row["limit_price"] = _limit or row["price"]
                 fill = pg.open(EXEC_BOT_ID, symbol,
