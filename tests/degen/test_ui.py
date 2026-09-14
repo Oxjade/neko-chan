@@ -84,9 +84,12 @@ def test_degen_view_strip_and_keyboard():
     assert "🎰 DEGEN" in strip and "budget" in strip
     kb = ui.degen_keyboard(bot, led.get_config(1))
     flat = str(kb.inline_keyboard)
-    for want in ("Suipump", "Blast 🔒", "Both venues", "Buy a meme", "Degen Pos",
+    for want in ("Suipump", "Blast 🔒", "Both venues", "Buy a meme",
                  "Sniper", "Copy", "Bundle", "KILL", "Main Dashboard", "↻ Refresh"):
         assert want in flat, want
+    # positions are NOT a second button/screen: they live in the dashboard's
+    # single 📡 POSITIONS space (perp + degen merged by dash()).
+    assert "Pos" not in flat
     # main-dashboard rhythm: max 2 buttons per row
     for row in kb.inline_keyboard:
         assert len(row) <= 2, [b.text for b in row]

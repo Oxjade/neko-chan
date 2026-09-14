@@ -106,7 +106,8 @@ def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
 
 
 def render_production_dashboard(bot: dict, account: dict, chain: str,
-                                equity: dict | None = None) -> str:
+                                equity: dict | None = None,
+                                degen_positions: list | None = None) -> str:
     """Simple production dashboard: real chain balance + address + positions.
 
     `equity` is an optional sui_equity.sui_equity() snapshot used to show a
@@ -140,7 +141,10 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         equity_lines = ("\n<b>💎 EQUITY</b>\n" + "\n".join(bits)
                         + f"\n  <b>Total <code>{_money(e_eq, sign=False)}</code></b>")
     pos_lines = []
-    if not positions:
+    # ONE positions space: perps rows then degen rows — a live meme position is
+    # shown HERE on the main dashboard, never on a second card/screen.
+    _dg = degen_positions or []
+    if not positions and not _dg:
         pos_lines.append("  no open positions")
     for p in positions[:3]:
         sym = str(p.get("symbol") or p.get("coin") or "?")
@@ -165,6 +169,11 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
             meta += f" · target {tgt}"
         lev_tag = f" {lev:g}x" if lev >= 1 else ""
         pos_lines.append(f"  {_esc(sym)}  {side.upper()}{lev_tag} {qty:g}  {_money(pnl)}{meta}")
+    for dp in _dg[:3]:
+        venue = "🎨" if dp.get("venue") == "pool" else "🐸"
+        pos_lines.append(f"  {_esc(str(dp.get('symbol') or (dp.get('curve_id') or '?')[:6]))}"
+                         f"  DEGEN {venue}  {float(dp.get('entry_sui') or 0):g} SUI")
+    _n = len(positions) + len(_dg)
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
         f"<code>{line}</code>\n"
@@ -175,7 +184,7 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         f"{f'  realized {_money(realized)}' if realized else ''}\n"
         f"{equity_lines}\n"
         f"{('<b>🔗 ADDRESS</b>\n  <code>' + _esc(addr) + '</code>') if addr else ''}\n"
-        f"<b>📡 POSITIONS ({len(positions)})</b>\n" + "\n".join(pos_lines) + "\n"
+        f"<b>📡 POSITIONS ({_n})</b>\n" + "\n".join(pos_lines) + "\n"
         f"<code>{line}</code>"
     )
 
@@ -1663,7 +1672,15 @@ class UserBotController:
             # Paper mode: no on-chain equity block — the balances dict IS the paper equity.
             mode = (b.get("trading_mode") or "paper").lower()
             _eq = None if mode == "paper" else self._equity_snapshot(b)
-            text = render_production_dashboard(b, account, chain, equity=_eq)
+            _dpos = []
+            try:
+                _dui = self._degen_ui(b)
+                if _dui is not None and _dui.led.get_config(bot_id).get("enabled"):
+                    _dpos = _dui.led.positions(bot_id)
+            except Exception:
+                _dpos = []
+            text = render_production_dashboard(b, account, chain, equity=_eq,
+                                               degen_positions=_dpos)
             # AI KEY PROMPT: friction-free signup means most new users arrive
             # keyless — the dashboard tells them exactly what to do next.
             has_key = bool(self.registry.get_active_key(tg_id))

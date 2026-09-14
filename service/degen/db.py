@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS degen_config (
     budget_sui REAL NOT NULL DEFAULT 0.0,
     caps_json TEXT NOT NULL DEFAULT '{}',         -- per_order|daily_loss|max_open (SUI)
     allow_generic INTEGER NOT NULL DEFAULT 1,
+    view INTEGER NOT NULL DEFAULT 0,                -- degen VIEW toggled on the dashboard
     updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS degen_position (
@@ -212,6 +213,11 @@ class DegenLedger:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=30000")
         self._conn.executescript(_SCHEMA)
+        # additive migration for ledgers created before `view` existed
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(degen_config)")]
+        if "view" not in cols:
+            self._conn.execute(
+                "ALTER TABLE degen_config ADD COLUMN view INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
 
     # ---------------- config ----------------
@@ -226,11 +232,12 @@ class DegenLedger:
             return d
         return {"bot_id": bot_id, "enabled": 0, "ai_key_ok": 0,
                 "launchpads": "suipump", "budget_sui": 0.0, "caps": {},
-                "allow_generic": 1}
+                "allow_generic": 1, "view": 0}
 
     def set_config(self, bot_id: int, **fields) -> None:
         caps = fields.pop("caps", None)
-        allowed = {"enabled", "ai_key_ok", "launchpads", "budget_sui", "allow_generic"}
+        allowed = {"enabled", "ai_key_ok", "launchpads", "budget_sui",
+                   "allow_generic", "view"}
         sets, vals = [], []
         for k in allowed:
             if k in fields:

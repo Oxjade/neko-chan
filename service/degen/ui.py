@@ -54,17 +54,18 @@ class DegenUI:
         # message, only the keyboard swaps. The mount injects `dash_render` =
         # the userbot's own dash() coroutine; without it we fall back to
         # rendering strip+keyboard standalone (tests / pre-mount).
-        self.degen_view: set[int] = set()
         self.dash_render = None
 
+    # ---------------- degen VIEW state — persisted in the ledger so a service
+    # restart (or any re-render) remembers which view the user was on.
     def degen_on(self, bot_id: int) -> bool:
-        return int(bot_id) in self.degen_view
+        return bool(self.led.get_config(int(bot_id)).get("view"))
 
     def enter(self, bot_id: int) -> None:
-        self.degen_view.add(int(bot_id))
+        self.led.set_config(int(bot_id), view=1)
 
     def exit(self, bot_id: int) -> None:
-        self.degen_view.discard(int(bot_id))
+        self.led.set_config(int(bot_id), view=0)
 
     # ---------------- registration ----------------
     def command_handlers(self):
@@ -188,13 +189,15 @@ class DegenUI:
         caps = cfg.get("caps", {}) or {}
         kill_row = [B("♻️ Release Kill", "dg:unkill")] if caps.get("killed") \
             else [B("🛑 KILL", "dg:kill")]
+        # Positions live in the dashboard's SINGLE 📡 POSITIONS space (perp +
+        # degen lines merged by dash()) — no duplicate positions button here.
         return KB([
             [B("🎯 Buy a meme", "dg:buy")],
-            [B("📊 Degen Positions", "dg:pos"), B("📋 Orders", "dg:orders")],
+            [B("📋 Orders", "dg:orders"), B("🛡 Risk", "dg:risk")],
             [B("🪝 Sniper", "dg:sniper"), B("👥 Copy", "dg:copy")],
-            [B("🧺 Bundle", "dg:bundle"), B("🛡 Risk", "dg:risk")],
+            [B("🧺 Bundle", "dg:bundle"), B("⏻ Disable", "dg:off")],
             [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast")],
-            [B("⚡ Both venues", "dg:lp:both"), B("⏻ Disable", "dg:off")],
+            [B("⚡ Both venues", "dg:lp:both")],
             kill_row,
             [B("📊 Main Dashboard", "dg:main"), B("↻ Refresh", "dg:hub")],
         ])
@@ -270,17 +273,23 @@ class DegenUI:
     # ---------------- callback router ----------------
     async def on_cb(self, update: Update, context):
         q = update.callback_query
-        await q.answer()
+        data = q.data
+        # Answer the callback EXACTLY once (a second q.answer() raises
+        # BadRequest "Query is already answered" and kills the branch — this
+        # is why Blast/Suipump taps appeared to do nothing). Venue taps and the
+        # no-key guard answer with their own toast instead.
+        if not (data.startswith("dg:lp:") or data == "dg:on"):
+            await q.answer()
         bot = self._bot(update)
         if not bot:
             return
         bid = int(bot["id"])
         cfg = self.led.get_config(bid)
-        data = q.data
         if data == "dg:on":
             if not self._ai_ok(bot):
                 await q.answer("⛔ Connect your AI key first", show_alert=True)
                 return
+            await q.answer("🎰 Degen ON")
             self.led.set_config(bid, enabled=1)
             self.enter(bid)
             await self._render(update, context, bot)
@@ -295,10 +304,19 @@ class DegenUI:
             await self._render(update, context, bot)
         elif data.startswith("dg:lp:"):
             lp = data.split(":")[2]
-            if lp == "blast" or (lp == "both" and not K.BLAST_LIVE):
-                await q.answer("💣 Blast 🔒 coming soon — both = Suipump until then",
+            if lp == "blast":
+                await q.answer("💣 Blast — coming soon. We enable it only after "
+                               "auditing their contracts, same as Suipump.",
                                show_alert=True)
+            elif lp == "both" and not K.BLAST_LIVE:
+                await q.answer("⚡ Both = Suipump until Blast passes its audit (§7.1)",
+                               show_alert=True)
+                self.led.set_config(bid, launchpads="suipump")
+                await self._render(update, context, bot)
             else:
+                await q.answer({"suipump": "🐸 Venue: Suipump",
+                                "both": "⚡ Venue: both venues"}
+                               .get(lp, "✓ venue set"), show_alert=False)
                 self.led.set_config(bid, launchpads=lp)
                 await self._render(update, context, bot)
         elif data == "dg:kill":
@@ -424,7 +442,7 @@ class DegenUI:
         ok = res.get("ok")
         txt = ("✅ <b>FILL</b>\ndigest <code>" + esc(str(res.get("digest", ""))[:14]) +
                "…</code>") if ok else "❌ rejected: " + esc(str(res.get("error", "caps")))
-        kb = KB([[B("📊 Positions", "dg:pos"), B("🎰 hub", "dg:hub")]])
+        kb = KB([[B("↻ Refresh", "dg:hub"), B("📊 Main Dashboard", "dg:main")]])
         await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
 
     # ---------------- sections ----------------
