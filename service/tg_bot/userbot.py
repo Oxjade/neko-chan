@@ -1545,7 +1545,7 @@ class UserBotController:
             if chain in texts:
                 if chain == "sui":
                     kb = telegram.InlineKeyboardMarkup([
-                        [telegram.InlineKeyboardButton("✅ Trade on this chain", callback_data="ob:chain_confirm:sui")],
+                        [telegram.InlineKeyboardButton("✅ Trade on this chain", callback_data="ob:mode:sui")],
                         [telegram.InlineKeyboardButton(BACK, callback_data="ob:chain")],
                     ])
                 else:
@@ -1565,10 +1565,43 @@ class UserBotController:
             ])
             await q.message.edit_text(ONBOARD["chain"], parse_mode="HTML", reply_markup=kb)
 
+        async def onboarding_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            chain = q.data.split(":")[-1]
+            _dui = self._degen_ui(self.registry.get_bot(bot_id)) if chain == "sui" else None
+            rows = [[telegram.InlineKeyboardButton("📈 Perps — AI-managed futures",
+                                                    callback_data=f"ob:mode_perp:{chain}")]]
+            if _dui is not None:
+                rows.insert(0, [telegram.InlineKeyboardButton(
+                    "🎰 Degen — meme sniping on Suipump",
+                    callback_data=f"ob:mode_degen:{chain}")])
+            rows.append([telegram.InlineKeyboardButton(BACK, callback_data=f"ob:chain:{chain}")])
+            await q.message.edit_text(
+                "🎯 <b>Pick your lane</b>\n\n"
+                "📈 <b>Perps</b> — the AI runs leveraged futures for you "
+                "(needs an AI key for auto-trade).\n"
+                "🎰 <b>Degen</b> — high-speed memecoin sniping on Suipump: "
+                "you tap, we fire. No AI key needed.\n\n"
+                "You can switch anytime from the dashboard.",
+                parse_mode="HTML",
+                reply_markup=telegram.InlineKeyboardMarkup(rows))
+
+        async def onboarding_mode_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            await q.answer()
+            which = q.data.split(":")[1]          # mode_perp | mode_degen
+            if which == "mode_degen":
+                b = self.registry.get_bot(bot_id)
+                _dui = self._degen_ui(b) if b else None
+                if _dui is not None:
+                    _dui.enter(bot_id)            # dashboard opens in degen view
+            await onboarding_chain_confirm(update, context)
+
         async def onboarding_chain_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
             await q.answer()
-            chain = q.data.split(":", 2)[2]
+            chain = q.data.split(":")[-1]        # ob:chain_confirm:sui | ob:mode_*:sui
             self.registry.update_bot(bot_id, chain=chain)
             # DEFAULT WATCHLIST for new users: if the user hasn't picked any
             # assets yet, seed the watchlist with the chain's default perps so
@@ -1681,14 +1714,7 @@ class UserBotController:
                 _dpos = []
             text = render_production_dashboard(b, account, chain, equity=_eq,
                                                degen_positions=_dpos)
-            # AI KEY PROMPT: friction-free signup means most new users arrive
-            # keyless — the dashboard tells them exactly what to do next.
             has_key = bool(self.registry.get_active_key(tg_id))
-            if not has_key:
-                text += ("\n\n⛔ <b>NOT TRADING — connect your AI key to start.</b>\n"
-                         "Your bot scans the markets but will NOT open any trade "
-                         "until you connect an AI key (it powers every decision). "
-                         "Tap the button below — takes 30 seconds.")
             # Pause now means "pause trading (LLM)" — bot stays online, so use `paused` flag
             is_trading = not b.get("paused") and b.get("is_running")
             start_label = "⏸️ Pause Trading" if is_trading else "▶️ Start Trading"
@@ -1696,7 +1722,7 @@ class UserBotController:
             mode_label = "🧪 Switch to PAPER" if mode == "live" else "🔴 Switch to LIVE"
             mode_cb = "sb:mode_paper" if mode == "live" else "sb:mode_live"
             key_row = [] if has_key else [[telegram.InlineKeyboardButton(
-                "🔑 Connect AI Key to Start Trading", callback_data="key:start")]]
+                "🔑 Connect your AI key for auto trade", callback_data="key:start")]]
             # DEGEN IS A VIEW OF THIS SAME DASHBOARD: identical text (plus a
             # compact strip), only the button block swaps — edited in place.
             _dgu = self._degen_ui(b)
@@ -2806,7 +2832,7 @@ class UserBotController:
                         "(takes 30 seconds), then start trading.",
                         reply_markup=telegram.InlineKeyboardMarkup(
                             [[telegram.InlineKeyboardButton(
-                                "🔑 Connect AI Key to Start Trading", callback_data="key:start")]]))
+                                "🔑 Connect your AI key for auto trade", callback_data="key:start")]]))
                     return
                 self.registry.update_bot(bot_id, paused=0, is_running=1)
                 if self.agent_pool:
@@ -3944,6 +3970,8 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(onboarding_intro, pattern=r"^ob:intro$"))
         app.add_handler(CallbackQueryHandler(onboarding_trader, pattern=r"^ob:trader"))
         app.add_handler(CallbackQueryHandler(onboarding_chain, pattern=r"^ob:chain(?::|$)"))
+        app.add_handler(CallbackQueryHandler(onboarding_mode, pattern=r"^ob:mode:"))
+        app.add_handler(CallbackQueryHandler(onboarding_mode_pick, pattern=r"^ob:mode_(perp|degen):"))
         app.add_handler(CallbackQueryHandler(onboarding_chain_confirm, pattern=r"^ob:chain_confirm:"))
         app.add_handler(CallbackQueryHandler(onboarding_key_saved, pattern=r"^ob:key_saved$"))
         app.add_handler(CallbackQueryHandler(dash, pattern=r"^sb:dash$"))
