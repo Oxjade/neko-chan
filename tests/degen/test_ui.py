@@ -35,9 +35,6 @@ class Q:
     async def answer(self):
         self.answered = True
 
-    async def edit_text(self, text, **kw):
-        self.message.rec.calls.append(("edit", text, kw.get("reply_markup")))
-
     async def edit_message_text(self, text, **kw):
         self.message.rec.calls.append(("edit", text, kw.get("reply_markup")))
 
@@ -175,3 +172,51 @@ def test_sections_render():
         assert calls and calls[-1][1], sec
     assert any("#1" in c[1] or "buy" in c[1] for c in
                [x for x in _run(ui, "dg:orders", led) if x[0] == "edit"])
+
+
+# ---------------------------------------------------------------- PTB-real guards
+def test_no_phantom_ptb_methods_in_ui():
+    """CallbackQuery.edit_text does not exist in PTB — using it crashes every
+    degen callback with AttributeError (observed live 2026-09-14: 'no response')."""
+    src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                            "service", "degen", "ui.py")).read()
+    assert "q.edit_text(" not in src
+    assert ".edit_text(" not in src.replace("edit_message_text(", "")
+
+
+def test_all_degen_buttons_are_callbacks():
+    """B() must bind the 2nd positional to callback_data — not InlineKeyboardButton's
+    `url`, which Telegram rejects (BadRequest → hub silently fails to render)."""
+    from telegram import InlineKeyboardButton
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=0, ai_key_ok=1)
+    ui = _mk(led)
+    _, kb_off = ui.hub_off({"id": 1, "tg_id": 42, "has_ai_key": 1}, led.get_config(1))
+    kb_hub = ui._hub_kb()
+    rows = list(kb_off.inline_keyboard) + list(kb_hub.inline_keyboard)
+    assert any(b.callback_data == "dg:on" for r in rows for b in r)
+    for r in rows:
+        for b in r:
+            assert isinstance(b, InlineKeyboardButton)
+            assert b.url is None, f"url button leaked: {b.text} -> {b.url}"
+            assert b.callback_data, f"button has no callback_data: {b.text}"
+
+
+def test_card_buttons_callbacks_and_cbdata_limit():
+    """Token card chips must be callback buttons AND fit Telegram's 64-byte cap."""
+    import asyncio
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    from degen.launchpad import resolve_input
+    st = resolve_input(ui.ch, CID)
+    _, kb = asyncio.get_event_loop().run_until_complete(
+        ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st))
+    seen = 0
+    for row in kb.inline_keyboard:
+        for b in row:
+            assert b.url is None, f"url leaked: {b.text}"
+            assert b.callback_data, f"no callback_data: {b.text}"
+            assert len(b.callback_data.encode()) <= 64, b.callback_data
+            seen += 1
+    assert seen >= 8  # chips + slippage + buy + burst + hub

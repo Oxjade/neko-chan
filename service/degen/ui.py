@@ -17,7 +17,16 @@ import logging
 import re
 from html import escape as esc
 
-from telegram import InlineKeyboardButton as B, InlineKeyboardMarkup as KB, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup as KB, Update
+
+
+def B(text, data=None, url=None):
+    """InlineKeyboardButton whose 2nd positional is callback_data (NOT url).
+
+    InlineKeyboardButton(text, url=..., callback_data=...) makes `B("label", "cb")`
+    a broken URL button; PTB rejects it (BadRequest: invalid url). Wrap it here so
+    every degen button is a real callback button."""
+    return InlineKeyboardButton(text, callback_data=data, url=url)
 from telegram.ext import CallbackQueryHandler, CommandHandler
 
 from . import constants as K
@@ -234,32 +243,32 @@ class DegenUI:
         data = q.data
         if data == "dg:on":
             if not self._ai_ok(bot):
-                await q.edit_text("⛔ Connect your AI key to start trading.")
+                await q.edit_message_text("⛔ Connect your AI key to start trading.")
                 return
             self.led.set_config(bid, enabled=1)
             txt, kb = await self.hub_on(bot, self.led.get_config(bid))
-            await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         elif data == "dg:off":
             self.led.set_config(bid, enabled=0)
-            await q.edit_text("⏻ Degen off. Positions still open — manage from hub.",
+            await q.edit_message_text("⏻ Degen off. Positions still open — manage from hub.",
                               reply_markup=KB([[B("🎰 Back", "dg:hub")]]))
         elif data == "dg:hub":
             txt, kb = await self.hub_on(bot, cfg)
-            await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         elif data.startswith("dg:lp:"):
             lp = data.split(":")[2]
             if lp == "blast" or (lp == "both" and not K.BLAST_LIVE):
-                await q.edit_text("💣 BLAST — 🔒 coming soon (§7.1). Both = Suipump "
+                await q.edit_message_text("💣 BLAST — 🔒 coming soon (§7.1). Both = Suipump "
                                   "until then.", reply_markup=KB([[B("← hub", "dg:hub")]]))
             else:
                 self.led.set_config(bid, launchpads=lp)
                 txt, kb = await self.hub_on(bot, self.led.get_config(bid))
-                await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+                await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         elif data == "dg:kill":
             self.led.set_config(bid, caps={**(cfg.get("caps") or {}), "killed": True})
             if self.ex:
                 self.ex.kill(bid, True)
-            await q.edit_text("🛑 KILL engaged: degen firing halted. Cancel armed "
+            await q.edit_message_text("🛑 KILL engaged: degen firing halted. Cancel armed "
                               "rungs + close positions below.",
                               reply_markup=KB([[B("📊 Positions", "dg:pos"),
                                                 B("📋 Orders", "dg:orders"),
@@ -269,19 +278,19 @@ class DegenUI:
             if self.ex:
                 self.ex.kill(bid, False)
             txt, kb = await self.hub_on(bot, self.led.get_config(bid))
-            await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         elif data.startswith(("dg:watch:", "dg:copyadd:")):
             _, kind, ref = data.split(":")
             rv = self.led.resolve_ref(ref, bid)
             if not rv:
-                await q.edit_text("expired — reopen from hub.", reply_markup=self._hub_kb())
+                await q.edit_message_text("expired — reopen from hub.", reply_markup=self._hub_kb())
                 return
             addr = rv[1]
             if kind == "watch":
                 self.led.watch_deployer(bid, addr)
             else:
                 self.led.track_wallet(bid, addr)
-            await q.edit_text("✓ added. Configure in the matching screen.",
+            await q.edit_message_text("✓ added. Configure in the matching screen.",
                               reply_markup=KB([[B("🪝 Sniper", "dg:sniper"),
                                                 B("👥 Copy", "dg:copy"),
                                                 B("← hub", "dg:hub")]]))
@@ -297,23 +306,23 @@ class DegenUI:
             if self.bundles:
                 made = self.bundles.generate(bid, 5)
                 ws = self.led.bundle_wallets(bid)
-                await q.edit_text(f"✅ {len(made)} new wallets · {len(ws)}/20 total\n"
+                await q.edit_message_text(f"✅ {len(made)} new wallets · {len(ws)}/20 total\n"
                                   f"keys stored in your bot row, one slot each",
                                   reply_markup=KB([[B("🧺 Bundle", "dg:bundle"), B("← hub", "dg:hub")]]))
             else:
-                await q.edit_text("Bundle manager offline", reply_markup=KB([[B("← hub", "dg:hub")]]))
+                await q.edit_message_text("Bundle manager offline", reply_markup=KB([[B("← hub", "dg:hub")]]))
         elif data in ("dg:pos", "dg:orders", "dg:sniper", "dg:copy", "dg:bundle", "dg:risk"):
             txt, kb = await self._section(bot, cfg, data[3:])
-            await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         else:
-            await q.edit_text("—", reply_markup=self._hub_kb())
+            await q.edit_message_text("—", reply_markup=self._hub_kb())
 
     async def _set_amount(self, q, bid, data):
         parts = data.split(":")
         ref, amt = parts[2], parts[3]
         self.led.set_config(bid, caps={**(self.led.get_config(bid).get("caps") or {}),
                                        "_amt_" + ref: amt})
-        await q.edit_text(f"amount set {amt} SUI — press BUY.",
+        await q.edit_message_text(f"amount set {amt} SUI — press BUY.",
                           reply_markup=KB([[B("🚀 BUY", f"dg:buy:{ref}"),
                                             B("← hub", "dg:hub")]]))
 
@@ -321,7 +330,7 @@ class DegenUI:
     async def _confirm_buy(self, q, bot, cfg, bid, ref):
         rv = self.led.resolve_ref(ref, bid)
         if not rv:
-            await q.edit_text("expired.", reply_markup=self._hub_kb())
+            await q.edit_message_text("expired.", reply_markup=self._hub_kb())
             return
         st = resolve_input(self.ch, rv[1])
         m = compute(self.ch, st)
@@ -332,27 +341,27 @@ class DegenUI:
                f"⛔️ Cancel returns to hub.")
         kb = KB([[B("✅ Confirm", f"dg:cconfirm:{ref}:{amt}"),
                   B("⛔ Cancel", "dg:hub")]])
-        await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+        await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         self._sched(bid, q.message.chat_id, q.message.message_id, "confirm")
 
     async def _confirm_burst(self, q, bot, cfg, bid, ref):
         rv = self.led.resolve_ref(ref, bid)
         if not rv:
-            await q.edit_text("expired.", reply_markup=self._hub_kb())
+            await q.edit_message_text("expired.", reply_markup=self._hub_kb())
             return
         legs = self.bundles.funding_plan(bid, 3.0) if self.bundles else []
         txt = (f"💥 SPREAD-BURST into {esc(rv[1][:10])}…\n"
                f"3.0 SUI across {max(1, len(legs))} wallets (separate txs — not atomic)\n"
                f"⚠️ bundle fee 5.0 SUI → Neko")
         kb = KB([[B("✅ FIRE ALL", f"dg:cburst:{ref}"), B("⛔ Cancel", "dg:hub")]])
-        await q.edit_text(txt, parse_mode="HTML", reply_markup=kb)
+        await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
 
     async def _execute_commit(self, update, context, q, bot, cfg, bid, data):
         parts = data.split(":")
         ref = parts[2]
         rv = self.led.resolve_ref(ref, bid)
         if not rv:
-            await q.edit_text("expired.", reply_markup=self._hub_kb())
+            await q.edit_message_text("expired.", reply_markup=self._hub_kb())
             return
         st = resolve_input(self.ch, rv[1])
         if parts[1] == "cburst":
@@ -437,6 +446,6 @@ class DegenUI:
         bid = self._bid(update)
         if bid and self.bundles:
             made = self.bundles.generate(bid, 5)
-            await q.edit_text(f"✅ generated {len(made)} wallets (keys stored in your row)",
+            await q.edit_message_text(f"✅ generated {len(made)} wallets (keys stored in your row)",
                               reply_markup=KB([[B("🧺 Bundle", "dg:bundle"),
                                                 B("← hub", "dg:hub")]]))
