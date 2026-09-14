@@ -327,6 +327,96 @@ class DegenUI:
             return f"${v/1_000:.1f}K"
         return f"${cls._num(v)}"
 
+    def _wallet_age_days(self, addr: str) -> float | None:
+        """Age of the dev wallet ON CHAIN: earliest visible tx timestamp.
+        None = unreadable (never guess)."""
+        if not addr:
+            return None
+        try:
+            best = None
+            for page in (f'receivedTransactions(first: 1) {{ nodes {{ transaction {{ effects {{ timestamp }} }} }} }}',
+                         f'receivedTransactions(last: 1) {{ nodes {{ transaction {{ effects {{ timestamp }} }} }} }}'):
+                r = self.ch.query('{ address(address: "%s") { %s } }' % (addr, page))
+                for n in ((r or {}).get("address") or {}).get("receivedTransactions", {}).get("nodes") or []:
+                    ts = ((n.get("transaction") or {}).get("effects") or {}).get("timestamp")
+                    if ts:
+                        t = int(ts) / 1000.0
+                        best = t if best is None else min(best, t)
+            if best is None:
+                return None
+            import time as _t
+            return max(0.0, (_t.time() - best) / 86400.0)
+        except Exception:
+            return None
+
+    def _top_holders(self, token_type: str, n: int = 5) -> list:
+        """Top holders via the public explorer API (best-effort, 3s budget).
+        [] = unavailable — the card then says so honestly."""
+        try:
+            import requests
+            for url in (f"https://suiscan.xyz/mainnet/api/v1/token/holders/{token_type}",
+                        f"https://suiscan.xyz/mainnet/api/v1/sui-token/holders/{token_type}"):
+                try:
+                    r = requests.get(url, timeout=3)
+                    if r.status_code != 200:
+                        continue
+                    data = r.json() or {}
+                    rows = data.get("data") or data.get("holders") or data.get("list") or []
+                    out = []
+                    for h in list(rows)[:n]:
+                        addr = str(h.get("owner") or h.get("address") or "")
+                        amt = float(h.get("totalAmount") or h.get("amount") or 0)
+                        if addr and amt:
+                            out.append((addr, amt))
+                    if out:
+                        return out
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return []
+
+    def _adv_block(self, st, m) -> str:
+        """Everything beyond the four headline metrics (§3.0/§5.4 extras)."""
+        L = []
+        # dev wallet: address, supply share, on-chain age
+        try:
+            if st.creator:
+                bal = self.ch.balance(st.creator, st.token_type)
+                pct = (bal / m.total_supply_atoms * 100) if m.total_supply_atoms else 0.0
+                age = self._wallet_age_days(st.creator)
+                age_txt = f"{age:.0f}d old" if age is not None and age > 0 else "brand-new/unseen"
+                L.append(f"👤 Dev     <code>{esc(st.creator[:10])}…{esc(st.creator[-4:])}</code>"
+                         f" · <code>{pct:.1f}%</code> supply · {age_txt}")
+        except Exception:
+            pass
+        # top holders
+        hs = self._top_holders(st.token_type)
+        if hs:
+            for i, (a, amt) in enumerate(hs, 1):
+                pct = amt / m.total_supply_atoms * 100 if m.total_supply_atoms else 0
+                L.append(f"🏆{i}  <code>{esc(a[:8])}…{esc(a[-4:])}</code>  <code>{pct:.1f}%</code>")
+        else:
+            L.append("🏆 Top holders: explorer unavailable right now")
+        # collected fees (curve object fields, mist)
+        cj = ((st.curve_obj or {}).get("json") or {})
+        if cj:
+            try:
+                L.append("🧪 Fees    creator <code>{:.2f}</code> · protocol <code>{:.2f}</code>"
+                         " · airdrop <code>{:.2f}</code> SUI".format(
+                             int(cj.get("creator_fees") or 0) / 1e9,
+                             int(cj.get("protocol_fees") or 0) / 1e9,
+                             int(cj.get("airdrop_fees") or 0) / 1e9))
+            except Exception:
+                pass
+            if cj.get("anti_bot_delay") not in (None, 0):
+                L.append(f"⏱ anti-bot <code>{cj['anti_bot_delay']}ms</code>")
+        # fitted virtual reserves (the hidden curve constants)
+        if m.virtual and m.virtual[0]:
+            L.append("🪄 virtual <code>{:,.0f} SUI</code> / <code>{:,.0f} tok</code>".format(
+                m.virtual[0] / 1e9, m.virtual[1] / 1e6))
+        return "\n".join(L)
+
     async def card(self, bot, cfg, st, ref: str | None = None):
         """Token Card / wallet card / locked card router (§6.3a-b). `ref` is the
         caller's stable ui_ref: make_ref returns a fresh token per call, so a
@@ -383,13 +473,14 @@ class DegenUI:
                          f"🔁 1 SUI  <code>≈ {1 / m.price_sui:,.0f} tok</code>\n")
         else:
             price_row = "💵 Price   <code>—</code>\n"
+        curveish = st.kind in ("curve", "graduating", "pool")
         head = (f"<b>{icon} {esc(st.symbol or st.token_type[:8])}</b> · {badge}\n"
                 f"<code>{line}</code>\n"
                 f"{price_row}"
                 f"📈 MCap    <code>{self._usd(mcap)}</code> · "
                 f"FDV <code>{self._usd(m.fdv_usd)}</code>\n"
-                f"{grad_row}\n"
-                f"💧 Liq     <code>{m.liq_sui:,.0f} SUI</code>"
+                + (f"{grad_row}\n💧 Liq     <code>{m.liq_sui:,.0f} SUI</code>"
+                   if curveish else "💧 Liq    via DEX route")
                 + (("\n" + extra) if extra else ""))
         if st.kind in ("pool", "generic") and self._af_quote and st.token_type:
             # graduated: SAME dashboard as curve tokens — trades execute through
@@ -414,6 +505,11 @@ class DegenUI:
         def _chip(x, suffix, sel, cb):
             on = str(sel).rstrip("%") == x.rstrip("%")
             return B(("✓ " if on else "") + f"{x}{suffix}", cb)
+        adv = str(caps.get("_ui_mode") or "basic") == "advanced"
+        if adv:
+            blk = self._adv_block(st, m)
+            if blk:
+                head += "\n<code>" + line + "</code>\n" + blk
         rows = [[B(f"🚀 BUY {sel_amt} SUI", f"dg:buy:{r_curve}")] if allowed
                 else [B("⛔ blocked", "dg:hub")],
                 [_chip("0.2", " SUI", sel_amt, f"dg:amt:{r_curve}:0.2"),
@@ -427,6 +523,8 @@ class DegenUI:
                  if st.kind == "pool" else
                  [_chip("25%", "", sel_slp, f"dg:slp:{r_curve}:25"),
                   B("🧺 Bundled buy", f"dg:burst:{r_curve}")]),
+                ([B("🧠 Advanced ▸", f"dg:vmode:adv:{r_curve}")] if not adv
+                 else [B("🔙 Basic ▸", f"dg:vmode:base:{r_curve}")]),
                 [B("← Back", "dg:hub")]]
         return head, KB(rows)
 
@@ -573,6 +671,12 @@ class DegenUI:
                 await self._repaint_card(q, bot, ref)
             else:
                 await self._render(update, context, bot)
+        elif data.startswith("dg:vmode:"):
+            parts = data.split(":")
+            caps = dict(cfg.get("caps") or {})
+            caps["_ui_mode"] = "advanced" if parts[2] == "adv" else "basic"
+            self.led.set_config(bid, caps=caps)
+            await self._repaint_card(q, bot, parts[3])
         elif data == "dg:buy":
             await q.edit_message_text("🎯 Paste the token's contract address (or its "
                                       "launchpad link) — I'll open its card.",

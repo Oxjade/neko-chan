@@ -374,3 +374,30 @@ def test_generic_token_card_is_dex_routed_not_dead():
     assert "dg:buy" in flat                       # live button, not a dead end
     price_line = [l for l in txt.splitlines() if "Price" in l][0]
     assert "0.00005 SUI" in price_line           # 0.5 SUI / 10,000 tok from probe
+
+
+def test_basic_advanced_mode_toggle():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    ui.ch.balance = lambda a, ct=None: 5 * 10 ** 13 if ct else 10 ** 9
+    ui._top_holders = lambda t, n=5: [("0x" + "aa" * 32, 3.0e14), ("0x" + "bb" * 32, 1.2e14)]
+    from degen.launchpad import resolve_input
+    st = resolve_input(ui.ch, CID)
+    loop = asyncio.new_event_loop()
+    txt_b, kb_b = loop.run_until_complete(
+        ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st))
+    assert "🧠 Advanced" in str(kb_b.inline_keyboard)
+    assert "👤 Dev" not in txt_b                      # basic: four metrics only
+    # flip to advanced via the callback and re-render
+    ref = [b.callback_data.split(":")[3] for r in kb_b.inline_keyboard
+           for b in r if b.callback_data.startswith("dg:vmode")][0]
+    _run(ui, f"dg:vmode:adv:{ref}", led)
+    assert led.get_config(1)["caps"]["_ui_mode"] == "advanced"
+    txt_a, kb_a = loop.run_until_complete(
+        ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st, ref=ref))
+    assert "👤 Dev" in txt_a and "🏆1" in txt_a
+    assert "🔙 Basic" in str(kb_a.inline_keyboard)
+    # mode persists per card ref
+    _run(ui, f"dg:vmode:base:{ref}", led)
+    assert led.get_config(1)["caps"]["_ui_mode"] == "basic"
