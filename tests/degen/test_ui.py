@@ -313,3 +313,35 @@ def test_x_sui_custom_amount_flow():
     _run(ui, f"dg:cust:{ref}", led)
     _run(ui, "dg:custx", led)
     assert "_ask_amt" not in (led.get_config(1)["caps"] or {})
+
+
+def test_track_works_in_view_mode_and_shows_list():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=0, ai_key_ok=1)     # NOT enabled, only view
+    ui = _mk(led)
+    ui.enter(1)
+    msg = _msg(f"Track {DEV}")
+    upd = _update(msg=msg)
+    assert asyncio.get_event_loop().run_until_complete(
+        ui.handle_text(upd, SimpleNamespace())) is True
+    assert any(t[0] == "track_wallet" or (t[0] == "reply" and "COPY" in t[1])
+               for t in msg.rec.calls), msg.rec.calls
+    assert led.tracked_wallets(1)               # list shows right in the reply
+    txt = [t for t in msg.rec.calls if t[0] == "reply"][0][1]
+    assert DEV[:10] in txt                      # the wallet itself is on screen
+
+
+def test_strip_shows_balance_and_pnl_and_keyboard_has_pnl():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=10)
+    ui = _mk(led)
+    ui._wallet_addr = lambda bot: "0x" + "cd" * 32
+    ui.ch.balance = lambda a, ct=None: 2_500_000_000      # 2.5 SUI
+    led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                        "0xw", add_sui=1.0, add_tokens=int(1e9))
+    strip = ui.degen_strip({"id": 1}, led.get_config(1))
+    assert "P&L" in strip and "2.50 SUI" in strip and "balance" in strip
+    flat = str(ui.degen_keyboard({"id": 1}, led.get_config(1)).inline_keyboard)
+    assert "dg:pnl" in flat and "sb:rewards" in flat
+    calls = _run(ui, "dg:pnl", led)
+    assert "DEGEN P&L" in calls[-1][1] and "marked" in calls[-1][1]

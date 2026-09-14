@@ -59,6 +59,8 @@ class DegenUI:
         # the userbot's own dash() coroutine; without it we fall back to
         # rendering strip+keyboard standalone (tests / pre-mount).
         self.dash_render = None
+        self._bal_cache: dict = {}     # bid -> (ts, SUI)   15s
+        self._pnl_cache: dict = {}     # bid -> (ts, tuple) 20s
 
     # ---------------- degen VIEW state — persisted in the ledger so a service
     # restart (or any re-render) remembers which view the user was on.
@@ -104,15 +106,28 @@ class DegenUI:
         await self._render(update, context, bot)
 
     async def handle_text(self, update: Update, context) -> bool:
-        """Returns True if handled. Track/Snipe verbs + CA paste (§6.3a)."""
+        """Returns True if handled. Track/Snipe verbs + CA paste (§6.3a).
+        Works in degen VIEW mode (or once enabled): tracking & watching fire no
+        orders themselves, so they must not wait on Enable."""
         txt = (update.message.text or "").strip()
         bot = self._bot(update)
         if not bot:
             return False
         bid = int(bot["id"])
         cfg = self.led.get_config(bid)
-        if not cfg.get("enabled"):
+        if not (cfg.get("enabled") or self.degen_on(bid)):
             return False
+        low = txt.lower()
+        if low in ("track", "copy") or low.startswith("track") and not ADDR_RE.match(txt[5:].strip() or "x"):
+            if low in ("track", "copy"):
+                txt2, kb = await self._section(bot, cfg, "copy")
+                await update.message.reply_text(txt2, parse_mode="HTML", reply_markup=kb)
+                return True
+        if low == "snipe" or (low.startswith("snipe") and not ADDR_RE.match(txt[5:].strip() or "x")):
+            if low == "snipe":
+                txt2, kb = await self._section(bot, cfg, "sniper")
+                await update.message.reply_text(txt2, parse_mode="HTML", reply_markup=kb)
+                return True
         pend = (cfg.get("caps") or {}).get("_ask_amt")
         if pend:
             mm = re.fullmatch(r"(?i)([\d]*\.?\d+)\s*(sui)?", txt.strip())
@@ -132,15 +147,17 @@ class DegenUI:
             self.led.set_config(bid, caps=caps)   # bad input: drop the ask, keep typing
         if txt.lower().startswith("track ") and ADDR_RE.match(txt[6:]):
             self.led.track_wallet(bid, txt[6:].strip().split()[0])
-            await update.message.reply_text("👀 Tracking that wallet — profile in Copy.",
-                                            reply_markup=self._hub_kb())
             await self._purge_input(update)
+            txt2, kb = await self._section(bot, cfg, "copy")
+            msg = await update.message.reply_text(txt2, parse_mode="HTML", reply_markup=kb)
+            self._sched(bid, msg.chat_id, msg.message_id, "card")
             return True
         if txt.lower().startswith("snipe ") and ADDR_RE.match(txt[6:]):
             self.led.watch_deployer(bid, txt[6:].strip().split()[0])
-            await update.message.reply_text("🪝 Watching that deployer — launches fire here.",
-                                            reply_markup=self._hub_kb())
             await self._purge_input(update)
+            txt2, kb = await self._section(bot, cfg, "sniper")
+            msg = await update.message.reply_text(txt2, parse_mode="HTML", reply_markup=kb)
+            self._sched(bid, msg.chat_id, msg.message_id, "card")
             return True
         if ADDR_RE.match(txt):
             st = resolve_input(self.ch, txt)
@@ -173,6 +190,43 @@ class DegenUI:
                 pass
             self.led.clear_delete(row["chat_id"], row["message_id"])
 
+    # ---------------- degen P&L + wallet balance (strip data) ----------------
+
+    def _wallet_sui(self, bot) -> float | None:
+        import time as _t
+        bid = int(bot["id"])
+        hit = self._bal_cache.get(bid)
+        if hit and _t.time() - hit[0] < 15:
+            return hit[1]
+        try:
+            waddr = self._wallet_addr(bot)
+            if not waddr:
+                return None
+            v = self.ch.balance(waddr) / 1e9
+        except Exception:
+            return None
+        self._bal_cache[bid] = (_t.time(), v)
+        return v
+
+    def _pnl(self, bid: int) -> tuple:
+        """(invested, marked, realized_today_sui) for open degen positions."""
+        import time as _t
+        hit = self._pnl_cache.get(bid)
+        if hit and _t.time() - hit[0] < 20:
+            return hit[1]
+        inv = mark = 0.0
+        for p in self.led.positions(bid):
+            inv += p["entry_sui"] or 0.0
+            try:
+                st = resolve_input(self.ch, p["curve_id"])
+                m = compute(self.ch, st)
+                mark += (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * (m.price_sui or 0.0)
+            except Exception:
+                mark += p["entry_sui"] or 0.0
+        out = (inv, mark, self.led.realized_pnl_today(bid))
+        self._pnl_cache[bid] = (_t.time(), out)
+        return out
+
     # ---------------- degen view (shared main dashboard + swapped buttons) ----
     def degen_strip(self, bot, cfg) -> str:
         """2-3 compact status lines appended to the MAIN dashboard text. Same
@@ -189,9 +243,17 @@ class DegenUI:
             body = "  <b>OFF</b> — high-risk lane: snipe, copy, DCA, bundles 🐸"
         else:
             state = "<b>⚠️ KILLED</b>" if caps.get("killed") else "<b>ON</b>"
+            inv, mark, rlz = self._pnl(bid)
+            unreal = mark - inv
+            pnl_txt = ("—" if not pos else
+                       f"{'+' if unreal >= 0 else ''}{unreal:.2f} SUI open")
+            bal = self._wallet_sui(bot)
+            bal_txt = (f" · balance <code>{bal:,.2f} SUI</code>" if bal is not None else "")
             body = (f"  {state} · spent today <code>{spend:.2f}</code> / "
                     f"budget <code>{cfg['budget_sui']:.0f} SUI</code> · "
                     f"open <code>{len(pos)}</code>\n"
+                    f"  📈 P&L  <code>{pnl_txt}</code> · realized today "
+                    f"<code>{rlz:+.2f} SUI</code>{bal_txt}\n"
                     f"  🪝 <code>{len(watch)}</code> deployers · fired "
                     f"<code>{stats['fired']}</code> · 🧺 <code>{len(wallets)}/20</code> "
                     f"wallets · venue <code>{cfg['launchpads']}</code>")
@@ -216,6 +278,7 @@ class DegenUI:
             [B("🧺 Bundle", "dg:bundle"), B("⏻ Disable", "dg:off")],
             [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast")],
             [B("⚡ Both venues", "dg:lp:both")],
+            [B("📊 P&L", "dg:pnl"), B("🎁 Rewards", "sb:rewards")],
             kill_row,
             [B("📊 Main Dashboard", "dg:main"), B("↻ Refresh", "dg:hub")],
         ])
@@ -488,7 +551,8 @@ class DegenUI:
             await q.edit_message_text("🎯 Paste the token's contract address (or its "
                                       "launchpad link) — I'll open its card.",
                                       reply_markup=self._hub_kb())
-        elif data in ("dg:pos", "dg:orders", "dg:sniper", "dg:copy", "dg:bundle", "dg:risk"):
+        elif data in ("dg:pos", "dg:orders", "dg:sniper", "dg:copy", "dg:bundle",
+                      "dg:risk", "dg:pnl"):
             txt, kb = await self._section(bot, cfg, data[3:])
             await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         else:
@@ -696,6 +760,25 @@ class DegenUI:
                 lines.append(f"· #{w['slot']} <code>{esc(w['address'][:10])}…</code>")
             kb = [[B("+ generate ×5", "dg:gen5")], back]
             return "\n".join(lines), KB(kb)
+        if name == "pnl":
+            inv, mark, rlz = self._pnl(bid)
+            unreal = mark - inv
+            rows = self.led.positions(bid)
+            lines = ["<b>📊 DEGEN P&L</b>",
+                     f"open: in <code>{inv:.3f}</code> → marked <code>{mark:.3f}</code> SUI"
+                     f" · <code>{'+' if unreal >= 0 else ''}{unreal:.3f}</code>",
+                     f"realized today: <code>{rlz:+.3f} SUI</code>"]
+            for p in rows:
+                try:
+                    st = resolve_input(self.ch, p["curve_id"])
+                    m = compute(self.ch, st)
+                    cur = (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * m.price_sui
+                except Exception:
+                    cur = p["entry_sui"]
+                lines.append(f"· {esc(p['symbol'] or p['curve_id'][:6])} "
+                             f"{p['entry_sui']:.2f} → {cur:.2f} SUI "
+                             f"[{p['venue']}]")
+            return "\n".join(lines), KB([back])
         if name == "risk":
             caps = cfg.get("caps", {}) or {}
             return (f"<b>🛡 RISK &amp; CAPS</b>\nbudget {cfg['budget_sui']} SUI · "
