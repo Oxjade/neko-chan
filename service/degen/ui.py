@@ -32,7 +32,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler
 from . import constants as K
 from .db import DegenLedger
 from .launchpad import resolve_input
-from .metrics import compute
+from .metrics import compute, token_total_supply
 from .validate import run_gauntlet
 
 log = logging.getLogger(__name__)
@@ -353,9 +353,20 @@ class DegenUI:
             return ("⛔ Can't trade that.\n" + esc("; ".join(st.reasons)),
                     KB([[B("← Back", "dg:hub")]]))
         m = compute(self.ch, st)
+        if st.kind in ("pool", "generic") and not m.price_sui:
+            px = self._dex_price(st)
+            if px:
+                m.price_sui = px
+                ts = m.total_supply_atoms or token_total_supply(self.ch, st.token_type)
+                m.total_supply_atoms = ts
+                m.circulating_atoms = ts
+                m.mcap_sui = px * ts / (10 ** (m.decimals or 6))
+                m.mcap_usd = m.mcap_sui * m.sui_usd
+                m.fdv_usd = m.mcap_usd
         icon = {"curve": "🐸", "graduating": "⏳", "pool": "🎨", "generic": "🌐"}[st.kind]
         badge = {"curve": "LIVE on curve", "graduating": "GRADUATING — untradeable",
-                 "pool": "GRADUATED → Aftermath", "generic": "generic token"}[st.kind]
+                 "pool": "GRADUATED → Aftermath",
+                 "generic": "DEX token — not on Suipump"}[st.kind]
         allowed, extra = await self._gauntlet(bot, st)
         r_curve = ref or self._ref(bid, "curve", st.curve_id or st.token_type)
         sel_amt = str(caps.get("_amt_" + r_curve, "0.5"))
@@ -380,7 +391,7 @@ class DegenUI:
                 f"{grad_row}\n"
                 f"💧 Liq     <code>{m.liq_sui:,.0f} SUI</code>"
                 + (("\n" + extra) if extra else ""))
-        if st.kind == "pool" and self._af_quote and st.token_type:
+        if st.kind in ("pool", "generic") and self._af_quote and st.token_type:
             # graduated: SAME dashboard as curve tokens — trades execute through
             # the Aftermath SOR (verified to route via the Cetus graduation pool).
             try:
@@ -394,7 +405,8 @@ class DegenUI:
                 if legs:
                     protos = " + ".join(dict.fromkeys(p_ for p_, _ in legs))
                     out = sum(c for _, c in legs) / 1e6
-                    head += (f"\n🎨 Route  <code>{esc(protos)}</code> · "
+                    venue = "🎨" if st.kind == "pool" else "🌐"
+                    head += (f"\n{venue} Route  <code>{esc(protos)}</code> · "
                              f"0.5 SUI ≈ <code>{out:,.0f} tok</code>")
             except Exception:
                 pass   # route probe is cosmetic; buy still available
@@ -417,6 +429,20 @@ class DegenUI:
                   B("🧺 Bundled buy", f"dg:burst:{r_curve}")]),
                 [B("← Back", "dg:hub")]]
         return head, KB(rows)
+
+    def _dex_price(self, st) -> float | None:
+        """SUI-per-token implied by a keyless 0.5-SUI Aftermath probe."""
+        if not self._af_quote or not st.token_type:
+            return None
+        try:
+            q = self._af_quote(st.token_type, 5 * 10 ** 8)
+            out = 0
+            for rt in (q or {}).get("routes") or []:
+                for pth in rt.get("paths") or []:
+                    out += int((pth.get("coinOut") or {}).get("amount", "0").rstrip("n") or 0)
+            return (0.5 / (out / 1e6)) if out else None
+        except Exception:
+            return None
 
     async def _gauntlet(self, bot, st):
         if st.kind not in ("curve", "pool", "graduating", "generic"):
@@ -626,6 +652,8 @@ class DegenUI:
             return
         st = resolve_input(self.ch, rv[1])
         m = compute(self.ch, st)
+        if not m.price_sui and st.kind in ("pool", "generic"):
+            m.price_sui = self._dex_price(st) or 0.0
         caps = cfg.get("caps", {}) or {}
         sel = str(caps.get("_amt_" + ref, "0.5"))
         slip = int(float(caps.get("_slip_" + ref, "5")))
@@ -678,7 +706,7 @@ class DegenUI:
         else:
             amt = float(parts[3]) if len(parts) > 3 else 0.5
             slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "5")))
-            if st.kind == "pool":
+            if st.kind in ("pool", "generic"):
                 res = (self.ex.buy_post_grad(bid, {"qty_sui": amt}, st, side="buy",
                                              slip_bps=slip * 100,
                                              idem=f"ui{ref}:{amt}")
@@ -698,7 +726,8 @@ class DegenUI:
                 exp_atoms = expected_tokens_out(st.sui_reserve_mist, st.token_reserve,
                                                 int(amt * 1e9), vx, vy)
             else:
-                exp_atoms = amt / max(m.price_sui, 1e-18) * 10 ** (m.decimals or 6)
+                price = m.price_sui or (self._dex_price(st) or 0.0)
+                exp_atoms = amt / max(price, 1e-18) * 10 ** (m.decimals or 6)
             min_out = int(exp_atoms * (100 - slip) / 100)
             res = (self.ex.buy(bid, launchpad="suipump", curve_id=st.curve_id,
                                token_type=st.token_type,

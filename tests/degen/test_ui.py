@@ -345,3 +345,31 @@ def test_strip_shows_balance_and_pnl_and_keyboard_has_pnl():
     assert "dg:pnl" in flat and "sb:rewards" in flat
     calls = _run(ui, "dg:pnl", led)
     assert "DEGEN P&L" in calls[-1][1] and "marked" in calls[-1][1]
+
+
+def test_generic_token_card_is_dex_routed_not_dead():
+    """A non-Suipump type must: badge as DEX token (not 'generic token'), fill
+    price/mcap from the Aftermath probe, and carry working buy controls."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    def fake_quote(tok, atoms):
+        return {"routes": [{"paths": [{
+            "protocolName": "Cetus",
+            "poolMetadata": {"tbData": {"protocol": "Cetus"}},
+            "coinOut": {"amount": "10000000000n"}}]}]}
+    ui._af_quote = fake_quote
+    ui.ch.object = lambda a: {"type": "pkg", "json": {}}          # pkg exists
+    ui.ch.objects_by_type = lambda t, first=5: []                 # no TreasuryCap
+    from degen.launchpad import AssetState
+    st = AssetState(kind="generic", launchpad="generic",
+                    token_type="0x" + "ee" * 32 + "::foo::FOO")
+    ui.ch.balance = lambda a, ct=None: 0
+    txt, kb = asyncio.get_event_loop().run_until_complete(
+        ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st))
+    assert "DEX token" in txt and "generic token" not in txt
+    assert "Route" in txt and "Cetus" in txt
+    flat = str(kb.inline_keyboard)
+    assert "dg:buy" in flat                       # live button, not a dead end
+    price_line = [l for l in txt.splitlines() if "Price" in l][0]
+    assert "0.00005 SUI" in price_line           # 0.5 SUI / 10,000 tok from probe

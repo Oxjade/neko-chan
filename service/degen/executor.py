@@ -315,6 +315,7 @@ class DegenExecutor:
         are booked net of fee from real balance deltas — same integrity rules
         as curve buys."""
         import base64
+        key = curve_id or token_type      # generics have no curve: type is the key
         adapter, waddr = self._adapter_for("")
         if adapter is None:
             return {"ok": False, "error": "no wallet for DEX swap"}
@@ -336,7 +337,7 @@ class DegenExecutor:
                                    amount_in_atoms=in_atoms, slippage_bps=slip_bps,
                                    external_fee=fee)   # Cetus absent → best route
         oid = self.ledger.add_order(bot_id, wallet=waddr, intent=intent, otype="market",
-                                    launchpad=launchpad, curve_id=curve_id,
+                                    launchpad=launchpad, curve_id=key,
                                     token_type=token_type, qty_sui=in_atoms / 1e9,
                                     idempotency_key=idem)
         try:
@@ -376,7 +377,7 @@ class DegenExecutor:
                                         tokens=got,
                                         price=sui_spent / max(1e-9, got / 1e6),
                                         fee_sui=fee_sui)
-                self.ledger.upsert_position(bot_id, launchpad, curve_id, token_type,
+                self.ledger.upsert_position(bot_id, launchpad, key, token_type,
                                             adapter.address, add_sui=sui_spent,
                                             add_tokens=got)
             else:
@@ -386,7 +387,7 @@ class DegenExecutor:
                                         price=sui_got / max(1e-9, in_atoms / 1e6),
                                         fee_sui=fee_sui)
                 entry = (pos or {}).get("entry_sui") or sui_got
-                self.ledger.upsert_position(bot_id, launchpad, curve_id, token_type,
+                self.ledger.upsert_position(bot_id, launchpad, key, token_type,
                                             adapter.address,
                                             add_sui=-min(entry, sui_got),
                                             add_tokens=-in_atoms)
