@@ -25,6 +25,7 @@ class Metrics:
     total_supply_atoms: int = 0
     circulating_atoms: int = 0
     mcap_sui: float = 0.0
+    fdv_usd: float = 0.0             # price x TOTAL supply (curve-held included)
     sui_usd: float = 0.0
     mcap_usd: float = 0.0
     sui_reserve_mist: int = 0
@@ -73,6 +74,29 @@ def sui_usd_price(ch: Chain) -> float:
         return 0.0
     except Exception:
         return 0.0
+
+
+_supply_cache: dict[str, int] = {}
+
+
+def token_total_supply(ch: Chain, coin_type: str) -> int:
+    """Real circulating+locked supply from the chain (never a guess). Tries the
+    documented TypeInput shapes; 0 = unknown (callers fall back)."""
+    if coin_type in _supply_cache:
+        return _supply_cache[coin_type]
+    total = 0
+    for tvar in ('{type: "%s"}' % coin_type, '"%s"' % coin_type):
+        try:
+            r = ch.query('{ coinType(type: ' + tvar + ') { totalSupply } }')
+            ct = (r or {}).get("coinType") or {}
+            v = ct.get("totalSupply")
+            if v:
+                total = int(v)
+                break
+        except Exception:
+            continue
+    _supply_cache[coin_type] = total
+    return total
 
 
 # ---------------------------------------------------------------- curve fit (§3.0)
@@ -145,11 +169,16 @@ def compute(ch: Chain, st: AssetState, reserves_samples: list | None = None,
         m.price_mist_per_atom = int(price_mist_per_atom)
         # SUI per whole token = (mist/atom) × 1e-9 × atoms/whole(10^dec)
         m.price_sui = price_mist_per_atom * 1e-9 * (10 ** dec)
-        ts = total_supply_atoms or (y + _circ_guess(y))
+        ts = (total_supply_atoms or token_total_supply(ch, st.token_type)
+              or (y + _circ_guess(y)))
         m.total_supply_atoms = ts
         m.circulating_atoms = max(0, ts - y)
         m.mcap_sui = m.price_sui * m.circulating_atoms / (10 ** dec)
         m.mcap_usd = m.mcap_sui * m.sui_usd
+        # curve tokens price nearly everything INSIDE the curve; FDV is the
+        # number traders actually quote pre-graduation — surface both, and the
+        # UI shows MCap (never a $0 when FDV > 0).
+        m.fdv_usd = m.price_sui * ts / (10 ** dec) * m.sui_usd
         m.liq_sui = x / 1e9
         fit = solve_curve_fit(reserves_samples or [])
         if fit and fit["fit_err"] < 0.05:
@@ -166,9 +195,15 @@ def compute(ch: Chain, st: AssetState, reserves_samples: list | None = None,
             tok_atoms, sui_mist = (a, b) if a > b else (b, a)
             m.sui_usd = m.sui_usd
             m.liq_sui = sui_mist / 1e9
+            ts = (total_supply_atoms or token_total_supply(ch, st.token_type) or 0)
             if tok_atoms > 0:
                 m.price_sui = (sui_mist / 1e9) / (tok_atoms / 10 ** dec)
                 m.price_mist_per_atom = int(sui_mist / tok_atoms)
+                m.total_supply_atoms = ts
+                m.circulating_atoms = ts
+                m.mcap_sui = m.price_sui * ts / (10 ** dec)
+                m.mcap_usd = m.mcap_sui * m.sui_usd
+                m.fdv_usd = m.mcap_usd
         except Exception:
             pass
     return m

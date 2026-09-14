@@ -114,7 +114,11 @@ def test_card_pre_grad_and_expiry_scheduled():
     assert ok is True
     txt = msg.rec.calls[0][1]
     assert "SUICAT" in txt and "LIVE on curve" in txt
-    assert "grad: 0%" in txt  # 2e9/9e12
+    assert "Grad" in txt and "MCap" in txt        # dashboard-style metric block
+    assert "untested" not in txt.lower()          # user policy: no honeypot noise
+    kb = msg.rec.calls[0][2]
+    assert all(len(row) <= 2 for row in kb.inline_keyboard)   # dash rhythm
+    assert any(b.text == "🚀 BUY 0.5 SUI" for r in kb.inline_keyboard for b in r)
     # input deleted + card scheduled for 3-min expiry
     assert ("delete",) in msg.rec.calls
     assert led.due_deletes((led._conn.execute("SELECT datetime('now','+250 seconds')").fetchone()[0]))
@@ -236,3 +240,18 @@ def test_card_buttons_callbacks_and_cbdata_limit():
             assert len(b.callback_data.encode()) <= 64, b.callback_data
             seen += 1
     assert seen >= 8  # chips + slippage + buy + burst + hub
+
+
+def test_slip_and_amt_chips_persist_and_repaint():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    ref = ui._ref(1, "curve", CID)
+    calls = _run(ui, f"dg:slp:{ref}:25", led)
+    caps = led.get_config(1)["caps"]
+    assert caps["_slip_" + ref] == "25"
+    assert calls and calls[-1][0] == "edit" and "MCap" in calls[-1][1]
+    assert any(b.text == "✓ 25%" for r in calls[-1][2].inline_keyboard for b in r)
+    calls = _run(ui, f"dg:amt:{ref}:1", led)
+    assert led.get_config(1)["caps"]["_amt_" + ref] == "1"
+    assert any(b.text == "✓ 1 SUI" for r in calls[-1][2].inline_keyboard for b in r)

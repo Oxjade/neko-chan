@@ -225,49 +225,89 @@ class DegenUI:
 
     _current_bot = None
 
-    async def card(self, bot, cfg, st):
-        """Token Card / wallet card / locked card router (§6.3a-b)."""
+    @staticmethod
+    def _usd(v: float) -> str:
+        if v >= 1_000_000:
+            return f"${v/1_000_000:.2f}M"
+        if v >= 1_000:
+            return f"${v/1_000:.1f}K"
+        if v >= 1:
+            return f"${v:,.2f}"
+        if v > 0:
+            return f"${v:.4g}"
+        return "$0"
+
+    async def card(self, bot, cfg, st, ref: str | None = None):
+        """Token Card / wallet card / locked card router (§6.3a-b). `ref` is the
+        caller's stable ui_ref: make_ref returns a fresh token per call, so a
+        repaint MUST reuse the same ref or per-card selections (_amt_/_slip_)
+        orphan. Dashboard
+        rhythm everywhere: single metric block, max 2 buttons per row, the
+        primary BUY spans full width and shows the live selected amount."""
         bid = int(bot["id"])
+        line = "─" * 26
+        caps = cfg.get("caps", {}) or {}
         if st.kind == "wallet":
             w = f"<code>{esc(st.creator[:10])}…</code>"
-            r_c = self._ref(bid, "wallet", st.creator)
-            return (f"<b>👛 WALLET {w}</b>\nCopy it or watch its launches."), KB([[
-                B("👥 Copy", f"dg:copyadd:{r_c}"),
-                B("🪝 Watch", f"dg:watch:{r_c}"), B("← hub", "dg:hub")]])
+            r_c = ref or self._ref(bid, "wallet", st.creator)
+            return (f"<b>👛 WALLET {w}</b>\n<code>{line}</code>\n"
+                    f"Copy its trades or watch its launches."), KB([
+                [B("👥 Copy", f"dg:copyadd:{r_c}"), B("🪝 Watch", f"dg:watch:{r_c}")],
+                [B("← Back", "dg:hub")]])
         if st.kind == "blast_locked":
-            return ("<b>💣 BLAST — 🔒 coming soon</b>\nNot trading yet: we enable "
-                    "it only after auditing their contracts, same as Suipump."), \
-                KB([[B("🔔 Ping me", "dg:blast_ping"), B("← hub", "dg:hub")]])
+            return ("<b>💣 BLAST — 🔒 coming soon</b>\n<code>" + line + "</code>\n"
+                    "Not trading yet: we enable it only after auditing their "
+                    "contracts, same as Suipump."), \
+                KB([[B("🔔 Ping me", "dg:blast_ping")], [B("← Back", "dg:hub")]])
         if st.kind == "unknown":
             return ("⛔ Can't trade that.\n" + esc("; ".join(st.reasons)),
-                    KB([[B("← hub", "dg:hub")]]))
+                    KB([[B("← Back", "dg:hub")]]))
         m = compute(self.ch, st)
-        badge = {"curve": "🟢 LIVE on curve", "graduating": "⏳ GRADUATING — untradeable",
-                 "pool": "🎨 GRADUATED → Aftermath", "generic": "🌐 generic token"}[st.kind]
-        allowed, hp = await self._gauntlet(bot, st)
-        head = (f"<b>{esc(st.symbol or st.token_type[:8])}</b> {badge}\n"
-                f"price: {m.price_sui:.2e} SUI · mcap ≈ ${m.mcap_usd:,.0f}\n"
-                f"grad: {m.progress_bps/100:.0f}% · left {m.grad_left_sui:.0f} SUI · "
-                f"liq {m.liq_sui:.0f} SUI\n" + hp)
-        r_curve = self._ref(bid, "curve", st.curve_id or st.token_type)
-        chips = [B(x, f"dg:amt:{r_curve}:{x}") for x in ("0.2", "0.5", "1", "Max")]
-        kb = [chips,
-              [B("📉 5%", "dg:slp:5"), B("📊 10%", "dg:slp:10"), B("🤘 25%", "dg:slp:25")],
-              [B("🚀 BUY", f"dg:buy:{r_curve}")] if allowed
-              else [B("⛔ blocked", "dg:hub")],
-              [B("🧺 Bundled buy", f"dg:burst:{r_curve}"), B("← hub", "dg:hub")]]
-        return head, KB(kb)
+        icon = {"curve": "🐸", "graduating": "⏳", "pool": "🎨", "generic": "🌐"}[st.kind]
+        badge = {"curve": "LIVE on curve", "graduating": "GRADUATING — untradeable",
+                 "pool": "GRADUATED → Aftermath", "generic": "generic token"}[st.kind]
+        allowed, extra = await self._gauntlet(bot, st)
+        r_curve = ref or self._ref(bid, "curve", st.curve_id or st.token_type)
+        sel_amt = str(caps.get("_amt_" + r_curve, "0.5"))
+        sel_slp = str(caps.get("_slip_" + r_curve, "10"))
+        mcap = m.mcap_usd or m.fdv_usd          # pre-grad FDV stands in for tiny mcap
+        head = (f"<b>{icon} {esc(st.symbol or st.token_type[:8])}</b> · {badge}\n"
+                f"<code>{line}</code>\n"
+                f"💵 Price   <code>{m.price_sui:.3g} SUI</code>\n"
+                f"📈 MCap    <code>{self._usd(mcap)}</code> · "
+                f"FDV <code>{self._usd(m.fdv_usd)}</code>\n"
+                f"🎓 Grad    <code>{m.progress_bps/100:.0f}%</code> · "
+                f"<code>{m.grad_left_sui:,.0f} SUI</code> to go\n"
+                f"💧 Liq     <code>{m.liq_sui:,.0f} SUI</code>"
+                + (("\n" + extra) if extra else ""))
+        def _chip(x, suffix, sel, cb):
+            on = str(sel).rstrip("%") == x.rstrip("%")
+            return B(("✓ " if on else "") + f"{x}{suffix}", cb)
+        rows = [[B(f"🚀 BUY {sel_amt} SUI", f"dg:buy:{r_curve}")] if allowed
+                else [B("⛔ blocked", "dg:hub")],
+                [_chip("0.2", " SUI", sel_amt, f"dg:amt:{r_curve}:0.2"),
+                 _chip("0.5", " SUI", sel_amt, f"dg:amt:{r_curve}:0.5")],
+                [_chip("1", " SUI", sel_amt, f"dg:amt:{r_curve}:1"),
+                 _chip("Max", "", sel_amt, f"dg:amt:{r_curve}:Max")],
+                [_chip("5%", "", sel_slp, f"dg:slp:{r_curve}:5"),
+                 _chip("10%", "", sel_slp, f"dg:slp:{r_curve}:10")],
+                [_chip("25%", "", sel_slp, f"dg:slp:{r_curve}:25"),
+                 B("🧺 Bundled buy", f"dg:burst:{r_curve}")],
+                [B("← Back", "dg:hub")]]
+        return head, KB(rows)
 
     async def _gauntlet(self, bot, st):
         if st.kind not in ("curve", "pool", "graduating", "generic"):
             return False, ""
         g = run_gauntlet(self.ch, st)
         if g.allowed:
-            hp = ("🟢 honeypot check ✓ live" if g.honeypot == "pass" else
-                  "🟡 honeypot untested" if g.honeypot in ("untested", "skipped")
-                  else "🟢 sellable ✓")
-            extra = ("\n⚠ " + esc(" · ".join(g.risks))) if g.risks else ""
-            return True, f"{hp}{extra}"
+            # silence "honeypot untested" noise (user policy): surface the pass
+            # when a live sell-test succeeded; say nothing otherwise.
+            hp = "✅ Sell-tested live" if g.honeypot == "pass" else ""
+            risks = [r for r in (g.risks or [])
+                     if "untested" not in r.lower() and "not tested" not in r.lower()]
+            extra = ("⚠ " + esc(" · ".join(risks))) if risks else ""
+            return True, ("\n" + extra) if extra else ""
         return False, "⛔ " + esc(" · ".join(g.blocks))
 
     # ---------------- callback router ----------------
@@ -349,7 +389,9 @@ class DegenUI:
                                                 B("👥 Copy", "dg:copy"),
                                                 B("← hub", "dg:hub")]]))
         elif data.startswith("dg:amt:"):
-            await self._set_amount(q, bid, data)
+            await self._set_amount(q, bot, data)
+        elif data.startswith("dg:slp:"):
+            await self._set_slip(q, bot, data)
         elif data.startswith("dg:buy:"):
             await self._confirm_buy(q, bot, cfg, bid, data.split(":")[2])
         elif data.startswith("dg:burst:"):
@@ -375,16 +417,43 @@ class DegenUI:
         else:
             await self._render(update, context, bot)
 
-    async def _set_amount(self, q, bid, data):
+    async def _repaint_card(self, q, bot, ref):
+        bid = int(bot["id"])
+        rv = self.led.resolve_ref(ref, bid)
+        if not rv:
+            await q.edit_message_text("expired.", reply_markup=self._hub_kb())
+            return
+        st = resolve_input(self.ch, rv[1])
+        cfg = self.led.get_config(bid)
+        txt, kb = await self.card(bot, cfg, st, ref=ref)   # SAME ref: selections stick
+        await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+
+    async def _set_amount(self, q, bot, data):
         parts = data.split(":")
         ref, amt = parts[2], parts[3]
+        bid = int(bot["id"])
         self.led.set_config(bid, caps={**(self.led.get_config(bid).get("caps") or {}),
                                        "_amt_" + ref: amt})
-        await q.edit_message_text(f"amount set {amt} SUI — press BUY.",
-                          reply_markup=KB([[B("🚀 BUY", f"dg:buy:{ref}"),
-                                            B("← hub", "dg:hub")]]))
+        await self._repaint_card(q, bot, ref)
+
+    async def _set_slip(self, q, bot, data):
+        parts = data.split(":")            # dg:slp:<ref>:<pct>
+        ref, pct = parts[2], parts[3]
+        bid = int(bot["id"])
+        self.led.set_config(bid, caps={**(self.led.get_config(bid).get("caps") or {}),
+                                       "_slip_" + ref: pct})
+        await self._repaint_card(q, bot, ref)
 
     # ---------------- confirm flow (§6.3) ----------------
+    def _amt_value(self, caps: dict, sel: str) -> float:
+        """Chip label → SUI amount. 'Max' means the per-order cap."""
+        if sel == "Max":
+            return float(caps.get("per_order") or 0.5)
+        try:
+            return float(sel)
+        except ValueError:
+            return 0.5
+
     async def _confirm_buy(self, q, bot, cfg, bid, ref):
         rv = self.led.resolve_ref(ref, bid)
         if not rv:
@@ -393,10 +462,15 @@ class DegenUI:
         st = resolve_input(self.ch, rv[1])
         m = compute(self.ch, st)
         caps = cfg.get("caps", {}) or {}
-        amt = float(caps.get("_amt_" + ref, min(0.5, float(caps.get("per_order", 0.5)))))
-        txt = (f"Confirm BUY {esc(st.symbol or st.token_type[:8])} ≈ <b>{amt} SUI</b>\n"
-               f"you get ≈ {amt / max(m.price_sui, 1e-18):,.0f} · fee 0.5% → Neko\n"
-               f"⛔️ Cancel returns to hub.")
+        sel = str(caps.get("_amt_" + ref, "0.5"))
+        slip = int(float(caps.get("_slip_" + ref, "10")))
+        amt = self._amt_value(caps, sel)
+        exp_tokens = amt / max(m.price_sui, 1e-18)
+        txt = (f"🚀 BUY <b>{esc(st.symbol or st.token_type[:8])}</b>\n"
+               f"spend <b>{amt:g} SUI</b> · expect ≈ <code>{exp_tokens:,.0f}</code>\n"
+               f"slippage <code>{slip}%</code> · min-out "
+               f"<code>{exp_tokens * (100 - slip) / 100:,.0f}</code>\n"
+               f"fee 0.5% on exit · 0% on entry")
         kb = KB([[B("✅ Confirm", f"dg:cconfirm:{ref}:{amt}"),
                   B("⛔ Cancel", "dg:hub")]])
         await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
@@ -431,10 +505,15 @@ class DegenUI:
                    if self.ex else {"ok": False, "error": "no executor"})
         else:
             amt = float(parts[3]) if len(parts) > 3 else 0.5
+            slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "10")))
+            m = compute(self.ch, st)
+            exp_atoms = amt / max(m.price_sui, 1e-18) * 10 ** (m.decimals or 6)
+            min_out = int(exp_atoms * (100 - slip) / 100)
             res = (self.ex.buy(bid, launchpad="suipump", curve_id=st.curve_id,
                                token_type=st.token_type,
                                curve_isv=st.curve_obj.get("shared_version", 0),
-                               sui_amount=amt, min_out=0, idem=f"ui{ref}:{amt}")
+                               sui_amount=amt, min_out=min_out,
+                               idem=f"ui{ref}:{amt}")
                    if self.ex else {"ok": False, "error": "no executor"})
         # §6.3c: sweep expired cards/sheets. We turn THIS message into the pinned
         # receipt via edit (do NOT delete the message we are about to edit).
