@@ -113,6 +113,23 @@ class DegenUI:
         cfg = self.led.get_config(bid)
         if not cfg.get("enabled"):
             return False
+        pend = (cfg.get("caps") or {}).get("_ask_amt")
+        if pend:
+            mm = re.fullmatch(r"(?i)([\d]*\.?\d+)\s*(sui)?", txt.strip())
+            try:
+                val = float(mm.group(1)) if mm else 0.0
+            except ValueError:
+                val = 0.0
+            caps = dict(cfg.get("caps") or {})
+            loc = caps.pop("_ask_loc", "")
+            ref = caps.pop("_ask_amt", "")
+            if val > 0 and ref:
+                caps["_amt_" + ref] = ("%.10g" % val).rstrip("0").rstrip(".")
+                self.led.set_config(bid, caps=caps)
+                await self._repaint_at(context, bot, ref, loc)
+                await self._purge_input(update)
+                return True
+            self.led.set_config(bid, caps=caps)   # bad input: drop the ask, keep typing
         if txt.lower().startswith("track ") and ADDR_RE.match(txt[6:]):
             self.led.track_wallet(bid, txt[6:].strip().split()[0])
             await update.message.reply_text("👀 Tracking that wallet — profile in Copy.",
@@ -328,6 +345,7 @@ class DegenUI:
                  _chip("0.5", " SUI", sel_amt, f"dg:amt:{r_curve}:0.5")],
                 [_chip("1", " SUI", sel_amt, f"dg:amt:{r_curve}:1"),
                  _chip("Max", "", sel_amt, f"dg:amt:{r_curve}:Max")],
+                [B("✏️ X SUI", f"dg:cust:{r_curve}")],
                 [_chip("5%", "", sel_slp, f"dg:slp:{r_curve}:5"),
                  _chip("10%", "", sel_slp, f"dg:slp:{r_curve}:10")],
                 ([_chip("25%", "", sel_slp, f"dg:slp:{r_curve}:25")]
@@ -446,6 +464,26 @@ class DegenUI:
                                   reply_markup=KB([[B("🧺 Bundle", "dg:bundle"), B("← hub", "dg:hub")]]))
             else:
                 await q.edit_message_text("Bundle manager offline", reply_markup=KB([[B("← hub", "dg:hub")]]))
+        elif data.startswith("dg:cust:"):
+            ref = data.split(":")[2]
+            caps = dict(cfg.get("caps") or {})
+            caps["_ask_amt"] = ref
+            caps["_ask_loc"] = f"{q.message.chat_id}:{q.message.message_id}"
+            self.led.set_config(bid, caps=caps)
+            await q.edit_message_text(
+                "✏️ <b>X SUI</b> — type the exact amount to spend, e.g. "
+                "<code>0.75</code>",
+                parse_mode="HTML",
+                reply_markup=KB([[B("⛔ Cancel", "dg:custx")]]))
+        elif data == "dg:custx":
+            caps = dict(cfg.get("caps") or {})
+            ref = caps.pop("_ask_amt", "")
+            caps.pop("_ask_loc", None)
+            self.led.set_config(bid, caps=caps)
+            if ref:
+                await self._repaint_card(q, bot, ref)
+            else:
+                await self._render(update, context, bot)
         elif data == "dg:buy":
             await q.edit_message_text("🎯 Paste the token's contract address (or its "
                                       "launchpad link) — I'll open its card.",
@@ -455,6 +493,30 @@ class DegenUI:
             await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         else:
             await self._render(update, context, bot)
+
+    async def _repaint_at(self, context, bot, ref, loc):
+        """Put the updated card back where the prompt replaced it."""
+        bid = int(bot["id"])
+        rv = self.led.resolve_ref(ref, bid)
+        if not rv:
+            return
+        st = resolve_input(self.ch, rv[1])
+        cfg = self.led.get_config(bid)
+        txt, kb = await self.card(bot, cfg, st, ref=ref)
+        if loc and ":" in loc and context and getattr(context, "bot", None):
+            chat, _, msg = loc.partition(":")
+            try:
+                await context.bot.edit_message_text(chat_id=int(chat),
+                                                    message_id=int(msg), text=txt,
+                                                    parse_mode="HTML", reply_markup=kb)
+                return
+            except Exception:
+                pass
+        if context and getattr(context, "bot", None):
+            m = await context.bot.send_message(bot.get("tg_id") or 0, txt,
+                                               parse_mode="HTML", reply_markup=kb)
+            self._sched(bid, m.chat_id, m.message_id, "card",
+                        curve_id=getattr(st, "curve_id", ""))
 
     async def _repaint_card(self, q, bot, ref):
         bid = int(bot["id"])

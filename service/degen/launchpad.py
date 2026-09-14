@@ -71,6 +71,9 @@ class AssetState:
     created_at_ms: int = 0
 
 
+_IDX_DOWN = 0.0   # unix ts of last indexer failure (60s cool-down)
+
+
 # ----------------------------------------------------------------- interface
 class Launchpad:
     id = ""
@@ -142,9 +145,15 @@ class SuipumpLaunchpad(Launchpad):
             st.kind = "pool" if st.pool_id else "graduating"
         if thr > 0:
             st.progress_bps = min(10000, int(sui_reserve * 10000 / thr))
-        # metadata via indexer API (names/icons) — creator-supplied labels, never pricing
-        try:
-            r = requests.get(f"{K.SUIPUMP_INDEXER}/token/{curve_obj['address']}", timeout=5)
+        # metadata via indexer API (names/icons) — creator-supplied labels, never
+        # pricing. The indexer is a nicety (free-tier render app): short timeout,
+        # 60s failure cool-down, DEGEN_INDEXER=0 to disable (tests).
+        import os as _os, time as _t
+        _idx = _os.getenv("DEGEN_INDEXER", K.SUIPUMP_INDEXER)
+        global _IDX_DOWN
+        if _idx and _idx != "0" and _t.time() - _IDX_DOWN > 60:
+          try:
+            r = requests.get(f"{_idx}/token/{curve_obj['address']}", timeout=2.5)
             if r.status_code == 200:
                 d = r.json() or {}
                 st.symbol = st.symbol or str(d.get("symbol") or "")[:16]
@@ -162,8 +171,8 @@ class SuipumpLaunchpad(Launchpad):
                     st.pool_id = _pad_addr(pid)
                     if st.kind == "graduating":
                         st.kind = "pool"
-        except Exception:
-            pass
+          except Exception:
+            _IDX_DOWN = _t.time()
         return st
 
 

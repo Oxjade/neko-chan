@@ -284,3 +284,32 @@ def test_card_graduated_pool_gets_full_buy_dashboard():
     assert "dg:burst" not in flat                       # no curve-bundle on DEX
     rows = [r for r in kb.inline_keyboard]
     assert any(b.text.startswith("🚀 BUY") for r in rows for b in r)
+
+
+def test_x_sui_custom_amount_flow():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    ref = ui._ref(1, "curve", CID)
+    # button label + callback exist on the card
+    from degen.launchpad import resolve_input
+    st = resolve_input(ui.ch, CID)
+    _, kb = asyncio.get_event_loop().run_until_complete(
+        ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st, ref=ref))
+    btns = [b for r in kb.inline_keyboard for b in r]
+    assert any(b.text == "✏️ X SUI" and b.callback_data == f"dg:cust:{ref}" for b in btns)
+    # tap it -> ask state set
+    _run(ui, f"dg:cust:{ref}", led)
+    assert led.get_config(1)["caps"]["_ask_amt"] == ref
+    # numeric reply -> stored as the selected amount, ask cleared
+    msg = _msg("0.75 sui")
+    upd = _update(msg=msg)
+    handled = asyncio.new_event_loop().run_until_complete(
+        ui.handle_text(upd, SimpleNamespace()))
+    assert handled is True
+    caps = led.get_config(1)["caps"]
+    assert caps.get("_amt_" + ref) == "0.75" and "_ask_amt" not in caps
+    # cancel clears the ask
+    _run(ui, f"dg:cust:{ref}", led)
+    _run(ui, "dg:custx", led)
+    assert "_ask_amt" not in (led.get_config(1)["caps"] or {})
