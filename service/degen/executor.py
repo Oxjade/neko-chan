@@ -170,9 +170,15 @@ class DegenExecutor:
         need = int(sui_amount * K.MIST)
         # entry fee is charged on the SELL leg (deterministic SUI); buys pay none —
         # do NOT pretend an uncollectable entry fee on the confirm sheet.
+        try:
+            have = self.ch.balance(adapter.address)
+        except Exception:
+            have = 0
+        if have < need + K.MIST // 100:          # amount + ~0.01 SUI gas margin
+            return {"ok": False, "error": "insufficient SUI balance"}
         coin, _ = self._pick_sui_coin(adapter, need)
         if not coin:
-            return {"ok": False, "error": "no SUI coin to fund order"}
+            return {"ok": False, "error": "insufficient SUI balance"}
         gas_coin = next((c for c in self.ch.coins(adapter.address)
                          if c["objectId"] != coin["objectId"] and c["balance_mist"] >= 2_000_000), None)
         before = self.ch.balance(adapter.address, st.token_type or token_type)
@@ -319,6 +325,13 @@ class DegenExecutor:
         adapter, waddr = self._adapter_for("")
         if adapter is None:
             return {"ok": False, "error": "no wallet for DEX swap"}
+        try:
+            have = self.ch.balance(adapter.address, coin_in_type)
+        except Exception:
+            have = 0
+        if have < in_atoms:
+            return {"ok": False, "error": "insufficient SUI balance" if coin_in_type == K.SUI_COIN_TYPE
+                    else "insufficient token balance"}
         client = self._spot_client()
         fee = ({"recipient": self.fee_recipient, "feePercentage": 0.5}
                if self.fee_recipient and K.PLATFORM_FEE_BPS else None)
@@ -352,8 +365,11 @@ class DegenExecutor:
             out = adapter._broadcast_raw_ptb(kind[1:], self.ch.gas_price(),
                                              K.SNIPE_GAS_BUDGET_MIST)
         except Exception as exc:
-            self.ledger.set_order(oid, "failed", error=str(exc)[:120])
-            return {"ok": False, "error": f"aftermath: {exc}", "order_id": oid}
+            msg = str(exc)
+            self.ledger.set_order(oid, "failed", error=msg[:120])
+            if "nsufficient" in msg:
+                return {"ok": False, "error": "insufficient SUI balance", "order_id": oid}
+            return {"ok": False, "error": "aftermath: " + msg[:120], "order_id": oid}
         status = str(out.get("status", "")).upper()
         filled = status == "SUCCESS"
         self.ledger.set_order(oid, "fired" if filled else "failed",

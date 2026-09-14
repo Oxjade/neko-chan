@@ -414,7 +414,8 @@ def test_dex_swap_post_grad_records_fill_and_position():
             return {"transaction": base64.b64encode(kind).decode()}
 
     ex._spot = lambda addr: FakeSpot()
-    balances = iter([1_000_000, 100_000_000_000])  # before / after (token atoms)
+    # reads: SUI pre-flight, token before, token after
+    balances = iter([1_000_000_000, 1_000_000, 100_000_000_000])
     ch.balance = lambda addr, ct=None: next(balances)
     ad.broadcasts_raw = []
     ad._broadcast_raw_ptb = lambda body, gp, budget, gas_coin=None: (
@@ -430,3 +431,14 @@ def test_dex_swap_post_grad_records_fill_and_position():
     # integrator fee actually requested on the route
     assert calls["quote"][3] and calls["quote"][3]["feePercentage"] == 0.5
     assert calls["wl"] == ["Cetus"]        # suipump graduates pinned to Cetus
+
+
+def test_insufficient_balance_says_so_plainly():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    ch.balance = lambda a, ct=None: 0                # broke wallet
+    r = ex.buy(1, launchpad="suipump", curve_id=CID, token_type=TOK, curve_isv=1,
+               sui_amount=0.5, min_out=0)
+    assert r["ok"] is False and r["error"] == "insufficient SUI balance", r
+    assert ad.broadcasts == []                        # never reached broadcaster
