@@ -82,10 +82,14 @@ def test_degen_view_strip_and_keyboard():
     bot = {"id": 1, "tg_id": 42, "has_ai_key": 1, "bot_name": "x"}
     strip = ui.degen_strip(bot, led.get_config(1))
     assert "🎰 DEGEN" in strip and "budget" in strip
-    flat = str(ui.degen_keyboard(bot, led.get_config(1)).inline_keyboard)
-    for want in ("Suipump", "Blast 🔒", "Both", "Buy a meme", "Degen Pos",
+    kb = ui.degen_keyboard(bot, led.get_config(1))
+    flat = str(kb.inline_keyboard)
+    for want in ("Suipump", "Blast 🔒", "Both venues", "Buy a meme", "Degen Pos",
                  "Sniper", "Copy", "Bundle", "KILL", "Main Dashboard"):
         assert want in flat, want
+    # main-dashboard rhythm: max 2 buttons per row
+    for row in kb.inline_keyboard:
+        assert len(row) <= 2, [b.text for b in row]
     # view is a flag, not a message
     assert not ui.degen_on(1)
     ui.enter(1)

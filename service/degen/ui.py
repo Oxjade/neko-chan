@@ -183,14 +183,19 @@ class DegenUI:
         if not cfg.get("enabled"):
             return KB([[B("🟢 Enable Degen", "dg:on")],
                        [B("📊 Main Dashboard", "dg:main")]])
+        # Same rhythm as the main dashboard: at most 2 per row, full-width for
+        # the primary action. Nothing 3-or-4-across.
+        caps = cfg.get("caps", {}) or {}
+        kill_row = [B("♻️ Release Kill", "dg:unkill")] if caps.get("killed") \
+            else [B("🛑 KILL", "dg:kill")]
         return KB([
-            [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast"),
-             B("⚡ Both", "dg:lp:both")],
-            [B("🎯 Buy a meme", "dg:buy"), B("📋 Orders", "dg:orders"),
-             B("📊 Degen Pos", "dg:pos")],
-            [B("🪝 Sniper", "dg:sniper"), B("👥 Copy", "dg:copy"),
-             B("🧺 Bundle", "dg:bundle"), B("🛡 Risk", "dg:risk")],
-            [B("🛑 KILL", "dg:kill"), B("⏻ Disable", "dg:off")],
+            [B("🎯 Buy a meme", "dg:buy")],
+            [B("📊 Degen Positions", "dg:pos"), B("📋 Orders", "dg:orders")],
+            [B("🪝 Sniper", "dg:sniper"), B("👥 Copy", "dg:copy")],
+            [B("🧺 Bundle", "dg:bundle"), B("🛡 Risk", "dg:risk")],
+            [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast")],
+            [B("⚡ Both venues", "dg:lp:both"), B("⏻ Disable", "dg:off")],
+            kill_row,
             [B("📊 Main Dashboard", "dg:main")],
         ])
 
