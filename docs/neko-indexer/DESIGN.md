@@ -158,6 +158,7 @@ All on `fullnode.mainnet.sui.io:443` (TLS); official pre-generated client/proto 
 | Checkpoint payload | `LedgerService.GetCheckpoints` with `read_mask` | Pull full checkpoint data for the range being backfilled. |
 | Transactions & effects from a checkpoint | `LedgerService.GetTransaction` / `BatchGetTransactions` (v2), via checkpoint's tx digests + FieldMask | Prefer `ListEvents` when we only need filtered event types; fall back to transaction when we need `changedObjects` for holder deltas. |
 | Events by type | `LedgerService.ListEvents` with `event_type` filter + cursor | ⚠️ **Not served on the public-good endpoint (measured 2026-09-14, §18)** → deep backfill re-scans raw checkpoints with an `event_type`-prefix filter; keep cursor semantics for when a dedicated fullnode is available. |
+| Event-filtered checkpoint scan | `LedgerService.ListCheckpoints` + `TransactionFilter`/`EmitModule` predicate (server-side prune) | **Verified 2026-09-14:** a 60k-checkpoint window collapsed to only the 4 event-bearing checkpoints via `mod:<pkg>::<module>`; feeds `neko-verify backfill-scan/backfill-fixtures`. Prunes to event-bearing frames only — the sparse-event discovery path now. |
 | Object reads (balances/holders/liquidity) | `StateService.GetObject` / `GetBalance` / `GetOwnedObjects` | For non-streamed facts: current pool reserves, wallet balances, curve state at a point in time. |
 | Move struct layouts (on-chain truth) | `MovePackageService.GetPackage` + `GetDatatype` | Retrieve module list + `MoveStruct` layout per type → cache → BCS decode events generically. This is the "don't invent event names" mechanism. |
 | Coin metadata | `CoinService` (coin metadata lookup) when available; else `0x2::coin::CoinMetadata` objects via StateService. | |
@@ -176,7 +177,7 @@ Until this passes for a target, its adapter is **not** enabled:
 1. Obtain candidate package id (docs, SDK mainnet config, explorer, Move Registry).
 2. `MovePackageService.GetPackage` → confirm modules exist on mainnet; pull module list.
 3. `GetDatatype` per candidate type → dump `MoveStruct` layout; record module:type names verbatim.
-4. Confirm emission on mainnet and gather ≥3 distinct real transactions as fixtures by scanning raw checkpoints for the type (`neko-verify db-scan <define-id-prefix>` then `neko-verify fixtures`; `ListEvents` is not served on the public-good endpoint — §18).
+4. Confirm emission on mainnet and gather ≥3 distinct real transactions as fixtures by scanning raw checkpoints for the type. 2026-09-14: `ListEvents` is not served on the public-good endpoint (§18), so use `ledger_checkpoints` backfill with either a `mod:<pkg>::<module>` server-side filter (`neko-verify backfill-fixtures`, fast — frames pruned to event-bearing checkpoints) or an `event_type`-prefix filter (`neko-verify backfill-scan` / `neko-verify db-scan <define-id-prefix>` then `fixtures`).
 5. Resolve the chain of identities (token coin type `<pkg>::<module>::<coin>`; pool object type; factory/registry objects like DeepBook `0xaf16...` or SuiPump `TokenRegistry` and `PlatformTreasury`; per-token curve/graduation objects).
 6. Save fixture bundle to `tests/fixtures/*` (raw BCS + decoded layout + expected canonical decodes) and freeze.
 7. Only then: write decoder + tests, then enable in config `protocols.adaptive.active`.
@@ -212,7 +213,7 @@ NEW (coin template package published / treasury created)
 
 | Platform | Role in pipeline | Status |
 |---|---|---|
-| SuiPump | bonding-curve launchpad; graduation → Cetus CLMM | **v1 target**; adapter design ready; mainnet platform address TBD-VERIFY |
+| SuiPump | bonding-curve launchpad; graduation → Cetus CLMM | **v1 target**; ✅ mainnet platform VERIFIED 2026-09-14 (§9); trade mapping proven on 40-event fixture |
 | MovePump | fair-launch memecoin platform; liquidity on Cetus | **v1 target**; TBD-VERIFY |
 | Kumbaya | memecoin launchpad | **v1 target**; TBD-VERIFY |
 | Cetus CLMM | AMM for graduated tokens (`0x25ebb...`) + all non-launchpad memecoins | **v1 target**; package VERIFIED; event/pool struct dump pending |
@@ -229,14 +230,14 @@ Decisive questions for review below (§"Ask Me"): whether v1 includes DeepBook/T
 
 Legend: ✅ = VERIFIED (safe to build adapter fixture on), ⏳ = TBD-VERIFY (use §6 procedure before enabling).
 
-### SuiPump (testnet identity verified; mainnet pending)
-- Platform package (testnet, repo `suipump-xyz/suipump-contracts` `deployed.json`, 2026-05-14, Sui 1.71.1, edition 2024.beta): ✅ `0x1a6046b029116bb4c8bf1b3f218ced1ffefd50422ef29c1cd4dab9d65ff46f17`
-- TokenRegistry factory (testnet): ✅ `0x6974dfeb78c1d9fcf6ef02ac96988dc2c966ecc3e5fcb3ec78a4942218bf9cc6`
-- PlatformTreasury (testnet): ✅ `0xb6f454435d60e1914c68f5d7493fd1ca0d7c2dc8b6ec297e360f41103d21b9bb`
-- Modules (13): `bonding_curve`, `creator_vault`, `events`, `factory`, `graduation`, `launcher`, `trading`, `treasury`, `reputation`, `gated_content`, `creator_registry`, `utils` (+package). Lifecycle-critical: `bonding_curve`, `factory`, `graduation`, `trading`, `events`.
+### SuiPump (testnet identity verified; **mainnet VERIFIED 2026-09-14**)
+- Testnet platform/registry/treasury (repo `suipump-xyz/suipump-contracts` `deployed.json`, 2026-05-14, Sui 1.71.1, edition 2024.beta): ✅ `0x1a6046b029116bb4c8bf1b3f218ced1ffefd50422ef29c1cd4dab9d65ff46f17` / `0x6974dfeb78c1d9fcf6ef02ac96988dc2c966ecc3e5fcb3ec78a4942218bf9cc6` (TokenRegistry factory) / `0xb6f454435d60e1914c68f5d7493fd1ca0d7c2dc8b6ec297e360f41103d21b9bb` (PlatformTreasury). ⚠️ **Not on mainnet** — testnet identity only.
+- **Mainnet V16 platform (defining id, stable across upgrades):** ✅ `0x7b4163d17ce18b386ee50929ba48fa0a2ecb60304df4b07e26835aa18617cda2` — verified on-chain via `GetPackage` (storage_id==original_id, version 1; 3 modules: `bonding_curve`, `agent_session`, `enclave_registry`). Source: live `suipump.org` app bundle env config + on-chain confirmation.
+- Mainnet upgrade chain (verified): `VITE_SUIPUMP_V16_WRITE_PACKAGE` `0xb1ad998007f93af6b29bd60b345bb7ed7fd6b3e7381ca08c88051e615b174975` (version 2, original = above), `VITE_SUIPUMP_V17_PACKAGE` `0xb205fea41ccedac051bc66498e6ca68cb802c4a6ea06da12e524bed09c80d9b0` (version 1), `VITE_SUIPUMP_V17_WRITE_PACKAGE` `0x93d5b3d2b3dda384b9cfe5987cd423ec77580973a6d2f1cd3711b292aee14203` (version 3, original = V17). Registry/partner ids from the bundle: ENCLAVE `0x20d43e60…6794`, GRADUATION_REGISTRY `0x2b81ccba…08fc`, LAUNCH_ISSUER_REGISTRY `0x1a81374a…dae5`, CETUS_CLMM_PARTNER `0x40fbafb1…7870`, CETUS_DLMM_PARTNER `0xef9fa949…d259`, DEX_FEE_RECEIVER `0x4179b33a…4d35c`, PRICE_CONFIG `0xa5b38690…21f9`.
+- **Real event types verified on mainnet** (`bonding_curve` module, via EventFilter-less checkpoint scan): `TokensPurchased`, `TokensSold`, `CurveCreated`, `Graduated`, `PoolRecorded`, `BuybackExecuted`, `CreatorFeesClaimed`, `ProtocolFeesClaimed`, `PayoutsUpdated`, `Comment` (+ agent_session lifecycle events per module dump). 40 real events frozen in `indexer/tests/fixtures/suipump/events.json`; offline BCS decode == node `Event.json` for all 40.
 - Per-token model: each launch publishes a **byte-identical coin-template package** → per-token package id `<tokenPkg>` with token type `<tokenPkg>::template::TEMPLATE`. This is why token discovery keys off package-publish + factory events, not a fixed coin type.
-- Curve constants (whitepaper, verify on-chain): supply 1,000,000,000 (6 dp); virtual reserves 4,369 SUI / 1,073,000,000 tokens; graduation adds 200,000,000 tokens; graduation migrates to Cetus CLMM.
-- ⏳ Mainnet platform package/factory/treasury ids + actual `events.move` emitted struct names → §6 procedure.
+- Curve constants (whitepaper, verify on-chain): supply 1,000,000,000 (6 dp); virtual reserves 4,369 SUI / 1,073,000,000 tokens; graduation adds 200,000,000 tokens; graduation migrates to Cetus CLMM. `grad_threshold_used` sampled live = 9,000,000,000,000 (9e12 raw) — matches the graduated curve spend floor in events.
+- Bonding trade fields (verify on-chain): buy = `sui_in`/`tokens_out` (+ fees: airdrop/creator/lp/protocol/referral/tail_refund; post state `new_sui_reserve`/`new_token_reserve`); sell = `sui_out`/`tokens_in`. Wallet = `buyer`/`seller`; curve id = `curve_id`. Trade sides map 1:1 to `bonding_trades.side`.
 
 ### Cetus CLMM
 - ✅ **VERIFIED 2026-09-14** (§6 procedure). Package v14: storage_id `0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3`, original_id `0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb`, 13 modules.
@@ -432,3 +433,20 @@ and **Cetus CLMM verified end-to-end on mainnet**:
 6. **G3 (adapter framework + Cetus proof) met:** `cargo test --lib` 12/12; clean bin build.
    Next up: MovePump/SuiPump/Kumbaya event discovery + first adapter in `adapt/`, then
    backfill harness + Redis phase 5.
+7. **SuiPump mainnet VERIFIED 2026-09-14 (§6 procedure):** live-app bundle env vars extracted
+   (`suipump.org/assets/index-*.js`) + `GetPackage` confirmed: V16 defining id
+   `0x7b4163d1…cda2` (3 modules: `bonding_curve`, `agent_session`, `enclave_registry`),
+   upgrade chain V16-write/V17/V17-write verified. Real events discovered by scanning
+   checkpoints with a server-side **`EmitModule` transaction filter** (new tool
+   `neko-verify backfill-scan/backfill-fixtures`): a 60k-checkpoint window pruned to the 4
+   event-bearing frames; 40 events (10 layout types) frozen in
+   `indexer/tests/fixtures/suipump/events.json`; offline replay == node JSON for all 40
+   (`suipump_events_fixture_replay`). `TokensPurchased/Sold` map 1:1 to
+   `bonding_trades(side, token_amount, sui_amount, fees, reserves, curve_id)`.
+8. **G4 (map-events→canonical) mapping layer built:** `adapt/normalize.rs` — venue from the
+   defining-id prefix, exact decimal-string money, zero arithmetic/floats, no invented sides.
+   Proven on BOTH fixtures (`cargo test --lib` 17/17): every SuiPump buy/sell and Cetus swap
+   maps; SuiPump fee/comment/payout/buyback events pass through as raw only.
+9. **Node JSON conventions now decoder-truth:** empty Move `vector` → `null`, `Option<T>` →
+   `null`/bare value, `0x1::string::String` → UTF-8 text (all matched the node's `Event.json`
+   during SuiPump parity).

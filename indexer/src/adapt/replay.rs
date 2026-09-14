@@ -17,23 +17,25 @@ use prost::Message;
 use sui_rpc::proto::sui::rpc::v2::DatatypeDescriptor;
 
 /// Regenerate with `neko-verify fixtures ...` (see DESIGN.md §6).
-const CETUS_SWAP_FIXTURES: &str = include_str!("../../tests/fixtures/cetus/swaps.json");
+pub const CETUS_SWAP_FIXTURES: &str = include_str!("../../tests/fixtures/cetus/swaps.json");
+/// Regenerate with `neko-verify backfill-fixtures ...` (see DESIGN.md §6).
+pub const SUIPUMP_EVENT_FIXTURES: &str = include_str!("../../tests/fixtures/suipump/events.json");
 
 #[derive(serde::Deserialize)]
-struct FixtureFile {
-    comment: String,
-    layouts: std::collections::HashMap<String, String>,
-    events: Vec<FixtureEvent>,
+pub struct FixtureFile {
+    pub comment: String,
+    pub layouts: std::collections::HashMap<String, String>,
+    pub events: Vec<FixtureEvent>,
 }
 
 #[derive(serde::Deserialize)]
-struct FixtureEvent {
-    event_type: String,
-    checkpoint: u64,
-    tx_digest: String,
-    event_index: u32,
-    contents_hex: String,
-    server_json: Json,
+pub struct FixtureEvent {
+    pub event_type: String,
+    pub checkpoint: u64,
+    pub tx_digest: String,
+    pub event_index: u32,
+    pub contents_hex: String,
+    pub server_json: Json,
 }
 
 fn hex_decode(s: &str) -> Vec<u8> {
@@ -46,9 +48,6 @@ fn hex_decode(s: &str) -> Vec<u8> {
     }
     out
 }
-
-/// Regenerate with `neko-verify backfill-fixtures ...` (see DESIGN.md §9/§18).
-const SUIPUMP_EVENT_FIXTURES: &str = include_str!("../../tests/fixtures/suipump/events.json");
 
 #[cfg(test)]
 fn replay_fixture(json: &str, label: &str) {
