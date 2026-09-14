@@ -1680,24 +1680,37 @@ class UserBotController:
             mode_cb = "sb:mode_paper" if mode == "live" else "sb:mode_live"
             key_row = [] if has_key else [[telegram.InlineKeyboardButton(
                 "🔑 Connect AI Key to Start Trading", callback_data="key:start")]]
-            degen_rows = ([[telegram.InlineKeyboardButton("🎰 DEGEN — meme sniping",
-                            callback_data="degen:open")]]
-                          if self._degen_ui(b) else [])
-            kb = telegram.InlineKeyboardMarkup(key_row + degen_rows + [
-                [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
-                 telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
-                [telegram.InlineKeyboardButton(mode_label, callback_data=mode_cb)],
-                [telegram.InlineKeyboardButton("📤 Send", callback_data="sb:send"),
-                 telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
-                [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
-                 telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")],
-                [telegram.InlineKeyboardButton("🎁 Rewards", callback_data="sb:rewards")],
-                [telegram.InlineKeyboardButton("📬 Notifications", callback_data="sb:inbox"),
-                 telegram.InlineKeyboardButton("🛑 Kill-Switch", callback_data="sb:kill")],
-                [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
-                 telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:dash")],
-                [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help")],
-            ])
+            # DEGEN IS A VIEW OF THIS SAME DASHBOARD: identical text (plus a
+            # compact strip), only the button block swaps — edited in place.
+            _dgu = self._degen_ui(b)
+            _dgk = None
+            if _dgu is not None:
+                _dcfg = _dgu.led.get_config(bot_id)
+                if _dgu.degen_on(bot_id):
+                    text += _dgu.degen_strip(b, _dcfg)
+                    _dgk = _dgu.degen_keyboard(b, _dcfg)
+            if _dgk is not None:
+                kb = telegram.InlineKeyboardMarkup(
+                    key_row + list(_dgk.inline_keyboard))
+            else:
+                degen_rows = ([[telegram.InlineKeyboardButton("🎰 DEGEN — meme sniping",
+                                callback_data="degen:open")]]
+                              if _dgu is not None else [])
+                kb = telegram.InlineKeyboardMarkup(key_row + degen_rows + [
+                    [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
+                     telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
+                    [telegram.InlineKeyboardButton(mode_label, callback_data=mode_cb)],
+                    [telegram.InlineKeyboardButton("📤 Send", callback_data="sb:send"),
+                     telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
+                    [telegram.InlineKeyboardButton("📊 P&L", callback_data="sb:pnl"),
+                     telegram.InlineKeyboardButton("💰 Active Positions", callback_data="sb:pos")],
+                    [telegram.InlineKeyboardButton("🎁 Rewards", callback_data="sb:rewards")],
+                    [telegram.InlineKeyboardButton("📬 Notifications", callback_data="sb:inbox"),
+                     telegram.InlineKeyboardButton("🛑 Kill-Switch", callback_data="sb:kill")],
+                    [telegram.InlineKeyboardButton("⚙️ Settings", callback_data="sb:settings"),
+                     telegram.InlineKeyboardButton("↻ Refresh", callback_data="sb:dash")],
+                    [telegram.InlineKeyboardButton("❓ Help", callback_data="sb:help")],
+                ])
             if update.message:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
             elif update.callback_query:
@@ -3957,15 +3970,14 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(watch_confirm, pattern=r"^watch:(yes|no):[A-Z0-9]+$"))
         _dgu = self._degen_ui(bot)
         if _dgu is not None:
+            _dgu.dash_render = dash   # same message, same renderer — buttons swap
+
             async def _dgu_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 q = update.callback_query
                 await q.answer()
-                cfg = _dgu.led.get_config(bot_id)
-                if cfg.get("enabled"):
-                    txt, kbm = await _dgu.hub_on(bot, cfg)
-                else:
-                    txt, kbm = _dgu.hub_off(bot, cfg)
-                await q.message.reply_text(txt, parse_mode="HTML", reply_markup=kbm)
+                _dgu.enter(bot_id)
+                await dash(update, context)      # edit IN PLACE: dashboard stays,
+                                                 # keyboard becomes the degen set
 
             app.add_handler(CallbackQueryHandler(_dgu_open, pattern=r"^degen:open$"))
             for _h in _dgu.command_handlers():

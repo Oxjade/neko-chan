@@ -50,6 +50,21 @@ class DegenUI:
         self._bot_of = bot_of or (lambda tg: None)
         self._ai_ok = ai_key_ok or (lambda bot: bool(bot and bot.get("has_ai_key")))
         self._wallet_addr = wallet_addr or (lambda bot: "")
+        # Degen is a VIEW on the shared main dashboard (§ user policy): the same
+        # message, only the keyboard swaps. The mount injects `dash_render` =
+        # the userbot's own dash() coroutine; without it we fall back to
+        # rendering strip+keyboard standalone (tests / pre-mount).
+        self.degen_view: set[int] = set()
+        self.dash_render = None
+
+    def degen_on(self, bot_id: int) -> bool:
+        return int(bot_id) in self.degen_view
+
+    def enter(self, bot_id: int) -> None:
+        self.degen_view.add(int(bot_id))
+
+    def exit(self, bot_id: int) -> None:
+        self.degen_view.discard(int(bot_id))
 
     # ---------------- registration ----------------
     def command_handlers(self):
@@ -80,14 +95,8 @@ class DegenUI:
         if not bot:
             await update.message.reply_text("⛔ No bot here yet — talk to @Neko_tradesbot.")
             return
-        bid = int(bot["id"])
-        cfg = self.led.get_config(bid)
-        if not cfg.get("enabled"):
-            txt, kb = self.hub_off(bot, cfg)
-        else:
-            txt, kb = await self.hub_on(bot, cfg)
-        msg = await update.message.reply_text(txt, parse_mode="HTML", reply_markup=kb)
-        self._sched(bid, msg.chat_id, msg.message_id, "card")
+        self.enter(int(bot["id"]))
+        await self._render(update, context, bot)
 
     async def handle_text(self, update: Update, context) -> bool:
         """Returns True if handled. Track/Snipe verbs + CA paste (§6.3a)."""
@@ -142,47 +151,69 @@ class DegenUI:
                 pass
             self.led.clear_delete(row["chat_id"], row["message_id"])
 
-    # ---------------- screens ----------------
-    def hub_off(self, bot, cfg):
-        txt = ("<b>🎰 DEGEN MODE — OFF</b>\n\n"
-               "High-risk lane: snipe watched deployers, copy whales, DCA, "
-               "bundles on <b>Suipump</b> (Blast 🔒 soon).\n"
-               + ("⛔ Needs your AI key connected first." if not self._ai_ok(bot) else
-                  "✅ AI key OK — enable when ready."))
-        kb = KB([
-            [B("🔑 Connect AI Key", "key:start")] if not self._ai_ok(bot)
-            else [B("🟢 Enable Degen", "dg:on")]
-        ])
-        return txt, kb
-
-    async def hub_on(self, bot, cfg):
+    # ---------------- degen view (shared main dashboard + swapped buttons) ----
+    def degen_strip(self, bot, cfg) -> str:
+        """2-3 compact status lines appended to the MAIN dashboard text. Same
+        typography as the dashboard: bold header, <code> figures, ─ rules."""
         bid = int(bot["id"])
+        line = "─" * 26
         stats = self.led.snipe_stats(bid)
         wallets = self.led.bundle_wallets(bid)
         watch = self.led.watched_deployers(bid)
         pos = self.led.positions(bid)
         spend = self.led.spend_today(bid)
         caps = cfg.get("caps", {}) or {}
-        killed = " ⚠️ KILLED" if caps.get("killed") else ""
-        txt = (f"<b>🎰 DEGEN MODE — ON</b>{killed}\n"
-               f"spent today: {spend:.2f} SUI / budget {cfg['budget_sui']:.0f} · "
-               f"open: {len(pos)}\n\n"
-               f"venue: {cfg['launchpads']}\n"
-               f"🪝 sniper: {len(watch)} deployers · fired {stats['fired']}\n"
-               f"🧺 bundle: {len(wallets)}/20 wallets\n")
-        kb = KB([
+        if not cfg.get("enabled"):
+            body = "  <b>OFF</b> — high-risk lane: snipe, copy, DCA, bundles 🐸"
+        else:
+            state = "<b>⚠️ KILLED</b>" if caps.get("killed") else "<b>ON</b>"
+            body = (f"  {state} · spent today <code>{spend:.2f}</code> / "
+                    f"budget <code>{cfg['budget_sui']:.0f} SUI</code> · "
+                    f"open <code>{len(pos)}</code>\n"
+                    f"  🪝 <code>{len(watch)}</code> deployers · fired "
+                    f"<code>{stats['fired']}</code> · 🧺 <code>{len(wallets)}/20</code> "
+                    f"wallets · venue <code>{cfg['launchpads']}</code>")
+        return (f"\n<code>{line}</code>\n🎰 DEGEN\n<code>{line}</code>\n{body}")
+
+    def degen_keyboard(self, bot, cfg):
+        """The degen-mode button block (replaces the perps buttons in place)."""
+        if not self._ai_ok(bot):
+            return KB([[B("🔑 Connect AI Key", "key:start")],
+                       [B("📊 Main Dashboard", "dg:main")]])
+        if not cfg.get("enabled"):
+            return KB([[B("🟢 Enable Degen", "dg:on")],
+                       [B("📊 Main Dashboard", "dg:main")]])
+        return KB([
             [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast"),
              B("⚡ Both", "dg:lp:both")],
-            [B("🎯 Buy a meme", "dg:buy"), B("📊 Positions", "dg:pos"),
-             B("📋 Orders", "dg:orders")],
+            [B("🎯 Buy a meme", "dg:buy"), B("📋 Orders", "dg:orders"),
+             B("📊 Degen Pos", "dg:pos")],
             [B("🪝 Sniper", "dg:sniper"), B("👥 Copy", "dg:copy"),
              B("🧺 Bundle", "dg:bundle"), B("🛡 Risk", "dg:risk")],
-            [B("🛑 KILL ALL", "dg:kill"), B("⏻ Disable", "dg:off")],
+            [B("🛑 KILL", "dg:kill"), B("⏻ Disable", "dg:off")],
+            [B("📊 Main Dashboard", "dg:main")],
         ])
-        return txt, kb
+
+    async def _render(self, update, context, bot):
+        """Repaint the SAME message: main dashboard + degen strip + degen kb.
+        The mount injects dash_render (the userbot's own dash handler)."""
+        if self.dash_render is not None:
+            await self.dash_render(update, context)
+            return
+        # standalone fallback (tests / pre-mount): strip + kb only
+        cfg = self.led.get_config(int(bot["id"]))
+        txt = f"<b>🐾 {esc(bot.get('bot_name') or 'bot')}</b>{self.degen_strip(bot, cfg)}"
+        kb = self.degen_keyboard(bot, cfg)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(txt, parse_mode="HTML",
+                                                          reply_markup=kb)
+        else:
+            await update.message.reply_text(txt, parse_mode="HTML", reply_markup=kb)
 
     def _hub_kb(self):
-        return KB([[B("🎰 Degen Hub", "dg:hub")]])
+        # Back button for sections/cards: dg:hub repaints whatever view is
+        # active (degen stays degen); exiting is the explicit Main Dashboard btn.
+        return KB([[B("← Back", "dg:hub")]])
 
     _current_bot = None
 
@@ -243,27 +274,28 @@ class DegenUI:
         data = q.data
         if data == "dg:on":
             if not self._ai_ok(bot):
-                await q.edit_message_text("⛔ Connect your AI key to start trading.")
+                await q.answer("⛔ Connect your AI key first", show_alert=True)
                 return
             self.led.set_config(bid, enabled=1)
-            txt, kb = await self.hub_on(bot, self.led.get_config(bid))
-            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+            self.enter(bid)
+            await self._render(update, context, bot)
         elif data == "dg:off":
             self.led.set_config(bid, enabled=0)
-            await q.edit_message_text("⏻ Degen off. Positions still open — manage from hub.",
-                              reply_markup=KB([[B("🎰 Back", "dg:hub")]]))
+            self.exit(bid)
+            await self._render(update, context, bot)
+        elif data == "dg:main":
+            self.exit(bid)
+            await self._render(update, context, bot)
         elif data == "dg:hub":
-            txt, kb = await self.hub_on(bot, cfg)
-            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+            await self._render(update, context, bot)
         elif data.startswith("dg:lp:"):
             lp = data.split(":")[2]
             if lp == "blast" or (lp == "both" and not K.BLAST_LIVE):
-                await q.edit_message_text("💣 BLAST — 🔒 coming soon (§7.1). Both = Suipump "
-                                  "until then.", reply_markup=KB([[B("← hub", "dg:hub")]]))
+                await q.answer("💣 Blast 🔒 coming soon — both = Suipump until then",
+                               show_alert=True)
             else:
                 self.led.set_config(bid, launchpads=lp)
-                txt, kb = await self.hub_on(bot, self.led.get_config(bid))
-                await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+                await self._render(update, context, bot)
         elif data == "dg:kill":
             self.led.set_config(bid, caps={**(cfg.get("caps") or {}), "killed": True})
             if self.ex:
@@ -277,8 +309,7 @@ class DegenUI:
             self.led.set_config(bid, caps={**(cfg.get("caps") or {}), "killed": False})
             if self.ex:
                 self.ex.kill(bid, False)
-            txt, kb = await self.hub_on(bot, self.led.get_config(bid))
-            await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+            await self._render(update, context, bot)
         elif data.startswith(("dg:watch:", "dg:copyadd:")):
             _, kind, ref = data.split(":")
             rv = self.led.resolve_ref(ref, bid)
@@ -311,11 +342,15 @@ class DegenUI:
                                   reply_markup=KB([[B("🧺 Bundle", "dg:bundle"), B("← hub", "dg:hub")]]))
             else:
                 await q.edit_message_text("Bundle manager offline", reply_markup=KB([[B("← hub", "dg:hub")]]))
+        elif data == "dg:buy":
+            await q.edit_message_text("🎯 Paste the token's contract address (or its "
+                                      "launchpad link) — I'll open its card.",
+                                      reply_markup=self._hub_kb())
         elif data in ("dg:pos", "dg:orders", "dg:sniper", "dg:copy", "dg:bundle", "dg:risk"):
             txt, kb = await self._section(bot, cfg, data[3:])
             await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
         else:
-            await q.edit_message_text("—", reply_markup=self._hub_kb())
+            await self._render(update, context, bot)
 
     async def _set_amount(self, q, bid, data):
         parts = data.split(":")

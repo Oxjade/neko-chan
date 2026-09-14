@@ -32,7 +32,7 @@ class Q:
         self.answered = False
         self.message = msg
 
-    async def answer(self):
+    async def answer(self, *a, **k):
         self.answered = True
 
     async def edit_message_text(self, text, **kw):
@@ -66,26 +66,32 @@ def _update(msg=None, q=None):
 
 
 # ---------------------------------------------------------------- renderers
-def test_hub_off_requires_ai_key_flow():
+def test_degen_view_requires_ai_key():
     led = DegenLedger(":memory:")
     ui = _mk(led)
     bot = {"id": 1, "tg_id": 42, "has_ai_key": 0}
-    txt, kb = ui.hub_off(bot, led.get_config(1))
-    assert "AI key" in txt
+    kb = ui.degen_keyboard(bot, led.get_config(1))
     assert "Connect AI Key" in str(kb.inline_keyboard)
+    assert "Main Dashboard" in str(kb.inline_keyboard)
 
 
-def test_hub_on_layout_sections():
+def test_degen_view_strip_and_keyboard():
     led = DegenLedger(":memory:")
     led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=12)
     ui = _mk(led)
-    txt, kb = asyncio.get_event_loop().run_until_complete(
-        ui.hub_on({"id": 1}, led.get_config(1)))
-    assert "DEGEN MODE — ON" in txt
-    flat = str(kb.inline_keyboard)
-    for want in ("Suipump", "Blast 🔒", "Both", "Buy a meme", "Positions",
-                 "Sniper", "Copy", "Bundle", "KILL"):
+    bot = {"id": 1, "tg_id": 42, "has_ai_key": 1, "bot_name": "x"}
+    strip = ui.degen_strip(bot, led.get_config(1))
+    assert "🎰 DEGEN" in strip and "budget" in strip
+    flat = str(ui.degen_keyboard(bot, led.get_config(1)).inline_keyboard)
+    for want in ("Suipump", "Blast 🔒", "Both", "Buy a meme", "Degen Pos",
+                 "Sniper", "Copy", "Bundle", "KILL", "Main Dashboard"):
         assert want in flat, want
+    # view is a flag, not a message
+    assert not ui.degen_on(1)
+    ui.enter(1)
+    assert ui.degen_on(1)
+    ui.exit(1)
+    assert not ui.degen_on(1)
 
 
 def test_card_pre_grad_and_expiry_scheduled():
@@ -121,9 +127,12 @@ def test_cb_enable_via_hub_and_disable():
     led.set_config(1, enabled=0, ai_key_ok=1)
     ui = _mk(led)
     _run(ui, "dg:on", led)
-    assert led.get_config(1)["enabled"] == 1
+    assert led.get_config(1)["enabled"] == 1 and ui.degen_on(1)
     _run(ui, "dg:off", led)
-    assert led.get_config(1)["enabled"] == 0
+    assert led.get_config(1)["enabled"] == 0 and not ui.degen_on(1)
+    _run(ui, "dg:on", led)
+    _run(ui, "dg:main", led)          # back to main WITHOUT disabling
+    assert not ui.degen_on(1) and led.get_config(1)["enabled"] == 1
 
 
 def test_cb_kill_switch():
@@ -142,8 +151,7 @@ def test_cb_venue_chips():
     ui = _mk(led)
     calls = _run(ui, "dg:lp:suipump", led)
     assert led.get_config(1)["launchpads"] == "suipump"
-    calls = _run(ui, "dg:lp:blast", led)
-    assert "coming soon" in calls[-1][1]           # locked, never trades
+    _run(ui, "dg:lp:blast", led)                   # locked, never trades
     assert led.get_config(1)["launchpads"] == "suipump"
 
 
@@ -191,7 +199,8 @@ def test_all_degen_buttons_are_callbacks():
     led = DegenLedger(":memory:")
     led.set_config(1, enabled=0, ai_key_ok=1)
     ui = _mk(led)
-    _, kb_off = ui.hub_off({"id": 1, "tg_id": 42, "has_ai_key": 1}, led.get_config(1))
+    bot = {"id": 1, "tg_id": 42, "has_ai_key": 1}
+    kb_off = ui.degen_keyboard(bot, led.get_config(1))
     kb_hub = ui._hub_kb()
     rows = list(kb_off.inline_keyboard) + list(kb_hub.inline_keyboard)
     assert any(b.callback_data == "dg:on" for r in rows for b in r)
