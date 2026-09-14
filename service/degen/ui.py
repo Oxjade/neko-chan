@@ -182,7 +182,7 @@ class DegenUI:
                        [B("📊 Main Dashboard", "dg:main")]])
         if not cfg.get("enabled"):
             return KB([[B("🟢 Enable Degen", "dg:on")],
-                       [B("📊 Main Dashboard", "dg:main")]])
+                       [B("📊 Main Dashboard", "dg:main"), B("↻ Refresh", "dg:hub")]])
         # Same rhythm as the main dashboard: at most 2 per row, full-width for
         # the primary action. Nothing 3-or-4-across.
         caps = cfg.get("caps", {}) or {}
@@ -196,7 +196,7 @@ class DegenUI:
             [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast")],
             [B("⚡ Both venues", "dg:lp:both"), B("⏻ Disable", "dg:off")],
             kill_row,
-            [B("📊 Main Dashboard", "dg:main")],
+            [B("📊 Main Dashboard", "dg:main"), B("↻ Refresh", "dg:hub")],
         ])
 
     async def _render(self, update, context, bot):

@@ -85,7 +85,7 @@ def test_degen_view_strip_and_keyboard():
     kb = ui.degen_keyboard(bot, led.get_config(1))
     flat = str(kb.inline_keyboard)
     for want in ("Suipump", "Blast 🔒", "Both venues", "Buy a meme", "Degen Pos",
-                 "Sniper", "Copy", "Bundle", "KILL", "Main Dashboard"):
+                 "Sniper", "Copy", "Bundle", "KILL", "Main Dashboard", "↻ Refresh"):
         assert want in flat, want
     # main-dashboard rhythm: max 2 buttons per row
     for row in kb.inline_keyboard:
