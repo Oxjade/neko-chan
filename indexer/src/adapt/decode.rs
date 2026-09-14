@@ -179,7 +179,13 @@ fn decode_inner<'a>(
             for _ in 0..n {
                 items.push(decode_inner(r, inner, res, bindings).await?);
             }
-            Value::Array(items)
+            // Match the node's own `Event.json`: an empty Move vector is
+            // serialized as `null`, a non-empty one as a plain array.
+            if items.is_empty() {
+                Value::Null
+            } else {
+                Value::Array(items)
+            }
         }
         Ty::TypeParam(idx) => {
             let bound = bindings
@@ -204,6 +210,43 @@ fn decode_inner<'a>(
                     .is_some_and(|t| matches!(t.r#type, Some(t) if SigType::try_from(t) == Ok(SigType::Address)))
             {
                 return Ok(json!(r.read_address()?));
+            }
+
+            // `0x1::string::String` compiles to `struct String { bytes:
+            // vector<u8> }` and serializes as the UTF-8 text in `Event.json`.
+            if fields.len() == 1 && fields[0].name.as_deref() == Some("bytes") {
+                if let Some(sig) = fields[0].r#type.as_ref() {
+                    if matches!(ty_from_sig(sig)?, Ty::Vector(inner) if matches!(*inner, Ty::U8)) {
+                        let n = r.read_vec_len()?;
+                        let mut raw = vec![0u8; n];
+                        for b in raw.iter_mut() {
+                            *b = r.read_u8()?;
+                        }
+                        return match String::from_utf8(raw) {
+                            Ok(s) => Ok(json!(s)),
+                            Err(e) => Ok(json!(String::from_utf8_lossy(e.as_bytes()))),
+                        };
+                    }
+                }
+            }
+
+            // `0x1::option::Option<T>` compiles to `struct Option<T> { vec:
+            // vector<T> }`. The node serializes None as `null` and Some(x) as
+            // the bare value, so a one-field struct whose field is `vec:
+            // vector<_>` is decoded as null-or-single, matching `Event.json`.
+            if fields.len() == 1 && fields[0].name.as_deref() == Some("vec") {
+                if let Some(sig) = fields[0].r#type.as_ref() {
+                    if let Ty::Vector(inner) = ty_from_sig(sig)? {
+                        let n = r.read_vec_len()?;
+                        if n == 0 {
+                            return Ok(Value::Null);
+                        }
+                        let bindings = if fty_has_type_params(&inner) { args.as_slice() } else { &[] };
+                        let item =
+                            decode_inner(r, &inner, res, bindings).await.context("option item")?;
+                        return Ok(item);
+                    }
+                }
             }
 
             let mut obj = serde_json::Map::new();

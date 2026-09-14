@@ -47,11 +47,12 @@ fn hex_decode(s: &str) -> Vec<u8> {
     out
 }
 
-#[test]
-fn cetus_swap_fixture_replay() {
-    let parsed: FixtureFile =
-        serde_json::from_str(CETUS_SWAP_FIXTURES).expect("cetus swaps fixture parses");
+/// Regenerate with `neko-verify backfill-fixtures ...` (see DESIGN.md §9/§18).
+const SUIPUMP_EVENT_FIXTURES: &str = include_str!("../../tests/fixtures/suipump/events.json");
 
+#[cfg(test)]
+fn replay_fixture(json: &str, label: &str) {
+    let parsed: FixtureFile = serde_json::from_str(json).expect("fixture parses");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -90,6 +91,16 @@ fn cetus_swap_fixture_replay() {
             );
             checked += 1;
         }
-        assert_eq!(checked, parsed.events.len(), "all recorded events replayed");
+        assert_eq!(checked, parsed.events.len(), "all recorded events replayed ({label})");
     });
+}
+
+#[test]
+fn cetus_swap_fixture_replay() {
+    replay_fixture(CETUS_SWAP_FIXTURES, "cetus");
+}
+
+#[test]
+fn suipump_events_fixture_replay() {
+    replay_fixture(SUIPUMP_EVENT_FIXTURES, "suipump");
 }

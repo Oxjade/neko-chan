@@ -13,6 +13,7 @@
 //!   neko-verify datatype <package-id> <module> <name>
 //!   neko-verify decode <0xaddr::mod::Event[<T>]> [limit]
 //!   neko-verify cetus-swaps [limit]
+//!   neko-verify backfill-scan <start-seq> [end-seq] <type-prefix> [sub] [max]
 
 use std::collections::BTreeSet;
 use std::env;
@@ -21,9 +22,12 @@ use anyhow::{Context, Result};
 use futures::StreamExt;
 use serde_json::{json, Value};
 use sui_rpc::proto::sui::rpc::v2::{
-    event_literal, Event, EventFilter, EventLiteral, EmitModuleFilter, EventTerm, EventTypeFilter,
+    event_literal, transaction_literal, Event, EventFilter, EventLiteral, EmitModuleFilter,
+    EventTerm, EventTypeFilter, TransactionFilter, TransactionLiteral, TransactionTerm,
 };
-use sui_rpc::proto::sui::rpc::v2::{ListEventsRequest, Ordering, QueryOptions};
+use sui_rpc::proto::sui::rpc::v2::{
+    ListEventsRequest, ListCheckpointsRequest, Ordering, QueryOptions,
+};
 
 use neko_indexer::adapt::*;
 
@@ -90,6 +94,94 @@ fn event_fields(e: &Event) -> Option<(String, String, String)> {
     let module = e.module.clone()?;
     let ty = e.event_type.clone()?;
     Some((pkg, module, ty))
+}
+
+fn module_filter(modules: &[&str]) -> TransactionFilter {
+    let mut f = TransactionFilter::default();
+    for module in modules {
+        let mut mf = EmitModuleFilter::default();
+        mf.module = Some(module.to_string());
+        let mut lit = TransactionLiteral::default();
+        lit.predicate = Some(transaction_literal::Predicate::EmitModule(mf));
+        let mut term = TransactionTerm::default();
+        term.literals = vec![lit];
+        f.terms.push(term);
+    }
+    f
+}
+
+/// Scan a historical checkpoint range (start inclusive, end exclusive) via
+/// `ListCheckpoints` and print every event whose `event_type` starts with
+/// `prefix` and contains `sub`. `mod_filter` (full `0xaddr::module`) prunes
+/// checkpoints server-side to only those emitting from that module.
+/// Discovery only — reads straight from the ledger, nothing persisted.
+/// `max` caps how many frames are scanned.
+async fn cmd_backfill_scan(
+    client: &neko_indexer::rpc::Client,
+    start: u64,
+    end: Option<u64>,
+    prefix: &str,
+    sub: &str,
+    mod_filter: Option<&[&str]>,
+    max_frames: Option<u64>,
+) -> Result<()> {
+    println!(
+        "=== ListCheckpoints {start}..{} (event_type ~ starts_with {prefix} & contains {sub}) ===",
+        end.map(|e| e.to_string()).unwrap_or_else(|| "tip".into())
+    );
+    let mut req = ListCheckpointsRequest::default();
+    req.read_mask = Some(prost_types::FieldMask {
+        paths: vec![
+            "sequence_number".into(),
+            "digest".into(),
+            "summary".into(),
+            "signature".into(),
+            "contents".into(),
+            "transactions".into(),
+            "objects".into(),
+        ],
+    });
+    req.start_checkpoint = Some(start);
+    req.end_checkpoint = end;
+    req.filter = mod_filter.map(module_filter);
+
+    let mut stream = Box::pin(client.list_checkpoints(req));
+    let mut frames = 0u64;
+    let mut hits: Vec<(u64, String, String)> = Vec::new();
+    let mut by_type: std::collections::BTreeMap<String, usize> = Default::default();
+    while let Some(frame) = stream.next().await {
+        let frame = frame.context("list_checkpoints frame")?;
+        let Some(cp) = frame.checkpoint else { continue };
+        frames += 1;
+        if frames % 500 == 0 {
+            println!("  ... {frames} checkpoints scanned");
+        }
+        if let Some(max) = max_frames {
+            if frames > max {
+                break;
+            }
+        }
+        for ev in capture::events_in(&cp) {
+            let ty = ev.event_type.clone().unwrap_or_default();
+            if ty.starts_with(prefix) && ty.contains(sub) {
+                let digest = ev.transaction_digest.clone().unwrap_or_default();
+                let seq = cp.sequence_number.unwrap_or(0);
+                hits.push((seq, digest, ty.clone()));
+                *by_type.entry(ty).or_insert(0) += 1;
+            }
+        }
+    }
+    println!("{frames} checkpoints scanned; {} event hits", hits.len());
+    if !by_type.is_empty() {
+        println!("distinct event types:");
+        for (ty, n) in &by_type {
+            println!("   {n}x {ty}");
+        }
+    }
+    for (seq, digest, ty) in hits {
+        println!("   cp{seq} {digest} {ty}");
+    }
+    Ok(())
 }
 
 async fn cmd_package(res: &PackageResolver, id: &str) -> Result<()> {
@@ -439,6 +531,90 @@ fn collect_sig_datatypes(body: &sui_rpc::proto::sui::rpc::v2::OpenSignatureBody,
     }
 }
 
+async fn push_fixture_event(
+    res: &PackageResolver,
+    layouts: &mut std::collections::BTreeMap<String, String>,
+    per_type: &mut std::collections::BTreeMap<String, usize>,
+    pkg_prefix: &str,
+    sub: &str,
+    samples_per_type: usize,
+    seq: u64,
+    ev: &Event,
+    events: &mut Vec<Value>,
+) -> Result<()> {
+    let Some(ty) = ev.event_type.clone() else { return Ok(()) };
+    if !ty.starts_with(pkg_prefix) || !ty.contains(sub) {
+        return Ok(());
+    }
+    if per_type.get(&ty).copied().unwrap_or(0) >= samples_per_type {
+        return Ok(());
+    }
+    *per_type.entry(ty.clone()).or_insert(0) += 1;
+
+    let tag = type_tag::parse(&ty)?;
+    // Recursively record every layout this type needs (its own and every
+    // referenced datatype) so replay is fully network-free.
+    let mut pending = vec![tag.plain()];
+    let mut visited: std::collections::BTreeSet<String> = Default::default();
+    while let Some(key) = pending.pop() {
+        if !visited.insert(key.clone()) {
+            continue;
+        }
+        let d = type_tag::parse(&key)?;
+        let desc = res.datatype(&d).await.context("fetch layout")?;
+        layouts.entry(key.clone()).or_insert_with(|| {
+            prost::Message::encode_to_vec(desc.as_ref())
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        });
+        for f in &desc.fields {
+            if let Some(sig) = f.r#type.as_ref() {
+                collect_sig_datatypes(sig, &mut pending);
+            }
+        }
+    }
+
+    let contents = ev
+        .contents
+        .as_ref()
+        .and_then(|b| b.value.as_ref())
+        .cloned()
+        .map(|b| b.to_vec())
+        .unwrap_or_default();
+    events.push(json!({
+        "event_type": ty,
+        "checkpoint": seq,
+        "tx_digest": ev.transaction_digest.clone().unwrap_or_default(),
+        "event_index": ev.event_index.unwrap_or_default(),
+        "contents_hex": contents.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        "server_json": ev.json.as_ref().map(|j| proto_value_to_json(j.as_ref())).unwrap_or(Value::Null),
+    }));
+    Ok(())
+}
+
+fn write_fixture(outfile: &str, comment: String, layouts: &std::collections::BTreeMap<String, String>, events: &[Value]) -> Result<()> {
+    if events.is_empty() {
+        anyhow::bail!("no fixture events captured");
+    }
+    let fixture = json!({
+        "comment": comment,
+        "layouts": layouts,
+        "events": events,
+    });
+    let text = serde_json::to_string_pretty(&fixture)?;
+    std::fs::create_dir_all(
+        std::path::Path::new(outfile).parent().unwrap_or_else(|| std::path::Path::new(".")),
+    )?;
+    std::fs::write(outfile, text)?;
+    println!(
+        "wrote {} events / {} layouts -> {outfile}",
+        events.len(),
+        layouts.len(),
+    );
+    Ok(())
+}
+
 async fn cmd_fixtures(
     res: &PackageResolver,
     pkg_prefix: &str,
@@ -466,79 +642,84 @@ async fn cmd_fixtures(
     for (seq, data) in &rows {
         let cp = capture::decode_checkpoint(data).context("decode stored checkpoint")?;
         for ev in capture::events_in(&cp) {
-            let Some(ty) = ev.event_type.clone() else { continue };
-            if !ty.starts_with(pkg_prefix) || !ty.contains(sub) {
-                continue;
-            }
-            if per_type.get(&ty).copied().unwrap_or(0) >= samples_per_type {
-                continue;
-            }
-            *per_type.entry(ty.clone()).or_insert(0) += 1;
-
-            let tag = type_tag::parse(&ty)?;
-            // Recursively record every layout this type needs (its own and
-            // every referenced datatype) so replay is fully network-free.
-            let mut pending = vec![tag.plain()];
-            let mut visited: std::collections::BTreeSet<String> = Default::default();
-            while let Some(key) = pending.pop() {
-                if !visited.insert(key.clone()) {
-                    continue;
-                }
-                let d = type_tag::parse(&key)?;
-                let desc = res.datatype(&d).await.context("fetch layout")?;
-                layouts.entry(key.clone()).or_insert_with(|| {
-                    prost::Message::encode_to_vec(desc.as_ref())
-                        .iter()
-                        .map(|b| format!("{b:02x}"))
-                        .collect()
-                });
-                for f in &desc.fields {
-                    if let Some(sig) = f.r#type.as_ref() {
-                        collect_sig_datatypes(sig, &mut pending);
-                    }
-                }
-            }
-
-            let contents = ev
-                .contents
-                .as_ref()
-                .and_then(|b| b.value.as_ref())
-                .cloned()
-                .map(|b| b.to_vec())
-                .unwrap_or_default();
-            events.push(json!({
-                "event_type": ty,
-                "checkpoint": *seq,
-                "tx_digest": ev.transaction_digest.clone().unwrap_or_default(),
-                "event_index": ev.event_index.unwrap_or_default(),
-                "contents_hex": contents.iter().map(|b| format!("{b:02x}")).collect::<String>(),
-                "server_json": ev.json.as_ref().map(|j| proto_value_to_json(j.as_ref())).unwrap_or(Value::Null),
-            }));
+            push_fixture_event(
+                res, &mut layouts, &mut per_type, pkg_prefix, sub, samples_per_type,
+                *seq as u64, &ev, &mut events,
+            )
+            .await?;
         }
     }
 
-    if events.is_empty() {
-        anyhow::bail!("no fixture events captured ({pkg_prefix} / {sub})");
-    }
-    let fixture = json!({
-        "comment": format!(
-            "Recorded on mainnet via neko-verify fixtures {pkg_prefix} {sub} ({n} raw checkpoints up to {}). Not for editing by hand.",
+    write_fixture(
+        outfile,
+        format!(
+            "Recorded on mainnet via neko-verify fixtures {pkg_prefix} {sub} ({} raw checkpoints up to {}). Not for editing by hand.",
+            rows.len(),
             rows.first().map(|(s, _)| *s).unwrap_or(0),
         ),
-        "layouts": layouts,
-        "events": events,
+        &layouts,
+        &events,
+    )
+}
+
+async fn cmd_backfill_fixtures(
+    res: &PackageResolver,
+    client: &neko_indexer::rpc::Client,
+    start: u64,
+    end: Option<u64>,
+    pkg_prefix: &str,
+    sub: &str,
+    mod_filter: Option<&[&str]>,
+    samples_per_type: usize,
+    outfile: &str,
+) -> Result<()> {
+    let mut req = ListCheckpointsRequest::default();
+    req.read_mask = Some(prost_types::FieldMask {
+        paths: vec![
+            "sequence_number".into(),
+            "digest".into(),
+            "summary".into(),
+            "signature".into(),
+            "contents".into(),
+            "transactions".into(),
+            "objects".into(),
+        ],
     });
-    let text = serde_json::to_string_pretty(&fixture)?;
-    std::fs::create_dir_all(
-        std::path::Path::new(outfile).parent().unwrap_or_else(|| std::path::Path::new(".")),
-    )?;
-    std::fs::write(outfile, text)?;
-    println!(
-        "wrote {} events / {} layouts -> {outfile} (replay test: ./x.rs test cetus_swap_fixture_replay)",
-        events.len(),
-        layouts.len(),
-    );
-    Ok(())
+    req.start_checkpoint = Some(start);
+    req.end_checkpoint = end;
+    req.filter = mod_filter.map(module_filter);
+
+    let mut layouts: std::collections::BTreeMap<String, String> = Default::default();
+    let mut events: Vec<Value> = Vec::new();
+    let mut per_type: std::collections::BTreeMap<String, usize> = Default::default();
+
+    let mut stream = Box::pin(client.list_checkpoints(req));
+    let mut frames = 0u64;
+    while let Some(frame) = stream.next().await {
+        let frame = frame.context("list_checkpoints frame")?;
+        let Some(cp) = frame.checkpoint else { continue };
+        frames += 1;
+        if frames % 1000 == 0 {
+            println!("  ... {frames} checkpoints scanned");
+        }
+        for ev in capture::events_in(&cp) {
+            push_fixture_event(
+                res, &mut layouts, &mut per_type, pkg_prefix, sub, samples_per_type,
+                cp.sequence_number.unwrap_or(0), &ev, &mut events,
+            )
+            .await?;
+        }
+    }
+
+    write_fixture(
+        outfile,
+        format!(
+            "Recorded on mainnet via neko-verify backfill-fixtures {start}..{range} {pkg_prefix} {sub} ({frames} checkpoints scanned). Not for editing by hand.",
+            range = end.map(|e| e.to_string()).unwrap_or_else(|| "tip".into()),
+        ),
+        &layouts,
+        &events,
+    )
 }
 
 async fn cmd_cetus_swaps(res: &PackageResolver, samples: usize) -> Result<()> {
@@ -600,6 +781,55 @@ async fn main() -> Result<()> {
             let n = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(300);
             let samples = args.get(4).and_then(|v| v.parse().ok()).unwrap_or(5);
             cmd_db_scan(&res, pkg, sub, n, samples).await?;
+        }
+        "backfill-scan" => {
+            let start: u64 = args.get(1).context("backfill-scan <start-seq> [end-seq] <type-prefix> [sub] [max]")?.parse()?;
+            let rest = args.iter().skip(2).collect::<Vec<_>>();
+            let mut end: Option<u64> = None;
+            let mut prefix: Option<&str> = None;
+            let mut sub = "";
+            let mut max_frames: Option<u64> = None;
+            let mut mod_filter: Vec<&str> = Vec::new();
+            for arg in rest {
+                let numeric = !arg.is_empty() && arg.chars().all(|c| c.is_ascii_digit());
+                if let Some(m) = arg.strip_prefix("mod:") {
+                    mod_filter.push(m);
+                } else if numeric && prefix.is_none() {
+                    end = Some(arg.parse()?);
+                } else if prefix.is_none() {
+                    prefix = Some(arg);
+                } else if numeric {
+                    max_frames = Some(arg.parse()?);
+                } else {
+                    sub = arg;
+                }
+            }
+            let prefix = prefix.context("backfill-scan <start-seq> [end-seq] <type-prefix> [sub] [max]")?;
+            let mod_filter = (!mod_filter.is_empty()).then_some(mod_filter);
+            cmd_backfill_scan(&c, start, end, prefix, sub, mod_filter.as_deref(), max_frames).await?;
+        }
+        "backfill-fixtures" => {
+            let start: u64 = args.get(1).context("backfill-fixtures <start-seq> [end-seq] <type-prefix> [mod:...] [outfile]")?.parse()?;
+            let rest = args.iter().skip(2).collect::<Vec<_>>();
+            let mut end: Option<u64> = None;
+            let mut prefix: Option<&str> = None;
+            let mut mod_filter: Vec<&str> = Vec::new();
+            let mut out = "tests/fixtures/generic/backfill.json".to_string();
+            for arg in rest {
+                let numeric = !arg.is_empty() && arg.chars().all(|c| c.is_ascii_digit());
+                if let Some(m) = arg.strip_prefix("mod:") {
+                    mod_filter.push(m);
+                } else if numeric && prefix.is_none() {
+                    end = Some(arg.parse()?);
+                } else if prefix.is_none() {
+                    prefix = Some(arg);
+                } else if !numeric {
+                    out = arg.to_string();
+                }
+            }
+            let prefix = prefix.context("backfill-fixtures <start-seq> [end-seq] <type-prefix> [mod:...] [outfile]")?;
+            let mod_filter = (!mod_filter.is_empty()).then_some(mod_filter);
+            cmd_backfill_fixtures(&res, &c, start, end, prefix, "", mod_filter.as_deref(), 8, &out).await?;
         }
         "fixtures" => {
             let pkg = args.get(1).context("fixtures <pkg-prefix> <type-substring> [n] [samples] [outfile]")?;
