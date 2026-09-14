@@ -366,3 +366,22 @@ def test_executor_burst_charges_flat_5sui_fee():
     assert r.get("ok"), r
     assert transfers and transfers[0][1] == 5.0 and transfers[0][2] == "SUI"  # 5 SUI → fee
     assert r["bundle_fee_sui"] == 5.0
+
+
+def test_get_runtime_no_deadlock(tmp_path, monkeypatch):
+    # Regression: get_runtime() holds the singleton lock while DegenRuntime.__init__
+    # re-enters it via get_ledger(). A non-reentrant threading.Lock self-deadlocked
+    # the caller (froze the PTB event loop on first dashboard render). Must return.
+    import threading
+    from degen import runtime as rt
+    monkeypatch.setenv("DEGEN_LEDGER_PATH", str(tmp_path / "d.db"))
+    rt._SINGLETON.clear()
+    box = {}
+
+    def _w():
+        box["rt"] = rt.get_runtime()
+    t = threading.Thread(target=_w, daemon=True)
+    t.start()
+    t.join(timeout=15)
+    assert "rt" in box, "get_runtime() deadlocked"
+    assert box["rt"].network == "mainnet"

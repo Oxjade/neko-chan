@@ -26,7 +26,10 @@ from .ui import DegenUI
 
 log = logging.getLogger(__name__)
 
-_LOCK = threading.Lock()
+# RLock, not Lock: get_runtime() holds it while constructing DegenRuntime(), whose
+# __init__ re-enters via get_ledger() -> with _LOCK. A plain threading.Lock would
+# self-deadlock the caller (freezes the PTB event loop the first dashboard render).
+_LOCK = threading.RLock()
 _SINGLETON: dict = {}
 
 
