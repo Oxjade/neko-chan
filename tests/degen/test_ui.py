@@ -259,10 +259,10 @@ def test_slip_and_amt_chips_persist_and_repaint():
     assert any(b.text == "✓ 1 SUI" for r in calls[-1][2].inline_keyboard for b in r)
 
 
-def test_card_graduated_pool_no_curve_controls():
-    """SUIFROG regression: a graduated token must NOT get curve buy chips,
-    threshold math (99%/90 SUI to go), or the false 'dev holds 100%' block
-    from a drained curve (token_reserve == 0)."""
+def test_card_graduated_pool_gets_full_buy_dashboard():
+    """SUIFROG fix v2: a graduated token shows the SAME buy dashboard as curve
+    tokens (chips + BUY + slippage), minus curve-only extras (bundled burst).
+    No 'live soon' text, no 99%/threshold math, no false dev-hold block."""
     led = DegenLedger(":memory:")
     led.set_config(1, enabled=1, ai_key_ok=1)
     ui = _mk(led)
@@ -277,7 +277,10 @@ def test_card_graduated_pool_no_curve_controls():
     assert not any("dev holds" in b for b in g.blocks), g.blocks
     txt, kb = asyncio.get_event_loop().run_until_complete(
         ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st))
-    assert "graduated" in txt.lower()
+    assert "graduated" in txt.lower() and "live soon" not in txt.lower()
+    assert g.allowed
     flat = str(kb.inline_keyboard)
-    assert "dg:buy" not in flat and "dg:amt" not in flat and "dg:burst" not in flat
-    assert "Aftermath" in flat
+    assert "dg:buy" in flat and "dg:amt" in flat        # full controls
+    assert "dg:burst" not in flat                       # no curve-bundle on DEX
+    rows = [r for r in kb.inline_keyboard]
+    assert any(b.text.startswith("🚀 BUY") for r in rows for b in r)

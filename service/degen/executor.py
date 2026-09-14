@@ -276,49 +276,131 @@ class DegenExecutor:
             return {"ok": filled, "digest": out.get("digest", ""), "status": out.get("status", "")}
         # pool venue → Aftermath legs (resting limit w/ native SL works today;
         # market-swap composition is the spot adapter's own open TODO)
-        return self.buy_post_grad(bot_id, o, st, side="sell", pos=pos, fee_mist=fee_mist)
+        return self.buy_post_grad(bot_id, o, st, side="sell", pos=pos)
 
-    # ---------------- post-grad via Aftermath (§3.5) ----------------
+    # ---------------- post-grad via Aftermath SOR (§3.5) ----------------
     def set_spot_adapter(self, factory) -> None:
-        """factory(wallet_addr) -> AftermathSpotAdapter (userbot wires exec_vault keys)."""
+        """Optional override: factory(addr) -> AftermathSpotAdapter-like object.
+        Tests inject a fake; production uses the real (keyless) REST adapter."""
         self._spot = factory
 
-    def buy_post_grad(self, bot_id: int, o: dict, st, *, side: str = "buy",
-                      pos: dict | None = None, fee_mist: int = 0) -> dict:
-        """POST_GRAD execution. Resting limit + native SL via the existing
-        service/spot adapter. Market swap = P1 (spot adapter's swap_tx TODO)."""
-        if not self._spot:
-            return {"ok": False, "error": "no Aftermath adapter wired (P1)"}
-        wallet = o.get("wallet") or ""
-        adapter = self._spot(wallet)
-        if adapter is None:
-            return {"ok": False, "error": "no wallet for post-grad order"}
-        try:
-            if side == "buy":
-                q = adapter.quote_route(K.SUI_COIN_TYPE, st.token_type,
-                                        amount_in=o.get("qty_sui"), slippage_bps=500)
-                # swap composition pending upstream (§3.5): store as armed pool order.
-                return {"ok": False, "error": "post-grad market swap pending (P1)",
-                        "route": q}
-            rate = (pos or {}).get("avg_entry_sui", 0)
-            # Build the resting-order tx, then SIGN+BROADCAST with the wallet key.
-            tx = adapter.create_limit_order_tx(
-                allocate_coin_type=st.token_type, allocate_amount=(pos or {}).get("tokens", 0) / 10**6,
-                buy_coin_type=K.SUI_COIN_TYPE, rate=rate * 2 if rate else 0,
-                fee_recipient=self.fee_recipient or None, fee_bps=K.PLATFORM_FEE_BPS or None,
-                stop_rate=rate * 0.5 if rate else None)
-            signed = self._sign_and_broadcast(bot_id, tx)   # (ok, digest)
-            if not signed["ok"]:
-                return {"ok": False, "error": signed.get("error", "sign/broadcast failed")}
-            return {"ok": True, "digest": signed["digest"], "note": "resting limit + native SL"}
-        except Exception as exc:
-            return {"ok": False, "error": f"aftermath: {exc}"}
+    def _spot_client(self):
+        if self._spot:
+            return self._spot("")
+        from spot.adapter import AftermathSpotAdapter
+        return AftermathSpotAdapter("", self.ch.network)
 
-    def _sign_and_broadcast(self, bot_id: int, tx_b64_or_json) -> dict:
-        """Sign+broadcast a Aftermath-serialized tx with the bot's own key.
-        P1: needs the exact SUIAdapter broadcast path for foreign serialized txs;
-        until verified it returns ok:False rather than a fake success."""
-        return {"ok": False, "error": "post-grad sign/broadcast = P1 (not verified live)"}
+    @staticmethod
+    def _kind_b64_of(resp) -> str:
+        """The build endpoint returns the base64 TransactionKind; tolerate both
+        a bare string and {transaction|txBytes|...: b64} wrappers."""
+        if isinstance(resp, str):
+            return resp
+        if isinstance(resp, dict):
+            for k in ("transaction", "txBytes", "txnBytes", "tx", "base64"):
+                v = resp.get(k)
+                if isinstance(v, str) and v:
+                    return v
+            for v in resp.values():          # any long b64-looking string
+                if isinstance(v, str) and len(v) > 32:
+                    return v
+        raise ValueError("unexpected tx-build response shape")
+
+    def _dex_swap(self, bot_id: int, coin_in_type: str, coin_out_type: str,
+                  in_atoms: int, slip_bps: int, idem: str, intent: str,
+                  launchpad: str, curve_id: str, token_type: str,
+                  pos: dict | None = None) -> dict:
+        """Quote -> build -> sign -> broadcast one Aftermath-routed swap.
+        The 0.5% integrator fee rides INSIDE the route (externalFee), so fills
+        are booked net of fee from real balance deltas — same integrity rules
+        as curve buys."""
+        import base64
+        adapter, waddr = self._adapter_for("")
+        if adapter is None:
+            return {"ok": False, "error": "no wallet for DEX swap"}
+        client = self._spot_client()
+        fee = ({"recipient": self.fee_recipient, "feePercentage": 0.5}
+               if self.fee_recipient and K.PLATFORM_FEE_BPS else None)
+        q = client.quote_route(coin_in_type, coin_out_type,
+                               amount_in_atoms=in_atoms, slippage_bps=slip_bps,
+                               external_fee=fee)
+        oid = self.ledger.add_order(bot_id, wallet=waddr, intent=intent, otype="market",
+                                    launchpad=launchpad, curve_id=curve_id,
+                                    token_type=token_type, qty_sui=in_atoms / 1e9,
+                                    idempotency_key=idem)
+        try:
+            before = self.ch.balance(adapter.address, coin_out_type)
+        except Exception:
+            before = 0
+        try:
+            kind_b64 = self._kind_b64_of(client.swap_tx_b64(q, adapter.address, slip_bps))
+            kind = base64.b64decode(kind_b64)
+            if kind[:1] != b"\x00":
+                raise ValueError("TransactionKind variant not ProgrammableTransaction")
+            out = adapter._broadcast_raw_ptb(kind[1:], self.ch.gas_price(),
+                                             K.SNIPE_GAS_BUDGET_MIST)
+        except Exception as exc:
+            self.ledger.set_order(oid, "failed", error=str(exc)[:120])
+            return {"ok": False, "error": f"aftermath: {exc}", "order_id": oid}
+        status = str(out.get("status", "")).upper()
+        filled = status == "SUCCESS"
+        self.ledger.set_order(oid, "fired" if filled else "failed",
+                              tx_digest=out.get("digest", ""),
+                              error="" if filled else (status or "unknown"))
+        if filled:
+            try:
+                got = max(0, self.ch.balance(adapter.address, coin_out_type) - before)
+            except Exception:
+                got = 0
+            fee_sui = 0.0
+            for fb in (q.get("feeBreakdown") or []):
+                if fee and fb.get("recipient") == fee["recipient"]:
+                    try:
+                        fee_sui += int(str(fb.get("amount", "0")).rstrip("n")) / 1e9
+                    except Exception:
+                        pass
+            if intent == "buy":
+                sui_spent = in_atoms / 1e9
+                self.ledger.record_fill(oid, out.get("digest", ""), sui=sui_spent,
+                                        tokens=got,
+                                        price=sui_spent / max(1e-9, got / 1e6),
+                                        fee_sui=fee_sui)
+                self.ledger.upsert_position(bot_id, launchpad, curve_id, token_type,
+                                            adapter.address, add_sui=sui_spent,
+                                            add_tokens=got)
+            else:
+                sui_got = got / 1e9
+                self.ledger.record_fill(oid, out.get("digest", ""), sui=sui_got,
+                                        tokens=in_atoms,
+                                        price=sui_got / max(1e-9, in_atoms / 1e6),
+                                        fee_sui=fee_sui)
+                entry = (pos or {}).get("entry_sui") or sui_got
+                self.ledger.upsert_position(bot_id, launchpad, curve_id, token_type,
+                                            adapter.address,
+                                            add_sui=-min(entry, sui_got),
+                                            add_tokens=-in_atoms)
+        return {"ok": filled, "digest": out.get("digest", ""), "order_id": oid,
+                "status": status}
+
+    def buy_post_grad(self, bot_id: int, o: dict, st, *, side: str = "buy",
+                      pos: dict | None = None, slip_bps: int = 500,
+                      idem: str = "") -> dict:
+        """Graduated tokens: exact same flow as curve trades, executed as an
+        Aftermath SOR swap (routes through the Cetus graduation pool)."""
+        if side == "buy":
+            return self._dex_swap(bot_id, K.SUI_COIN_TYPE, st.token_type,
+                                  int(float(o.get("qty_sui") or 0) * 1e9), slip_bps,
+                                  idem or f"pgbuy{st.curve_id}{time.time_ns()}",
+                                  "buy", st.launchpad or "suipump", st.curve_id,
+                                  st.token_type)
+        atoms = int((pos or {}).get("tokens") or 0)
+        if atoms <= 0:
+            return {"ok": False, "error": "no tokens to sell"}
+        return self._dex_swap(bot_id, st.token_type, K.SUI_COIN_TYPE, atoms,
+                              max(slip_bps, 1000),   # exits get more room
+                              idem or f"pgsell{st.curve_id}{time.time_ns()}",
+                              "sell", st.launchpad or "suipump", st.curve_id,
+                              st.token_type, pos=pos)
 
     # ---------------- spread-burst (§3.6) ----------------
     def spread_burst(self, bot_id: int, *, launchpad: str, curve_id: str,

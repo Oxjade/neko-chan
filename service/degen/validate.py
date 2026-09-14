@@ -196,7 +196,7 @@ def run_gauntlet(ch: Chain, st: AssetState, sender: str = "",
             # produced a permanent false block ("dev holds 100% of supply").
             # Post-grad validation is the Aftermath route check (§3.5, P1).
             r.honeypot = "skipped"
-            r.risks.append("graduated — trades via Aftermath route (live soon)")
+            # execution is LIVE via the Aftermath SOR (Cetus graduation pool).
         else:
             errs = curve_validator(ch, st)
             r.blocks += errs

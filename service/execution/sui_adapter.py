@@ -1027,6 +1027,25 @@ class SUIAdapter:
         )
         return self._broadcast_tx(tx_bytes)
 
+    def _broadcast_raw_ptb(self, ptb_body: bytes, gas_price: int, budget: int,
+                           gas_coin: dict | None = None) -> dict:
+        """Broadcast a ProgrammableTransaction whose BODY bytes are supplied
+        verbatim (e.g. the TransactionKind returned by Aftermath's
+        /router/v1/transactions/trade). We only add our own sender, gas
+        selection and signing — the route itself is executed as given.
+        ptb_body = BCS ProgrammableTransaction (inputs+commands vectors, WITHOUT
+        the TransactionKind variant tag)."""
+        coin = gas_coin or self._pick_gas_coin()
+        kind = b"\x00" + ptb_body                       # TransactionKind::ProgrammableTransaction
+        gas_data = (
+            _bcs_vec([_bcs_object_ref(coin["objectId"], coin["version"], coin["digest"])])
+            + _bcs_addr(self.address)
+            + _bcs_u64(gas_price)
+            + _bcs_u64(budget)
+        )
+        tx_bytes = b"\x00" + kind + _bcs_addr(self.address) + gas_data + b"\x00"
+        return self._broadcast_tx(tx_bytes)
+
     def _dry_run(self, tx_json: dict) -> dict:
         """Estimate gas for a transaction.
 

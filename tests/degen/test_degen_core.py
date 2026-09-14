@@ -386,3 +386,45 @@ def test_get_runtime_no_deadlock(tmp_path, monkeypatch):
     t.join(timeout=15)
     assert "rt" in box, "get_runtime() deadlocked"
     assert box["rt"].network == "mainnet"
+
+
+def _pool_state():
+    from degen.launchpad import AssetState
+    return AssetState(kind="pool", launchpad="suipump", curve_id=CID, token_type=TOK,
+                      pool_id="0x" + "11" * 32, symbol="SUIFROG")
+
+
+def test_dex_swap_post_grad_records_fill_and_position():
+    import base64
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    calls = {"n": 0}
+
+    class FakeSpot:
+        def quote_route(self, ci, co, amount_in_atoms=None, slippage_bps=100,
+                        external_fee=None):
+            calls["quote"] = (ci, co, amount_in_atoms, external_fee)
+            return {"feeBreakdown": [{"recipient": external_fee["recipient"],
+                                      "amount": str(int(amount_in_atoms * 0.005)) + "n"}],
+                    "routes": []}
+        def swap_tx_b64(self, q, wallet, slip):
+            kind = b"\x00" + b"PTBBODY"           # variant tag + raw body
+            return {"transaction": base64.b64encode(kind).decode()}
+
+    ex._spot = lambda addr: FakeSpot()
+    balances = iter([1_000_000, 100_000_000_000])  # before / after (token atoms)
+    ch.balance = lambda addr, ct=None: next(balances)
+    ad.broadcasts_raw = []
+    ad._broadcast_raw_ptb = lambda body, gp, budget, gas_coin=None: (
+        ad.broadcasts_raw.append(body) or {"digest": "0xdex", "status": "SUCCESS"})
+    st = _pool_state()
+    r = ex.buy_post_grad(1, {"qty_sui": 0.5}, st, side="buy", idem="t1")
+    assert r["ok"], r
+    assert ad.broadcasts_raw == [b"PTBBODY"]
+    fills = led.fills_for(r["order_id"])
+    assert fills and fills[0]["tokens"] == 99_999_000_000, fills
+    pos = led.positions(1)
+    assert pos and pos[0]["entry_sui"] == 0.5
+    # integrator fee actually requested on the route
+    assert calls["quote"][3] and calls["quote"][3]["feePercentage"] == 0.5

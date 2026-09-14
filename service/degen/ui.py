@@ -300,35 +300,25 @@ class DegenUI:
                 f"{grad_row}\n"
                 f"💧 Liq     <code>{m.liq_sui:,.0f} SUI</code>"
                 + (("\n" + extra) if extra else ""))
-        if st.kind == "pool":
-            # No curve-buy controls on a dead curve. Show the LIVE Aftermath/Cetus
-            # route quote (keyless), and be honest that one-tap execution lands
-            # with the sign-wrap step (docs §3.5 P1).
-            route_line = ""
-            if self._af_quote and st.token_type:
-                try:
-                    q = self._af_quote(st.token_type, 5 * 10 ** 8)   # 0.5 SUI probe
-                    legs = []
-                    for rt in (q or {}).get("routes") or []:
-                        for pth in rt.get("paths") or []:
-                            meta = pth.get("poolMetadata") or {}
-                            co = int((pth.get("coinOut") or {}).get("amount", "0").rstrip("n") or 0)
-                            legs.append(((meta.get("tbData") or {}).get("protocol")
-                                         or "?", co))
-                    if legs:
-                        protos = " + ".join(dict.fromkeys(p for p, _ in legs))
-                        out = sum(c for _, c in legs) / 1e6
-                        route_line = (f"\n🎨 Route  <code>{esc(protos)}</code> · "
-                                      f"0.5 SUI ≈ <code>{out:,.0f} tok</code>\n"
-                                      "one-tap DEX execution lands with the sign-wrap step")
-                    else:
-                        route_line = "\n🎨 Route: Aftermath hasn't indexed this pool yet"
-                except Exception:
-                    route_line = "\n🎨 Route: Aftermath quote unavailable right now"
-            rows = ([[B("🎨 Aftermath route — live soon", "dg:hub")]]
-                    if not route_line else [])
-            rows += [[B("📊 Main Dashboard", "dg:main")], [B("← Back", "dg:hub")]]
-            return head + route_line, KB(rows)
+        if st.kind == "pool" and self._af_quote and st.token_type:
+            # graduated: SAME dashboard as curve tokens — trades execute through
+            # the Aftermath SOR (verified to route via the Cetus graduation pool).
+            try:
+                q = self._af_quote(st.token_type, 5 * 10 ** 8)   # 0.5 SUI probe
+                legs = []
+                for rt in (q or {}).get("routes") or []:
+                    for pth in rt.get("paths") or []:
+                        meta = pth.get("poolMetadata") or {}
+                        co = int((pth.get("coinOut") or {}).get("amount", "0").rstrip("n") or 0)
+                        legs.append(((meta.get("tbData") or {}).get("protocol") or "?", co))
+                if legs:
+                    protos = " + ".join(dict.fromkeys(p_ for p_, _ in legs))
+                    out = sum(c for _, c in legs) / 1e6
+                    head += (f"\n🎨 Route  <code>{esc(protos)}</code> · "
+                             f"0.5 SUI ≈ <code>{out:,.0f} tok</code>")
+            except Exception:
+                pass   # route probe is cosmetic; buy still available
+
         def _chip(x, suffix, sel, cb):
             on = str(sel).rstrip("%") == x.rstrip("%")
             return B(("✓ " if on else "") + f"{x}{suffix}", cb)
@@ -340,8 +330,10 @@ class DegenUI:
                  _chip("Max", "", sel_amt, f"dg:amt:{r_curve}:Max")],
                 [_chip("5%", "", sel_slp, f"dg:slp:{r_curve}:5"),
                  _chip("10%", "", sel_slp, f"dg:slp:{r_curve}:10")],
-                [_chip("25%", "", sel_slp, f"dg:slp:{r_curve}:25"),
-                 B("🧺 Bundled buy", f"dg:burst:{r_curve}")],
+                ([_chip("25%", "", sel_slp, f"dg:slp:{r_curve}:25")]
+                 if st.kind == "pool" else
+                 [_chip("25%", "", sel_slp, f"dg:slp:{r_curve}:25"),
+                  B("🧺 Bundled buy", f"dg:burst:{r_curve}")]),
                 [B("← Back", "dg:hub")]]
         return head, KB(rows)
 
@@ -560,6 +552,19 @@ class DegenUI:
         else:
             amt = float(parts[3]) if len(parts) > 3 else 0.5
             slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "10")))
+            if st.kind == "pool":
+                res = (self.ex.buy_post_grad(bid, {"qty_sui": amt}, st, side="buy",
+                                             slip_bps=slip * 100,
+                                             idem=f"ui{ref}:{amt}")
+                       if self.ex else {"ok": False, "error": "no executor"})
+                await self._sweep(context, bid)
+                ok = res.get("ok")
+                txt = ("✅ <b>FILL</b> <code>" + esc(str(res.get("digest", ""))[:14]) +
+                       "…</code> via Aftermath/Cetus") if ok else \
+                      "❌ rejected: " + esc(str(res.get("error", "caps")))
+                kb = KB([[B("↻ Refresh", "dg:hub"), B("📊 Main Dashboard", "dg:main")]])
+                await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+                return
             m = compute(self.ch, st)
             if st.kind == "curve":
                 from .metrics import expected_tokens_out, virtual_reserves

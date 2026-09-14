@@ -111,7 +111,8 @@ class AftermathSpotAdapter:
                     amount_in_atoms: Optional[int] = None,
                     amount_out_atoms: Optional[int] = None,
                     slippage_bps: int = 100,
-                    protocols_whitelist: Optional[list] = None) -> dict:
+                    protocols_whitelist: Optional[list] = None,
+                    external_fee: Optional[dict] = None) -> dict:
         """Best route quote. EXACTLY one of the atom amounts; coin args are FULL
         Move type strings (64-hex padded) — symbols are rejected ("Coin not
         found"). Wire format verified live 2026-09-14 against
@@ -130,6 +131,10 @@ class AftermathSpotAdapter:
             body["slippage"] = slippage_bps / 10000.0
         if protocols_whitelist:
             body["protocolWhitelist"] = protocols_whitelist
+        if external_fee:
+            # {recipient, feePercentage} — Aftermath pays it out of the route's
+            # output INSIDE the swap tx (atomic integrator fee).
+            body["externalFee"] = external_fee
         r = requests.post(f"{self.api}/router/trade-route", json=body, timeout=30)
         r.raise_for_status()
         return r.json()
