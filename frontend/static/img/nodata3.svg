@@ -1,0 +1,25 @@
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M45 5V0H40V5H45Z" fill="#5C6068"/>
+<path d="M50 10H45V5H50V10Z" fill="#5C6068"/>
+<path d="M55 15V10H50V15H55Z" fill="#5C6068"/>
+<path d="M60 20H55V15H60V20Z" fill="#5C6068"/>
+<path d="M35 5V0H40V5H35Z" fill="#5C6068"/>
+<path d="M30 10H35V5H30V10Z" fill="#5C6068"/>
+<path d="M25 15V10H30V15H25Z" fill="#5C6068"/>
+<path d="M20 20H25V15H20V20Z" fill="#5C6068"/>
+<rect x="80" y="70" width="5" height="5" transform="rotate(90 80 70)" fill="#393C43"/>
+<rect x="5" y="70" width="5" height="5" transform="rotate(90 5 70)" fill="#393C43"/>
+<path d="M75 25V30H80V70H75V75H70H10H5L5 70H0V30H5V25H75Z" fill="#5C6068"/>
+<rect x="75" y="75" width="5" height="70" transform="rotate(90 75 75)" fill="#393C43"/>
+<rect x="80" y="35" width="5" height="80" transform="rotate(90 80 35)" fill="#393C43"/>
+<rect x="30" y="20" width="5" height="15" transform="rotate(90 30 20)" fill="#393C43"/>
+<rect x="65" y="20" width="5" height="15" transform="rotate(90 65 20)" fill="#393C43"/>
+<rect x="80" y="55" width="5" height="80" transform="rotate(90 80 55)" fill="#393C43"/>
+<rect x="80" y="40" width="5" height="80" transform="rotate(90 80 40)" fill="#4C525D"/>
+<rect x="80" y="60" width="5" height="80" transform="rotate(90 80 60)" fill="#4C525D"/>
+<path d="M60.2725 56.2032V42.5H71.4063V44.4576H63.4536V48.3728H69.8157V50.3304H63.4536V54.2456H71.4063V56.2032H60.2725Z" fill="#9AA0AA"/>
+<path d="M49.1386 56.2032V54.2456H47.5481V52.288H50.7292V54.2456H55.5008V50.3304H49.1386V48.3728H47.5481V44.4576H49.1386V42.5H57.0914V44.4576H58.6819V46.4152H55.5008V44.4576H50.7292V48.3728H57.0914V50.3304H58.6819V54.2456H57.0914V56.2032H49.1386Z" fill="#9AA0AA"/>
+<path d="M36.4143 56.2032V54.2456H34.8237V44.4576H36.4143V42.5H44.367V44.4576H45.9575V54.2456H44.367V56.2032H36.4143ZM38.0048 54.2456H42.7765V44.4576H38.0048V54.2456Z" fill="#9AA0AA"/>
+<path d="M23.6899 56.2032V42.5H26.871V54.2456H33.2332V56.2032H23.6899Z" fill="#9AA0AA"/>
+<path d="M12.5561 56.2032V54.2456H10.9655V52.288H9.375V46.4152H10.9655V44.4576H12.5561V42.5H18.9183V44.4576H20.5088V46.4152H17.3277V44.4576H14.1466V46.4152H12.5561V52.288H14.1466V54.2456H17.3277V52.288H20.5088V54.2456H18.9183V56.2032H12.5561Z" fill="#9AA0AA"/>
+</svg>

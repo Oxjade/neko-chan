@@ -1,0 +1,852 @@
+[
+ {
+  "route": "/",
+  "live": "/",
+  "file": "frontend/pages/index.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48974
+ },
+ {
+  "route": "/404",
+  "live": "/404",
+  "file": "frontend/pages/404.html",
+  "status": "404",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47250
+ },
+ {
+  "route": "/RainbowkitProvider",
+  "live": "/RainbowkitProvider",
+  "file": "frontend/pages/RainbowkitProvider.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47280
+ },
+ {
+  "route": "/SolProvider",
+  "live": "/SolProvider",
+  "file": "frontend/pages/SolProvider.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47266
+ },
+ {
+  "route": "/WalletProvider",
+  "live": "/WalletProvider",
+  "file": "frontend/pages/WalletProvider.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47272
+ },
+ {
+  "route": "/_error",
+  "live": "/_error",
+  "file": "frontend/pages/_error.html",
+  "status": "404",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47250
+ },
+ {
+  "route": "/about",
+  "live": "/about",
+  "file": "frontend/pages/about.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 59722
+ },
+ {
+  "route": "/ai",
+  "live": "/ai",
+  "file": "frontend/pages/ai.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 91422
+ },
+ {
+  "route": "/ai/generateapi",
+  "live": "/ai/generateapi",
+  "file": "frontend/pages/ai__generateapi.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47272
+ },
+ {
+  "route": "/ai/skills/[slug]",
+  "live": "/ai/skills/test",
+  "file": "frontend/pages/ai__skills__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 91289
+ },
+ {
+  "route": "/app",
+  "live": "/app",
+  "file": "frontend/pages/app.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 60680
+ },
+ {
+  "route": "/bot",
+  "live": "/bot",
+  "file": "frontend/pages/bot.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47250
+ },
+ {
+  "route": "/call",
+  "live": "/call",
+  "file": "frontend/pages/call.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47252
+ },
+ {
+  "route": "/callout",
+  "live": "/callout",
+  "file": "frontend/pages/callout.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47416
+ },
+ {
+  "route": "/contest",
+  "live": "/contest",
+  "file": "frontend/pages/contest.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47576
+ },
+ {
+  "route": "/contest/ContentRankListV6",
+  "live": "/contest/ContentRankListV6",
+  "file": "frontend/pages/contest__ContentRankListV6.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47294
+ },
+ {
+  "route": "/contest/[aid]",
+  "live": "/contest/test",
+  "file": "frontend/pages/contest__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47588
+ },
+ {
+  "route": "/cooking",
+  "live": "/cooking",
+  "file": "frontend/pages/cooking.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47258
+ },
+ {
+  "route": "/cooking/x/callback",
+  "live": "/cooking/x/callback",
+  "file": "frontend/pages/cooking__x__callback.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47280
+ },
+ {
+  "route": "/discover",
+  "live": "/discover",
+  "file": "frontend/pages/discover.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48446
+ },
+ {
+  "route": "/follow",
+  "live": "/follow",
+  "file": "frontend/pages/follow.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49379
+ },
+ {
+  "route": "/follow/Watchlist",
+  "live": "/follow/Watchlist",
+  "file": "frontend/pages/follow__Watchlist.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47819
+ },
+ {
+  "route": "/holding",
+  "live": "/holding",
+  "file": "frontend/pages/holding.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49544
+ },
+ {
+  "route": "/level",
+  "live": "/level",
+  "file": "frontend/pages/level.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47254
+ },
+ {
+  "route": "/main",
+  "live": "/main",
+  "file": "frontend/pages/main.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47252
+ },
+ {
+  "route": "/match-console",
+  "live": "/match-console",
+  "file": "frontend/pages/match-console.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47273
+ },
+ {
+  "route": "/monitor",
+  "live": "/monitor",
+  "file": "frontend/pages/monitor.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48603
+ },
+ {
+  "route": "/network-check",
+  "live": "/network-check",
+  "file": "frontend/pages/network-check.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47273
+ },
+ {
+  "route": "/new-pair",
+  "live": "/new-pair",
+  "file": "frontend/pages/new-x.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48512
+ },
+ {
+  "route": "/oauth/authorize",
+  "live": "/oauth/authorize",
+  "file": "frontend/pages/oauth__authorize.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48522
+ },
+ {
+  "route": "/order",
+  "live": "/order",
+  "file": "frontend/pages/order.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49234
+ },
+ {
+  "route": "/perpetual/earn",
+  "live": "/perpetual/earn",
+  "file": "frontend/pages/perpetual__earn.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47272
+ },
+ {
+  "route": "/perpetual/[pair]",
+  "live": "/perpetual/test",
+  "file": "frontend/pages/perpetual__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47276
+ },
+ {
+  "route": "/portfolio",
+  "live": "/portfolio",
+  "file": "frontend/pages/portfolio.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49627
+ },
+ {
+  "route": "/promo/app-upgrade",
+  "live": "/promo/app-upgrade",
+  "file": "frontend/pages/promo__app-upgrade.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47281
+ },
+ {
+  "route": "/pump",
+  "live": "/pump",
+  "file": "frontend/pages/pump.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48977
+ },
+ {
+  "route": "/r/[code]",
+  "live": "/r/test",
+  "file": "frontend/pages/r__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48985
+ },
+ {
+  "route": "/rank",
+  "live": "/rank",
+  "file": "frontend/pages/rank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49228
+ },
+ {
+  "route": "/referral",
+  "live": "/referral",
+  "file": "frontend/pages/referral.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47260
+ },
+ {
+  "route": "/referral/MainContent",
+  "live": "/referral/MainContent",
+  "file": "frontend/pages/referral__MainContent.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47590
+ },
+ {
+  "route": "/referral/[code]",
+  "live": "/referral/test",
+  "file": "frontend/pages/referral__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47274
+ },
+ {
+  "route": "/rewards",
+  "live": "/rewards",
+  "file": "frontend/pages/rewards.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47734
+ },
+ {
+  "route": "/security",
+  "live": "/security",
+  "file": "frontend/pages/security.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47500
+ },
+ {
+  "route": "/security/bind",
+  "live": "/security/bind",
+  "file": "frontend/pages/security__bind.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47349
+ },
+ {
+  "route": "/security/bind/[code]",
+  "live": "/security/bind/test",
+  "file": "frontend/pages/security__bind__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47363
+ },
+ {
+  "route": "/security/google",
+  "live": "/security/google",
+  "file": "frontend/pages/security__google.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47353
+ },
+ {
+  "route": "/security/google/[code]",
+  "live": "/security/google/test",
+  "file": "frontend/pages/security__google__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47367
+ },
+ {
+  "route": "/security/metamask",
+  "live": "/security/metamask",
+  "file": "frontend/pages/security__metamask.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47439
+ },
+ {
+  "route": "/security/metamask/[code]",
+  "live": "/security/metamask/test",
+  "file": "frontend/pages/security__metamask__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47453
+ },
+ {
+  "route": "/security/passkeys",
+  "live": "/security/passkeys",
+  "file": "frontend/pages/security__passkeys.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47357
+ },
+ {
+  "route": "/security/passkeys/[code]",
+  "live": "/security/passkeys/test",
+  "file": "frontend/pages/security__passkeys__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47371
+ },
+ {
+  "route": "/security/phantom",
+  "live": "/security/phantom",
+  "file": "frontend/pages/security__phantom.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47276
+ },
+ {
+  "route": "/security/phantom/[code]",
+  "live": "/security/phantom/test",
+  "file": "frontend/pages/security__phantom__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47290
+ },
+ {
+  "route": "/share",
+  "live": "/share",
+  "file": "frontend/pages/share.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47734
+ },
+ {
+  "route": "/snipex",
+  "live": "/snipex",
+  "file": "frontend/pages/snipex.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48046
+ },
+ {
+  "route": "/strategy",
+  "live": "/strategy",
+  "file": "frontend/pages/strategy.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49240
+ },
+ {
+  "route": "/strategy/FilterToken",
+  "live": "/strategy/FilterToken",
+  "file": "frontend/pages/strategy__FilterToken.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47284
+ },
+ {
+  "route": "/tglogin",
+  "live": "/tglogin",
+  "file": "frontend/pages/tglogin.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47419
+ },
+ {
+  "route": "/tgtrade",
+  "live": "/tgtrade",
+  "file": "frontend/pages/tgtrade.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47498
+ },
+ {
+  "route": "/time",
+  "live": "/time",
+  "file": "frontend/pages/time.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47252
+ },
+ {
+  "route": "/time/TimeAuto",
+  "live": "/time/TimeAuto",
+  "file": "frontend/pages/time__TimeAuto.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47270
+ },
+ {
+  "route": "/trade",
+  "live": "/trade",
+  "file": "frontend/pages/trade.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49230
+ },
+ {
+  "route": "/trade/copy",
+  "live": "/trade/copy",
+  "file": "frontend/pages/trade__copy.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47975
+ },
+ {
+  "route": "/trenches",
+  "live": "/trenches",
+  "file": "frontend/pages/trenches.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48985
+ },
+ {
+  "route": "/trend",
+  "live": "/trend",
+  "file": "frontend/pages/trend.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48899
+ },
+ {
+  "route": "/trend/HotSearchRank",
+  "live": "/trend/HotSearchRank",
+  "file": "frontend/pages/trend__HotSearchRank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48218
+ },
+ {
+  "route": "/trend/NewTrendRank",
+  "live": "/trend/NewTrendRank",
+  "file": "frontend/pages/trend__NewTrendRank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48295
+ },
+ {
+  "route": "/trend/TrendingMixRank",
+  "live": "/trend/TrendingMixRank",
+  "file": "frontend/pages/trend__TrendingMixRank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48301
+ },
+ {
+  "route": "/trend/WorldCupRank",
+  "live": "/trend/WorldCupRank",
+  "file": "frontend/pages/trend__WorldCupRank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48294
+ },
+ {
+  "route": "/twitterbind",
+  "live": "/twitterbind",
+  "file": "frontend/pages/twitterbind.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47266
+ },
+ {
+  "route": "/twittercallback",
+  "live": "/twittercallback",
+  "file": "frontend/pages/twittercallback.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47274
+ },
+ {
+  "route": "/watchlist",
+  "live": "/watchlist",
+  "file": "frontend/pages/watchlist.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47262
+ },
+ {
+  "route": "/watchlist/FollowRank",
+  "live": "/watchlist/FollowRank",
+  "file": "frontend/pages/watchlist__FollowRank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47284
+ },
+ {
+  "route": "/watchlist/FollowWallet",
+  "live": "/watchlist/FollowWallet",
+  "file": "frontend/pages/watchlist__FollowWallet.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47288
+ },
+ {
+  "route": "/watchlists",
+  "live": "/watchlists",
+  "file": "frontend/pages/watchlists.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47807
+ },
+ {
+  "route": "/worldcup-2026",
+  "live": "/worldcup-2026",
+  "file": "frontend/pages/worldcup-2026.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47433
+ },
+ {
+  "route": "/xstocks",
+  "live": "/xstocks",
+  "file": "frontend/pages/xstocks.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47416
+ },
+ {
+  "route": "/xstocks/XStocksRank",
+  "live": "/xstocks/XStocksRank",
+  "file": "frontend/pages/xstocks__XStocksRank.html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 47440
+ },
+ {
+  "route": "/[chain]/address/[address]",
+  "live": "/sol/address/So11111111111111111111111111111111111111112",
+  "file": "frontend/pages/[sol]__So11111111111111111111111111111111111111112__[So11111111111111111111111111111111111111112].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 49026
+ },
+ {
+  "route": "/[chain]/devSnipe/[order_id]",
+  "live": "/sol/devSnipe/test",
+  "file": "frontend/pages/[sol]__devSnipe__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48252
+ },
+ {
+  "route": "/[chain]/skyTrade/[address]",
+  "live": "/sol/skyTrade/So11111111111111111111111111111111111111112",
+  "file": "frontend/pages/[sol]__skyTrade__[So11111111111111111111111111111111111111112].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48329
+ },
+ {
+  "route": "/[chain]/snipex/[address]",
+  "live": "/sol/snipex/So11111111111111111111111111111111111111112",
+  "file": "frontend/pages/[sol]__snipex__[So11111111111111111111111111111111111111112].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48641
+ },
+ {
+  "route": "/[chain]/token/[token]",
+  "live": "/sol/token/So11111111111111111111111111111111111111112",
+  "file": "frontend/pages/[sol]__So11111111111111111111111111111111111111112__[So11111111111111111111111111111111111111112].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48941
+ },
+ {
+  "route": "/[chain]/tokenSnipe/[order_id]",
+  "live": "/sol/tokenSnipe/test",
+  "file": "frontend/pages/[sol]__So11111111111111111111111111111111111111112Snipe__[x].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48256
+ },
+ {
+  "route": "/[chain]/trade/[address]",
+  "live": "/sol/trade/So11111111111111111111111111111111111111112",
+  "file": "frontend/pages/[sol]__trade__[So11111111111111111111111111111111111111112].html",
+  "status": "200",
+  "cf_challenge": false,
+  "next_data": true,
+  "title": "",
+  "bytes": 48639
+ }
+]

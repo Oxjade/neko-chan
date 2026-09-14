@@ -1,0 +1,1496 @@
+{
+  "version": 8,
+  "skills": [
+    {
+      "id": 10025,
+      "slug": "5min-trending-tokens",
+      "url": "https://gmgn.ai/ai/skills/5min-trending-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🔥",
+      "skills": {
+        "title": "查询5分钟热门代币",
+        "subtitle": "扫描过去5分钟链上成交最活跃的代币，支持按市值、流动性、成交量等数值范围过滤，展示市值、流动性、成交量、Holder 数",
+        "installation": "请学会查询5分钟热门代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trending --chain sol --interval 5m\n```\n查询其他链可以替换 --chain 传参：sol/bsc/eth/base",
+        "capabilities": [
+          "扫描过去5分钟链上成交量最高的代币",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按市值、成交量、交易笔数、Holder 人数排序，可按平台过滤",
+          "支持按市值、流动性、成交量、涨跌幅、聪明钱数量、捆绑占比等数值范围过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链过去5分钟最热门的代币",
+          "查询 SOL 链过去1小时最热门的代币"
+        ]
+      }
+    },
+    {
+      "id": 10026,
+      "slug": "pumpfun-trending-tokens",
+      "url": "https://gmgn.ai/ai/skills/pumpfun-trending-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🏆",
+      "skills": {
+        "title": "查询 Pump.fun 热门代币",
+        "subtitle": "查询 Pump.fun 近1小时热度最高的代币，支持按市值、流动性、成交量等数值范围过滤，以及按成交量、市值、Holder 数排序",
+        "installation": "请学会查询 Pump.fun 热门代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trending --chain sol --interval 1h --platform Pump.fun\n```\n查询其他平台可以替换 --platform 传参：Pump.fun / letsbonk / fourmeme / Clanker",
+        "capabilities": [
+          "只看 Pump.fun 平台上的热门代币",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按市值、成交量、交易笔数、Holder 人数排序，可按平台过滤、排除洗盘代币",
+          "支持按市值、流动性、成交量、涨跌幅、聪明钱数量、捆绑占比等数值范围过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链 Pump.fun 上最近1小时最热门的代币",
+          "查询 BSC 链 FourMeme 上最近1小时最热门的代币"
+        ]
+      }
+    },
+    {
+      "id": 10011,
+      "slug": "token-basic-info",
+      "url": "https://gmgn.ai/ai/skills/token-basic-info",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 3,
+      "emoji": "🪪",
+      "skills": {
+        "title": "查询代币基本信息",
+        "subtitle": "查询代币的价格、市值、流动性、持有人数、Top10 持仓占比、Dev 持仓占比、老鼠仓占比、捆绑占比和 KOL 买入人数等数据",
+        "installation": "请学会查询代币基本信息技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token info --chain sol --address <token_address>\n```\n关键参数说明：--address（token合约地址）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "查询当前价格、流动性、持有人数、Launchpad 进度",
+          "展示 Top10 持仓占比、Dev 持仓占比、老鼠仓持仓占比、捆绑占比",
+          "展示 KOL 买入人数、社交信息（Twitter / 网站 / Telegram）",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的基本信息，包括 Dev 持仓和 Top10 持仓占比",
+          "查询 BSC 链上 [token地址] 的基本信息，包括 KOL 买入人数和老鼠仓占比",
+          "查询 Base 链上 [token地址] 的基本信息，包括捆绑占比和 Dev 持仓"
+        ]
+      }
+    },
+    {
+      "id": 10029,
+      "slug": "pumpfun-newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/pumpfun-newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 3,
+      "emoji": "🌱",
+      "skills": {
+        "title": "扫描 Pump.fun 新创建代币",
+        "subtitle": "只看 Pump.fun 平台刚创建的新币，支持按聪明钱数量、捆绑占比、狙击占比过滤",
+        "installation": "请学会扫描 Pump.fun 新创建代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain sol --type new_creation --launchpad-platform Pump.fun\n```\n关键参数说明：--launchpad-platform（平台过滤，可替换为 letsbonk / fourmeme / Clanker 等）",
+        "capabilities": [
+          "只扫描 Pump.fun 上刚创建的新币，排除其他平台干扰",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按 KOL 数量、聪明钱数量、市值、流动性、成交量、Holder 人数、创建时间、捆绑占比、狙击占比等多维度过滤",
+          "仅支持 SOL 链查询"
+        ],
+        "prompts": [
+          "查询 Pump.fun 上刚创建的新币",
+          "查询 Pump.fun 上刚创建、且至少有1个聪明钱买入的新币"
+        ]
+      }
+    },
+    {
+      "id": 10042,
+      "slug": "opentwitter",
+      "url": "https://gmgn.ai/ai/skills/opentwitter",
+      "category": "media",
+      "source": "6551",
+      "hot_level": 2,
+      "emoji": "🕊️",
+      "skills": {
+        "title": "Twitter 数据查询与监控",
+        "subtitle": "查询 Twitter 用户资料、推文搜索、粉丝关注变动监控、KOL 粉丝识别、删推追踪和账号实时动态订阅，共 15 个工具",
+        "installation": "请学会 Twitter 数据查询与监控技能\n\n先安装 OpenTwitter Skill：\n```\nnpx skills add 6551Team/opentwitter-mcp\n```\n安装完成后检查环境变量是否存在 TWITTER_TOKEN，如果不存在请提示我前往 https://6551.io/mcp 免费注册获取 API Token。",
+        "capabilities": [
+          "查询 Twitter 用户资料、粉丝数、关注数及最近发布的推文",
+          "支持关键词和 # 话题标签搜索，可按点赞数、转推数等互动量过滤",
+          "查询指定推文的引用推文和转推用户列表",
+          "识别指定账号的 KOL 粉丝，判断项目是否受到知名影响力人物关注",
+          "监控粉丝新增和取关事件，追踪账号异常粉丝变动",
+          "捕捉删推、改名、修改头像、修改简介等账号异动事件",
+          "实时订阅监控账号的新推文、回复、转推、引用等全类型事件",
+          "支持同时监控多个账号"
+        ],
+        "prompts": [
+          "查询 @elonmusk 的 Twitter 账号资料",
+          "查询 @VitalikButerin 最近发了哪些推文",
+          "搜索 Twitter 上关于 Bitcoin 的最新推文",
+          "搜索 #crypto 话题下点赞数超过 1000 的热门推文",
+          "查询这条推文被哪些人引用了",
+          "查询有哪些 KOL 关注了 @[项目Twitter账号]",
+          "查询 @[用户名] 最近有没有取关或新增粉丝异动",
+          "查询 @[用户名] 最近有没有删推或修改账号资料",
+          "帮我监控 @[用户名] 的 Twitter 动态，有新推文或粉丝变动时提醒我"
+        ]
+      }
+    },
+    {
+      "id": 10041,
+      "slug": "opennews",
+      "url": "https://gmgn.ai/ai/skills/opennews",
+      "category": "media",
+      "source": "6551",
+      "hot_level": 0,
+      "emoji": "📰",
+      "skills": {
+        "title": "实时查询加密新闻",
+        "subtitle": "聚合 84+ 数据源的实时资讯，附 AI 影响力评分、交易信号（long/short/neutral）和双语摘要，覆盖新闻、交易所上新、链上鲸鱼、市场行情和 AI 预测信号",
+        "installation": "请学会实时查询加密新闻技能\n\n先安装 OpenNews Skill：\n```\nnpx skills add 6551Team/opennews-mcp\n```\n安装完成后检查环境变量是否存在 OPENNEWS_TOKEN，如果不存在请提示我前往 https://6551.io/mcp 免费注册获取 API Token。",
+        "capabilities": [
+          "聚合 Bloomberg、Reuters、CoinDesk、Cointelegraph 等 84+ 数据源的最新文章",
+          "每篇文章附 AI 影响力评分（0-100）、交易信号（long / short / neutral）和双语摘要",
+          "实时监控 Binance、Coinbase、OKX、Bybit、Hyperliquid 等 9 个交易所的上币公告",
+          "监控 Hyperliquid 鲸鱼大额交易、大仓位建立、KOL 链上交易动态",
+          "监控价格异动、资金费率变化、大额爆仓、OI 变化等市场行情信号",
+          "覆盖 12 种 AI 预测维度：聪明钱交易、鲸鱼建仓、内部人模式、新钱包入场等",
+          "支持按币种、关键词、来源、交易信号多维度筛选"
+        ],
+        "prompts": [
+          "查询最新的加密货币新闻",
+          "查询 Bloomberg 和 Reuters 最近关于 BTC 的报道",
+          "查询最近 AI 评分 80 分以上的高影响力新闻",
+          "查询最近有哪些交易所上新了代币",
+          "查询 Binance 最近的上币公告",
+          "查询最近 Hyperliquid 上有没有鲸鱼建大仓位",
+          "查询最近有哪些资金费率异动或大额爆仓事件",
+          "查询最近 AI 判断为看空的新闻",
+          "查询最近有哪些聪明钱交易相关的 AI 预测信号"
+        ]
+      }
+    },
+    {
+      "id": 10001,
+      "slug": "market-buy",
+      "url": "https://gmgn.ai/ai/skills/market-buy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⚡",
+      "skills": {
+        "title": "链上市价买入",
+        "subtitle": "以当前市价立即买入指定代币，支持 anti-MEV 防夹保护",
+        "installation": "请学会链上市价买入技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli swap --chain sol --from <wallet_address> --input-token So11111111111111111111111111111111111111112 --output-token <token_address> --amount 100000000 --anti-mev\n```\n关键参数说明：--amount（买入金额，单位为最小单位，0.1 SOL = 100000000 lamports）、--from（你的钱包地址）",
+        "capabilities": [
+          "即时以当前市价买入指定代币",
+          "展示实际成交价、获得代币数量、Gas 费用",
+          "支持 SOL / BSC / Base / ETH 多链交易"
+        ],
+        "prompts": [
+          "用 0.1 SOL 买入 SOL 链上的 [token地址]，开启 anti-MEV 保护",
+          "用 0.1 SOL 买入 SOL 链上的 [token地址]，不开启 anti-MEV 保护"
+        ]
+      }
+    },
+    {
+      "id": 10058,
+      "slug": "query-5m-hot-search-tokens",
+      "url": "https://gmgn.ai/ai/skills/query-5m-hot-search-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 3,
+      "emoji": "🌡️",
+      "skills": {
+        "title": "查询5分钟搜索热度最高代币",
+        "subtitle": "查询各链搜索热度最高的代币榜单，支持查询1m/5m/1h/6h/24h多个时间维度，支持按平台、市值、交易额、持仓占比等字段筛选",
+        "installation": "请学会查询5分钟搜索热度最高代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market hot-searches --interval 5m --raw\n```\n关键参数说明：--chain（可选，指定链，如 sol/bsc/base/eth/monad/megaeth/hyperevm/tron，不传则默认查全部7链）、--interval（时间窗口，可选 1m/5m/1h/6h/24h）、--min-marketcap / --max-marketcap（市值范围，单位 USD，如 50000 = $50K）、--min-liquidity（最低流动性）、--min-smart-degen-count（最少聪明钱持仓数量）",
+        "capabilities": [
+          "查询各链被用户搜索最多的代币榜单，反映市场关注热点",
+          "支持查询 1m/5m/1h/6h/24h 多个时间维度的搜索热度数据",
+          "支持按市值、交易额、流动性、聪明钱数量、Top10 持仓占比、捆绑占比等字段筛选",
+          "默认按搜索热度排序，也可按市值、交易额、流动性等字段排序",
+          "支持 SOL / BSC / Base / ETH / Monad / MegaETH / HyperEVM / Tron 多链查询"
+        ],
+        "prompts": [
+          "查询最近5分钟搜索热度最高的代币",
+          "查询 Solana 链过去1小时搜索热度最高的代币",
+          "查询 Solana 链1小时热搜榜，市值在10K到100K之间，且有1个KOL买入的代币"
+        ]
+      }
+    },
+    {
+      "id": 10050,
+      "slug": "bankr-newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/bankr-newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🍀",
+      "skills": {
+        "title": "扫描 Bankr 新创建代币",
+        "subtitle": "只看 Base 链 Bankr 平台刚创建的新币，支持按聪明钱数量、捆绑占比、狙击占比过滤",
+        "installation": "请学会扫描 Bankr 新创建代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain base --type new_creation --launchpad-platform bankr\n```",
+        "capabilities": [
+          "只扫描 Base 链 Bankr 平台上刚创建的新币，排除其他平台干扰",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按 KOL 数量、聪明钱数量、市值、流动性、成交量、Holder 人数、创建时间、捆绑占比、狙击占比等多维度过滤"
+        ],
+        "prompts": [
+          "查询 Base 链 Bankr 上刚创建的新币",
+          "查询 Base 链 Bankr 上刚创建、且至少有1个聪明钱买入的新币"
+        ]
+      }
+    },
+    {
+      "id": 10051,
+      "slug": "fourmeme-newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/fourmeme-newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🌿",
+      "skills": {
+        "title": "扫描 Fourmeme 新创建代币",
+        "subtitle": "只看 BSC 链 Fourmeme 平台刚创建的新币，支持按聪明钱数量、捆绑占比、狙击占比过滤",
+        "installation": "请学会扫描 Fourmeme 新创建代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain bsc --type new_creation --launchpad-platform fourmeme\n```",
+        "capabilities": [
+          "只扫描 BSC 链 Fourmeme 平台上刚创建的新币，排除其他平台干扰",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按 KOL 数量、聪明钱数量、市值、流动性、成交量、Holder 人数、创建时间、捆绑占比、狙击占比等多维度过滤"
+        ],
+        "prompts": [
+          "查询 BSC 链 Fourmeme 上刚创建的新币",
+          "查询 BSC 链 Fourmeme 上刚创建、且至少有1个聪明钱买入的新币"
+        ]
+      }
+    },
+    {
+      "id": 10028,
+      "slug": "newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🐣",
+      "skills": {
+        "title": "扫描战壕新创建代币",
+        "subtitle": "实时扫描各大内盘平台刚创建的新币，支持按聪明钱、KOL 数量、捆绑占比等多维度过滤",
+        "installation": "请学会扫描战壕新创建代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain sol --type new_creation\n```\n查询其他链可以替换 --chain 传参：sol/bsc/base",
+        "capabilities": [
+          "扫描刚在内盘创建的新币",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按 KOL 数量、聪明钱数量、市值、流动性、成交量、Holder 人数、创建时间、捆绑占比、狙击占比等多维度过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链战壕里刚创建的新币",
+          "查询 SOL 链 Pump.fun 上刚创建的新币"
+        ]
+      }
+    },
+    {
+      "id": 10027,
+      "slug": "kol-bought-new-tokens",
+      "url": "https://gmgn.ai/ai/skills/kol-bought-new-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👑",
+      "skills": {
+        "title": "筛选 KOL 买入的新币",
+        "subtitle": "从战壕新币中筛选已有 KOL 买入的早期代币，支持设置 KOL 数量和市值上限",
+        "installation": "请学会筛选 KOL 买入的新币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain sol --type new_creation --min-renowned-count 2 --max-marketcap 100000\n```\n关键参数说明：--min-renowned-count（KOL最低数量，如 2 = 至少2个KOL买入）、--max-marketcap（市值上限，如 100000）",
+        "capabilities": [
+          "从战壕新币中筛选已有 KOL 买入的早期代币",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按 KOL 数量、聪明钱数量、市值、流动性、成交量、Holder 人数、创建时间等多维度过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "帮我找 SOL 链战壕里市值低于100K、且有至少2个KOL买入的新币",
+          "帮我找 BSC 链战壕里市值低于100K、且有至少2个KOL买入的新币"
+        ]
+      }
+    },
+    {
+      "id": 10031,
+      "slug": "migrated-tokens",
+      "url": "https://gmgn.ai/ai/skills/migrated-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🎓",
+      "skills": {
+        "title": "扫描已开外盘的代币",
+        "subtitle": "扫描从内盘迁移到外盘的代币，支持按聪明钱数量、市值、流动性过滤",
+        "installation": "请学会扫描已开外盘的代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain sol --type completed\n```\n查询其他链可以替换 --chain 传参：sol/bsc/base",
+        "capabilities": [
+          "扫描刚从内盘毕业、已开外盘的代币",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按聪明钱数量、KOL 数量、市值、流动性、成交量、Holder 人数、捆绑占比、狙击占比等多维度过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链开外盘的代币",
+          "查询 BSC 链 FourMeme 上已开外盘的代币",
+          "查询 Base 链 Clanker 上已开外盘的代币"
+        ]
+      }
+    },
+    {
+      "id": 10057,
+      "slug": "migrated-token-quality-screener",
+      "url": "https://gmgn.ai/ai/skills/migrated-token-quality-screener",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🔍",
+      "skills": {
+        "title": "筛选优质已开外盘代币",
+        "subtitle": "扫描战壕已开外盘代币，以市值 $50K–$200K、池子 > $10K、Top10 持仓 < 20%、捆绑占比 < 20%、新钱包占比 < 20% 为默认筛选条件，所有指标均可按需自由调整",
+        "installation": "请学会筛选优质已开外盘代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain sol --type completed --min-marketcap 50000 --max-marketcap 200000 --min-liquidity 10000 --max-top-holder-rate 0.2 --max-bundler-rate 0.2 --max-fresh-wallet-rate 0.2\n```\n关键参数说明：--min-marketcap / --max-marketcap（市值范围，单位 USD）、--min-liquidity（最低池子流动性）、--max-top-holder-rate（Top10 持仓集中度上限，0.2 = 20%）、--max-bundler-rate（捆绑占比上限）、--max-fresh-wallet-rate（新钱包持仓占比上限）",
+        "capabilities": [
+          "扫描已开外盘代币，自动过滤市值 $50K–$200K 的早期优质标的",
+          "要求池子流动性大于 $10K，确保基本交易深度",
+          "过滤 Top10 持仓集中度超过 20% 的高风险筹码结构",
+          "过滤捆绑占比超过 20% 的机器人控盘代币",
+          "过滤新钱包持仓占比超过 20% 的异常持仓结构",
+          "以上所有筛选条件均可自定义，告诉 Agent 你想要的阈值即可自动调整",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "帮我筛选 SOL 链已开外盘的代币，市值在 $50K–$200K，池子大于 $10K，Top10 持仓低于 20%，捆绑占比低于 20%，新钱包占比低于 20%"
+        ]
+      }
+    },
+    {
+      "id": 10030,
+      "slug": "near-completion-tokens",
+      "url": "https://gmgn.ai/ai/skills/near-completion-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🌗",
+      "skills": {
+        "title": "扫描即将打满的内盘币",
+        "subtitle": "扫描即将打满的代币，支持按聪明钱数量、KOL 数量过滤",
+        "installation": "请学会扫描即将打满的内盘币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market trenches --chain sol --type near_completion\n```\n关键参数说明：--min-smart-degen-count（聪明钱最低数量，如 2 = 至少2个聪明钱持仓）\n查询其他链可以替换 --chain 传参：sol/bsc/base",
+        "capabilities": [
+          "扫描 bonding curve 进度接近100%的代币",
+          "展示市值、池子流动性、成交量、交易笔数、Holder 人数、Dev 持仓占比",
+          "支持按聪明钱数量、KOL 数量、市值、流动性、成交量、Holder 人数、捆绑占比、狙击占比等多维度过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链快打满、且至少有2个聪明钱持仓的内盘币",
+          "查询 SOL 链 Pump.fun 上即将打满的内盘币"
+        ]
+      }
+    },
+    {
+      "id": 10013,
+      "slug": "token-security-check",
+      "url": "https://gmgn.ai/ai/skills/token-security-check",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🛡️",
+      "skills": {
+        "title": "代币安全检测",
+        "subtitle": "检测是否蜜罐、合约是否开源、权限是否已 renounce、买卖税率和 Top10 持仓集中度",
+        "installation": "请学会代币安全检测技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token security --chain sol --address <token_address>\n```\n关键参数说明：--address（token合约地址）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "检测是否蜜罐、合约是否开源、权限是否已 renounce（冻结权限 / 铸币权限）",
+          "展示买入税率、卖出税率、Top10 持仓集中度",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "帮我检测 SOL 链上 [token地址] 的合约安全情况",
+          "帮我检测 BSC 链上 [token地址] 的合约安全情况"
+        ]
+      }
+    },
+    {
+      "id": 10032,
+      "slug": "token-kline-data",
+      "url": "https://gmgn.ai/ai/skills/token-kline-data",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📊",
+      "skills": {
+        "title": "查询 Token K线数据",
+        "subtitle": "查询指定代币的 OHLCV 历史数据，支持 30s / 1m / 5m / 15m / 1h / 4h / 1d 多种精度",
+        "installation": "请学会查询 Token K线数据技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market kline --chain sol --address <token_address> --resolution 1m\n```\n关键参数说明：--address（token合约地址）、--resolution（K线精度，可选 1m/5m/15m/1h/4h/1d）、--from / --to（可选，Unix 秒时间戳，指定查询的起止时间范围）",
+        "capabilities": [
+          "查询指定代币任意时间段的 OHLCV 数据",
+          "展示开盘价、收盘价、最高价、最低价、成交量",
+          "支持 30s / 1m / 5m / 15m / 1h / 4h / 1d 多种精度",
+          "支持通过 --from / --to 参数查询某个具体时间段的 K 线",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链 [token地址] 最近24小时的5分钟K线",
+          "查询 SOL 链 [token地址] 的15分钟K线",
+          "查询 BSC 链 [token地址] 最近1小时的1分钟K线"
+        ]
+      }
+    },
+    {
+      "id": 10012,
+      "slug": "dev-info-analysis",
+      "url": "https://gmgn.ai/ai/skills/dev-info-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧐",
+      "skills": {
+        "title": "Dev 信息分析",
+        "subtitle": "查 Dev 持仓状态、历史发币次数、历史最佳代币及其最高市值、资金来源、广告投放、Twitter 改名历史、是否 CTO",
+        "installation": "请学会 Dev 信息分析技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token info --chain sol --address <token_address>\n```\n关键参数说明：--address（token合约地址）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "展示 Dev 钱包地址、当前持仓状态（仍持有 / 已卖出）",
+          "展示 Dev 历史发币次数、历史最高市值代币",
+          "展示 Dev 是否在 DEXScreener 买广告 / Boost、Twitter 改名历史",
+          "标注是否已被社区接管（CTO）",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的 Dev 信息，包括持仓状态和历史发币记录",
+          "查询 BSC 链上 [token地址] 的 Dev 信息，包括历史最佳代币及最高市值"
+        ]
+      }
+    },
+    {
+      "id": 10014,
+      "slug": "liquidity-pool-analysis",
+      "url": "https://gmgn.ai/ai/skills/liquidity-pool-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💧",
+      "skills": {
+        "title": "流动性池分析",
+        "subtitle": "查询代币的总流动性、池子深度、DEX 名称、总供应量和池子创建时间",
+        "installation": "请学会流动性池分析技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token pool --chain sol --address <token_address>\n```\n关键参数说明：--address（token合约地址）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "查询流动性池 USD 总量和池子深度",
+          "展示 DEX 名称、base/quote 储备量",
+          "展示池子创建时间",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的流动性池情况",
+          "查询 BSC 链上 [token地址] 的流动性池情况，包括 DEX 名称和池子创建时间"
+        ]
+      }
+    },
+    {
+      "id": 10015,
+      "slug": "top100-holders-analysis",
+      "url": "https://gmgn.ai/ai/skills/top100-holders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👥",
+      "skills": {
+        "title": "获取代币前100持有者列表",
+        "subtitle": "获取代币前100持有者钱包，展示持仓比例、USD 价值、买入成本、盈亏、钱包标签和资金来源",
+        "installation": "请学会 获取代币前100持有者列表技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token holders --chain sol --address <token_address> --order-by amount_percentage --direction desc\n```\n关键参数说明：--order-by amount_percentage（按持仓占比排序）、--direction desc（倒序，持仓最多的排在前面）",
+        "capabilities": [
+          "查询持仓最多的前100持有者钱包列表，展示持仓比例和 USD 价值",
+          "展示每个地址的平均买入成本、已实现盈利、未实现浮盈",
+          "展示钱包标签（聪明钱 / KOL / 狙击 / 老鼠仓 / 捆绑等）",
+          "展示每个地址的资金来源（CEX 转入 / 新钱包 / 其他链跨链等）",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的 Top Holders 持仓分布，按持仓占比排序",
+          "查询 BSC 链上 [token地址] 的 Top Holders 持仓分布，按盈利排序"
+        ]
+      }
+    },
+    {
+      "id": 10016,
+      "slug": "top100-traders-analysis",
+      "url": "https://gmgn.ai/ai/skills/top100-traders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🏅",
+      "skills": {
+        "title": "获取代币前100交易者列表",
+        "subtitle": "获取代币前100交易者钱包，展示买卖金额、交易次数、已实现盈利、未实现浮盈、钱包标签和资金来源",
+        "installation": "请学会 获取代币前100交易者列表技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token traders --chain sol --address <token_address> --order-by profit --direction desc\n```\n关键参数说明：--order-by profit（按已实现利润排序）、--direction desc（倒序，盈利最多的排在前面）",
+        "capabilities": [
+          "查询历史交易最活跃的前100交易者钱包，展示买卖金额和交易次数",
+          "展示每个地址的已实现盈利、未实现浮盈、平均买卖价格",
+          "展示钱包标签（聪明钱 / KOL / 狙击 / 老鼠仓 / 捆绑等）",
+          "展示每个地址的资金来源（CEX 转入 / 新钱包 / 其他链跨链等）",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的 Top Traders，按已实现利润排序",
+          "查询 BSC 链上 [token地址] 的 Top Traders，按卖出量排序"
+        ]
+      }
+    },
+    {
+      "id": 10023,
+      "slug": "dev-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/dev-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👩🏻‍🍳",
+      "skills": {
+        "title": "查询 Dev 发币记录",
+        "subtitle": "查询 dev 钱包创建过的所有代币，展示历史最高市值、当前市值和迁移率",
+        "installation": "请学会查询 Dev 发币记录技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio created-tokens --chain sol --wallet <dev_wallet_address> --order-by token_ath_mc\n```\n关键参数说明：--wallet（dev钱包地址）、--order-by（token_ath_mc = 按历史最高市值排序）",
+        "capabilities": [
+          "查询 dev 创建过的所有代币及当前状态",
+          "展示每个代币的历史最高市值、当前市值、是否已毕业上 DEX",
+          "展示 dev 整体毕业率",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [dev钱包地址] 创建过的所有代币，按历史最高市值排序"
+        ]
+      }
+    },
+    {
+      "id": 10017,
+      "slug": "smart-money-holders-analysis",
+      "url": "https://gmgn.ai/ai/skills/smart-money-holders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧠",
+      "skills": {
+        "title": "代币聪明钱持仓分析",
+        "subtitle": "筛选持有该代币的聪明钱钱包，展示持仓比例、USD 价值、买入成本和盈亏",
+        "installation": "请学会聪明钱持仓分析技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token holders --chain sol --address <token_address> --tag smart_degen --order-by amount_percentage\n```\n关键参数说明：--tag smart_degen（只看聪明钱钱包）、--order-by（amount_percentage = 按持仓比例 / profit = 按盈利 / sell_volume_cur = 按卖出量）",
+        "capabilities": [
+          "筛选聪明钱钱包，查看其持仓比例和 USD 价值",
+          "展示平均买入成本、已实现盈利、未实现浮盈",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的聪明钱持仓分布，按持仓比例排序",
+          "查询 BSC 链上 [token地址] 的聪明钱持仓分布，按持仓比例排序"
+        ]
+      }
+    },
+    {
+      "id": 10018,
+      "slug": "kol-holders-analysis",
+      "url": "https://gmgn.ai/ai/skills/kol-holders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🌟",
+      "skills": {
+        "title": "代币 KOL 持仓分析",
+        "subtitle": "筛选持有该代币的 KOL 钱包，展示持仓比例、USD 价值、买入成本和盈亏",
+        "installation": "请学会 KOL 持仓分析技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli token holders --chain sol --address <token_address> --tag renowned --order-by profit\n```\n关键参数说明：--tag renowned（只看 KOL 钱包）、--order-by（profit = 按已实现盈利 / unrealized_profit = 按未实现浮盈 / sell_volume_cur = 按卖出量）",
+        "capabilities": [
+          "筛选 KOL 标签钱包，查看 KOL 持仓比例和 USD 价值",
+          "展示各 KOL 平均买入成本、已实现盈利、未实现浮盈",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [token地址] 的 KOL 持仓分布，按已实现利润排序",
+          "查询 BSC 链上 [token地址] 的 KOL 持仓分布，按持仓比例排序"
+        ]
+      }
+    },
+    {
+      "id": 10037,
+      "slug": "tracked-wallet-trades",
+      "url": "https://gmgn.ai/ai/skills/tracked-wallet-trades",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "❤️",
+      "skills": {
+        "title": "关注钱包交易动态监控",
+        "subtitle": "查询在 GMGN 关注的钱包最新买卖记录，展示交易时间、token、买卖金额和当前价格",
+        "installation": "请学会关注钱包交易动态监控技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli track follow-wallet --chain sol\n```\n关键参数说明：--chain（链，可选 sol/bsc/base/eth）、--side（交易方向过滤，可选 buy/sell）",
+        "capabilities": [
+          "查询自己在 GMGN 平台关注的钱包的每一笔买卖动态",
+          "展示交易时间、token、买卖金额、当前价格",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询我在 GMGN 关注的钱包最近在 SOL 链上有什么买卖动态",
+          "查询我在 GMGN 关注的钱包最近在 SOL 链上有什么买入动态"
+        ]
+      }
+    },
+    {
+      "id": 10038,
+      "slug": "kol-trades",
+      "url": "https://gmgn.ai/ai/skills/kol-trades",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📡",
+      "skills": {
+        "title": "KOL 交易动态监控",
+        "subtitle": "实时查看 KOL 钱包最新买卖动态，展示交易时间、token、交易金额和当前价格，支持按买入或卖出过滤",
+        "installation": "请学会查看 KOL 交易动态监控技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli track kol --chain sol\n```\n关键参数说明：--side（buy = 只看买入 / sell = 只看卖出）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "实时查看 KOL 钱包的最新买卖动态",
+          "展示交易时间、token、交易金额、当前价格",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 KOL 最近的买卖动态",
+          "查询 BSC 链上 KOL 最近的买入动态"
+        ]
+      }
+    },
+    {
+      "id": 10039,
+      "slug": "smart-money-trades",
+      "url": "https://gmgn.ai/ai/skills/smart-money-trades",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👁️",
+      "skills": {
+        "title": "聪明钱交易动态监控",
+        "subtitle": "实时查看聪明钱钱包最新买卖动态，展示交易时间、token、交易金额和当前价格，支持按买入或卖出过滤",
+        "installation": "请学会查看聪明钱交易动态监控技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli track smartmoney --chain sol\n```\n关键参数说明：--side（buy = 只看买入 / sell = 只看卖出）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "实时查看聪明钱钱包的最新买卖动态",
+          "展示交易时间、token、交易金额、当前价格",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上聪明钱最近的买卖动态",
+          "查询 BSC 链上聪明钱最近的买入动态"
+        ]
+      }
+    },
+    {
+      "id": 10034,
+      "slug": "kol-call-signal",
+      "url": "https://gmgn.ai/ai/skills/kol-call-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📣",
+      "skills": {
+        "title": "查询 KOL 喊单信号",
+        "subtitle": "查询平台 KOL 发出的喊单信号，第一时间捕捉 KOL 推荐的代币",
+        "installation": "请学会查询 KOL 喊单信号技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market signal --chain sol --signal-type 13\n```\n查询其他链可以替换 --chain 传参：sol/bsc",
+        "capabilities": [
+          "实时捕捉平台 KOL 的喊单事件",
+          "展示触发时间、触发时市值、当前市值",
+          "仅支持 SOL / BSC 查询"
+        ],
+        "prompts": [
+          "查询 SOL 链 KOL 喊单信号",
+          "查询 BSC 链 KOL 喊单信号"
+        ]
+      }
+    },
+    {
+      "id": 10052,
+      "slug": "query-watchlist-tokens",
+      "url": "https://gmgn.ai/ai/skills/query-watchlist-tokens",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⭐",
+      "skills": {
+        "title": "查询收藏的代币列表",
+        "subtitle": "查询 GMGN 账户收藏的代币列表，支持按分组筛选，展示每个代币的价格、涨跌幅、成交量、流动性和市值",
+        "installation": "请学会查询收藏的代币列表技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli track follow-tokens --chain sol --wallet <wallet_address>\n```\n关键参数说明：--wallet（钱包地址）、--group-id（分组过滤，all_group = 全部，default = 默认分组）、--order-by（排序字段，如 market_cap / volume / created_at）",
+        "capabilities": [
+          "查询 GMGN 账户收藏的全部代币",
+          "展示每个收藏代币的价格、涨跌幅、成交量、流动性、市值",
+          "支持按分组过滤、按市值/成交量/交易数排序",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询我在 SOL 链上收藏的代币列表",
+          "查询我在 SOL 链上收藏的代币，按市值排序",
+          "查询我在 SOL 链上「[分组名]」分组里收藏的代币"
+        ]
+      }
+    },
+    {
+      "id": 10053,
+      "slug": "scan-watchlist-price-swing",
+      "url": "https://gmgn.ai/ai/skills/scan-watchlist-price-swing",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "🔔",
+      "skills": {
+        "title": "扫描收藏代币价格异动",
+        "subtitle": "扫描收藏的代币，筛选出指定时间窗口内涨跌幅超过阈值的异动代币，支持按分组筛选，时间窗口和涨跌幅阈值均可自定义，并逐一做基本信息和安全尽调",
+        "installation": "请学会扫描收藏代币价格异动技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即按以下三步执行：\n\n**第一步：拉取收藏代币，筛选价格异动**\n```\ngmgn-cli track follow-tokens --chain sol --wallet <wallet_address> --interval <time_window> --order-by market_cap --direction desc --raw\n```\n关键参数说明：--interval（价格变动统计时间窗口，可选 1m / 5m / 1h / 6h / 24h）、--group-id（可选，指定分组 ID，不传则查全部收藏）\n\n返回结果中每个代币包含 price_change_percent 字段（对应 --interval 时间窗口的涨跌幅），筛选其绝对值 ≥ <threshold>% 的代币，例如 ≥ 20%\n\n**第二步：对每个异动代币查基本信息**\n```\ngmgn-cli token info --chain sol --address <token_address>\n```\n\n**第三步：对每个异动代币做安全检测**\n```\ngmgn-cli token security --chain sol --address <token_address>\n```",
+        "capabilities": [
+          "拉取全部收藏代币，支持按分组过滤",
+          "时间窗口可选 1m / 5m / 1h / 6h / 24h，涨跌幅阈值自定义（如 ≥ 20%）",
+          "对每个异动代币逐一查基本信息：价格、市值、流动性、聪明钱数量、KOL 买入人数",
+          "对每个异动代币做安全检测：蜜罐检测、合约是否开源、权限是否放弃、买卖税率",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "扫描我 SOL 链上所有收藏的代币，找出 1h 涨跌幅超过 20% 的，逐一做基本信息和安全尽调",
+          "扫描我 SOL 链上「[分组名]」分组里的收藏代币，找出 1h 涨跌幅超过 20% 的，逐一做基本信息和安全尽调",
+          "扫描我 SOL 链上「[分组名]」分组里的收藏代币，找出 5m 涨跌幅超过 30% 的，逐一做基本信息和安全尽调"
+        ]
+      }
+    },
+    {
+      "id": 10035,
+      "slug": "pump-claim-signal",
+      "url": "https://gmgn.ai/ai/skills/pump-claim-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🎁",
+      "skills": {
+        "title": "查询 Pump 领取信号",
+        "subtitle": "捕捉 Pump.fun 上的代币领取信号，追踪项目方领取动态",
+        "installation": "请学会查询 Pump 领取信号技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market signal --chain sol --signal-type 18\n```",
+        "capabilities": [
+          "捕捉 Pump.fun 上的代币领取信号",
+          "展示触发时间、触发时市值、当前市值",
+          "仅支持 SOL 链"
+        ],
+        "prompts": [
+          "查询 Solana 链 Pump.fun 代币领取信号",
+          "查询 Solana 链 bags 代币领取信号"
+        ]
+      }
+    },
+    {
+      "id": 10033,
+      "slug": "smart-money-buy-signal",
+      "url": "https://gmgn.ai/ai/skills/smart-money-buy-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💰",
+      "skills": {
+        "title": "查询聪明钱集中买入信号",
+        "subtitle": "查询多个聪明钱集中买入同一代币的信号，识别早期筹码聚集机会",
+        "installation": "请学会查询聪明钱集中买入信号技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market signal --chain sol --signal-type 12\n```\n查询其他链可以替换 --chain 传参：sol/bsc",
+        "capabilities": [
+          "捕捉多个聪明钱聚集买入同一代币的信号",
+          "展示触发时间、触发时市值、当前市值",
+          "仅支持 SOL / BSC 查询"
+        ],
+        "prompts": [
+          "查询 Solana 链多个聪明钱买入信号",
+          "查询 BSC 链多个聪明钱买入信号"
+        ]
+      }
+    },
+    {
+      "id": 10036,
+      "slug": "price-surge-signal",
+      "url": "https://gmgn.ai/ai/skills/price-surge-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💹",
+      "skills": {
+        "title": "查询价格飙升信号",
+        "subtitle": "捕捉代币短时间内价格大幅拉升的异动信号，识别异常拉盘行情",
+        "installation": "请学会查询价格飙升信号技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli market signal --chain sol --signal-type 6\n```\n查询其他链可以替换 --chain 传参：sol/bsc",
+        "capabilities": [
+          "捕捉短时间内价格大幅拉升的代币",
+          "展示触发时间、触发时市值、当前市值",
+          "仅支持 SOL / BSC 查询"
+        ],
+        "prompts": [
+          "查询 Solana 链价格飙升信号",
+          "查询 BSC 链价格飙升信号"
+        ]
+      }
+    },
+    {
+      "id": 10047,
+      "slug": "price-surge-signal-token-screening",
+      "url": "https://gmgn.ai/ai/skills/price-surge-signal-token-screening",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🚀",
+      "skills": {
+        "title": "价格飙升选币策略",
+        "subtitle": "扫描 SOL 链价格飙升信号，过滤高风险代币，逐币完整分析基本信息、安全检测和 Holder 持仓健康情况",
+        "installation": "请学会价格飙升选币策略技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即按以下三步执行：\n\n**第一步：拉取价格异动信号**\n```\ngmgn-cli market signal --chain sol --signal-type 6 --mc-min 50000 --mc-max 10000000 --raw\n```\nsignal-type 6 = 价格飙升；--mc-min/max 过滤市值范围（单位 USD）\n\n**第二步：对候选币逐一查基本信息和安全检测**\n```\ngmgn-cli token info --chain sol --address <token_address>\ngmgn-cli token security --chain sol --address <token_address>\n```\n\n**第三步：查 Holder 持仓健康情况**\n```\ngmgn-cli token holders --chain sol --address <token_address> --order-by amount_percentage --direction desc\n```",
+        "capabilities": [
+          "扫描 SOL 链价格飙升信号，支持市值范围过滤",
+          "一键过滤高风险：跑路风险评分、刷量交易、蜜罐自动排除",
+          "逐币查基本信息：价格、市值、流动性、Dev 持仓状态、KOL 买入人数、聪明钱数量",
+          "逐币做安全检测：蜜罐检测、合约是否开源、权限是否放弃、买卖税率",
+          "逐币分析 Holder 健康：Top10 集中度、持仓分布、聪明钱/KOL 标签识别、盈利地址占比、未买入持仓（转入）地址占比"
+        ],
+        "prompts": [
+          "帮我扫 SOL 链价格异动信号，过滤高风险，逐币做完整分析：基本信息、安全检测、Holder 持仓健康情况"
+        ]
+      }
+    },
+    {
+      "id": 10040,
+      "slug": "smart-money-exit-signal",
+      "url": "https://gmgn.ai/ai/skills/smart-money-exit-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🚨",
+      "skills": {
+        "title": "聪明钱出货监控",
+        "subtitle": "追踪聪明钱卖出操作，展示卖出 token、金额和时间，识别多个聪明钱同时出货的离场信号",
+        "installation": "请学会查看聪明钱出货监控技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli track smartmoney --chain sol --side sell\n```\n关键参数说明：--side（sell = 只看卖出）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "实时追踪聪明钱卖出操作",
+          "识别多个聪明钱同时卖出同一 token 的出货信号",
+          "展示卖出金额、token 信息，判断是否大规模离场",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上聪明钱的卖出动态",
+          "查询 BSC 链上聪明钱的卖出动态"
+        ]
+      }
+    },
+    {
+      "id": 10059,
+      "slug": "get-twitter-following-posts",
+      "url": "https://gmgn.ai/ai/skills/get-twitter-following-posts",
+      "category": "media",
+      "source": "X",
+      "hot_level": 0,
+      "emoji": "🐦",
+      "skills": {
+        "title": "Twitter-获取关注账号推文动态",
+        "subtitle": "获取 Twitter 账号关注列表的最新推文动态，按时间倒序排列。Twitter 官方付费 API",
+        "installation": "请学会获取关注账号推文动态技能\n\n**第一步：创建 X 开发者应用并获取 OAuth 2.0 凭证**\n\n1. 打开 https://developer.x.com，用你的 X（Twitter）账号登录\n2. 点击左侧「Apps」，进入应用列表页\n3. 点击右上角「Create App」，填写 Application Name（随意填，如 my-mcp-app），Environment 选 Development，点击「Create New Client Application」\n4. 创建完成后弹出的凭证窗口（Consumer Key / Secret Key / Bearer Token）是 OAuth 1.0a 的凭证，xurl 不使用这些，关闭即可\n5. 点击刚创建的应用，进入「Keys & Tokens」页面，找到底部「User authentication settings」，点击「Set up」，进入配置页面：\n   - App permissions：选「Read」\n   - Type of App：选「Native App」（Public client）\n   - Callback URI / Redirect URL：填入 http://localhost:8080/callback\n   - Website URL：随意填，如 https://example.com\n   - 点击「Save Changes」\n6. 保存后弹出「Did you save your OAuth 2.0 Client Secret?」窗口，显示 Client ID 和 Client Secret，点击 Copy 分别复制保存，关闭后无法再查看\n\n**第二步：** 用户将 Client ID 和 Client Secret 发给你后，直接运行以下命令完成配置：\n```\nclaude mcp add xapi -s user -e CLIENT_ID=<Client_ID> -e CLIENT_SECRET=<Client_Secret> -- npx -y @xdevplatform/xurl mcp https://api.x.com/mcp\n```\n\n**第三步：** 告知用户重启 Claude 使配置生效：\n- VS Code：关闭当前窗口，重新打开\n- Claude 命令行：关闭当前终端窗口，重新打开一个新终端\n\n重启后首次使用时会自动弹出浏览器，用你的 X 账号完成授权，之后无需重复操作。",
+        "capabilities": [
+          "获取当前授权账号所关注的所有账号的最新推文",
+          "按时间倒序展示，不含算法推荐内容",
+          "最多可获取近7天内或3200条推文记录"
+        ],
+        "prompts": [
+          "查看我关注的账号最近发了哪些推文",
+          "获取我关注账号今天的推文动态",
+          "我关注的人最近在发什么"
+        ]
+      }
+    },
+    {
+      "id": 10020,
+      "slug": "wallet-profit-loss-stats",
+      "url": "https://gmgn.ai/ai/skills/wallet-profit-loss-stats",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "💵",
+      "skills": {
+        "title": "分析钱包盈亏数据",
+        "subtitle": "查询钱包的胜率、PnL 倍数、总花费和买卖次数，支持 7d / 30d 周期对比",
+        "installation": "请学会分析钱包盈亏数据技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio stats --chain sol --wallet <wallet_address> --period 30d\n```\n关键参数说明：--period（统计周期，7d = 7天 / 30d = 30天）、--wallet（钱包地址）",
+        "capabilities": [
+          "查询胜率、PnL 倍数、总花费、买卖次数",
+          "展示已实现盈利",
+          "支持批量查询多个钱包对比",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [钱包地址] 过去7天的交易统计，包括胜率和PnL",
+          "查询 SOL 链上 [钱包地址] 过去30天的交易统计，包括胜率和PnL"
+        ]
+      }
+    },
+    {
+      "id": 10019,
+      "slug": "wallet-holdings",
+      "url": "https://gmgn.ai/ai/skills/wallet-holdings",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💎",
+      "skills": {
+        "title": "查询钱包持仓代币",
+        "subtitle": "查询钱包当前持有的所有代币及 USD 价值，展示每个仓位的持仓成本和已实现盈利",
+        "installation": "请学会查询钱包持仓代币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio holdings --chain sol --wallet <wallet_address>\n```\n关键参数说明：--wallet（钱包地址）、--chain（链，可选 sol/bsc/base/eth）",
+        "capabilities": [
+          "查询钱包当前持有的所有 token 及 USD 价值",
+          "展示每个仓位的持仓成本、已实现盈利",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [钱包地址] 的当前持仓",
+          "查询 BSC 链上 [钱包地址] 的当前持仓"
+        ]
+      }
+    },
+    {
+      "id": 10021,
+      "slug": "wallet-trade-history",
+      "url": "https://gmgn.ai/ai/skills/wallet-trade-history",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📝",
+      "skills": {
+        "title": "查询钱包交易记录",
+        "subtitle": "查询钱包的历史买入、卖出、转账记录，支持按交易类型和 token 地址过滤",
+        "installation": "请学会查询钱包交易记录技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio activity --chain sol --wallet <wallet_address>\n```\n关键参数说明：--wallet（钱包地址）、--type（交易类型过滤，可选 buy/sell/transfer）",
+        "capabilities": [
+          "查询钱包最近的买入、卖出、转账记录",
+          "展示每笔交易的 token、数量、USD 价值、时间",
+          "支持按交易类型或 token 地址过滤",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 SOL 链上 [钱包地址] 最近的买卖记录",
+          "查询 SOL 链上 [钱包地址] 最近的买入记录"
+        ]
+      }
+    },
+    {
+      "id": 10022,
+      "slug": "wallet-token-balance",
+      "url": "https://gmgn.ai/ai/skills/wallet-token-balance",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🪙",
+      "skills": {
+        "title": "钱包指定Token余额查询",
+        "subtitle": "查询指定钱包持有某代币的余额",
+        "installation": "请学会查询钱包指定Token余额技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio token-balance --chain sol --wallet <wallet_address> --token <token_address>\n```\n关键参数说明：--wallet（钱包地址）、--token（要查询的 token 合约地址）",
+        "capabilities": [
+          "查询指定钱包持有某 token 的余额",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 [钱包地址] 在 SOL 链上持有 [token地址] 的余额",
+          "查询 [钱包地址] 在 BSC 链上持有 [token地址] 的余额"
+        ]
+      }
+    },
+    {
+      "id": 10024,
+      "slug": "wallet-copy-trade-assessment",
+      "url": "https://gmgn.ai/ai/skills/wallet-copy-trade-assessment",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⚖️",
+      "skills": {
+        "title": "评估钱包跟单价值",
+        "subtitle": "综合分析钱包的胜率、PnL 倍数、持仓结构和交易频率，判断是否值得跟单",
+        "installation": "请学会评估钱包跟单价值技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio stats --chain sol --wallet <wallet_address> --period 30d\ngmgn-cli portfolio holdings --chain sol --wallet <wallet_address>\ngmgn-cli portfolio activity --chain sol --wallet <wallet_address>\n```\n以上三条命令组合使用，综合评估钱包的交易风格和跟单价值",
+        "capabilities": [
+          "综合分析胜率、PnL 倍数、持仓结构、交易频率",
+          "判断交易风格（短线/长线/高频）",
+          "给出是否值得跟单的综合建议",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "帮我分析 SOL 链上 [钱包地址] 值不值得跟单，包括胜率、交易风格和持仓情况"
+        ]
+      }
+    },
+    {
+      "id": 10060,
+      "slug": "wallet-address-score",
+      "url": "https://gmgn.ai/ai/skills/wallet-address-score",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "🧮",
+      "skills": {
+        "title": "钱包地址评分",
+        "subtitle": "从三个角度为任意钱包地址评分——盈利能力（真实战绩分）、跟单可行性（评分＋延迟/滑点/gas 回测），以及针对发币方钱包的 Dev 信誉评分——并附带交易风格标签。",
+        "installation": "请学会钱包地址评分技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli portfolio stats --chain sol --wallet <wallet_address> --period 7d\ngmgn-cli portfolio activity --chain sol --wallet <wallet_address>\ngmgn-cli portfolio created-tokens --chain sol --wallet <wallet_address>\ngmgn-cli token security --chain sol --address <token_address>\n```\n关键参数：--period（7d/30d）、--wallet（钱包地址）；可选 --latency（秒）/ --slippage（%）/ --gas（美元）自定义跟单回测参数。created-tokens 与 security 命令仅在该钱包本身是发币方时才需要用到。",
+        "capabilities": [
+          "战绩分（0–100）：依据盈亏分布与止损纪律判断交易水平，而非只看胜率",
+          "跟单可行性评分（0–100）及回测：评估你是否真的能复制该钱包的优势，并估算扣除进场延迟漂移、双边滑点与 gas 成本后的实际回报",
+          "Dev 信誉评分：若钱包主要是发币方，评估其发行代币的存活率及近期安全扫描通过率",
+          "交易风格标签，如机器人/量化、狙击手、钻石手、巨鲸、高胜率等",
+          "支持 SOL / BSC / Base / ETH / Robinhood 多链查询"
+        ],
+        "prompts": [
+          "帮我评分 SOL 链上的 [钱包地址]",
+          "SOL 链上的 [钱包地址] 值不值得跟单？",
+          "查一下 SOL 链上 [钱包地址] 的 Dev 信誉"
+        ]
+      }
+    },
+    {
+      "id": 10002,
+      "slug": "market-sell",
+      "url": "https://gmgn.ai/ai/skills/market-sell",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💸",
+      "skills": {
+        "title": "链上市价卖出",
+        "subtitle": "按持仓比例部分卖出或一键全仓清出，换回原生代币",
+        "installation": "请学会链上市价卖出技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli swap --chain sol --from <wallet_address> --input-token <token_address> --output-token So11111111111111111111111111111111111111112 --percent 50\n```\n关键参数说明：--percent（卖出比例，如 50 = 卖出持仓的50%，100 = 全仓清出）",
+        "capabilities": [
+          "按百分比卖出持仓，或 100% 一键全仓清出",
+          "展示实际成交价、到手原生代币数量、Gas 费用",
+          "支持 SOL / BSC / Base / ETH 多链交易"
+        ],
+        "prompts": [
+          "把我在 SOL 链持有的 [token地址] 卖出一半",
+          "把我在 SOL 链持有的 [token地址] 全部卖出"
+        ]
+      }
+    },
+    {
+      "id": 10003,
+      "slug": "multi-wallet-buy",
+      "url": "https://gmgn.ai/ai/skills/multi-wallet-buy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🔱",
+      "skills": {
+        "title": "多钱包批量买入",
+        "subtitle": "支持100个钱包并发买入同一代币，各钱包金额独立配置",
+        "installation": "请学会多钱包批量买入技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli multi-swap --chain sol --accounts <addr1>,<addr2> --input-token So11111111111111111111111111111111111111112 --output-token <token_address> --input-amount '{\"<addr1>\":\"100000000\",\"<addr2>\":\"200000000\"}' --slippage 0.01\n```\n关键参数说明：--accounts（逗号分隔的钱包地址列表，最多100个）、--input-amount（每个钱包对应的买入金额 JSON，单位为最小单位，0.1 SOL = 100000000 lamports）",
+        "capabilities": [
+          "最多100个钱包同时并发买入，各自金额独立配置",
+          "单个钱包失败不影响其余钱包继续执行",
+          "支持 SOL / BSC / Base / ETH 多链交易"
+        ],
+        "prompts": [
+          "用 [钱包A地址] 买 0.1 SOL、[钱包B地址] 买 0.2 SOL，同时买入 SOL 链上的 [token地址]",
+          "用 [钱包地址] 买 0.1 SOL，买入 SOL 链上的 [token地址]"
+        ]
+      }
+    },
+    {
+      "id": 10048,
+      "slug": "query-real-time-gas-price",
+      "url": "https://gmgn.ai/ai/skills/query-real-time-gas-price",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⛽",
+      "skills": {
+        "title": "查询实时 Gas 价格",
+        "subtitle": "查询各链实时 Gas 价格，支持 Solana、Ethereum、BSC、Base 多链即时获取最新 Gas 价格，让你的 AI Agent 交易决策更精准、更聪明！",
+        "installation": "请学会查询实时 Gas 价格技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli gas-price --chain eth\n```\n查询其他链可以替换 --chain 传参：sol/bsc/base/eth",
+        "capabilities": [
+          "查询各链当前低中高三档推荐 Gas 价格",
+          "支持 SOL / BSC / Base / ETH 多链查询"
+        ],
+        "prompts": [
+          "查询 ETH 链当前 Gas 价格",
+          "查询 BSC 链当前 Gas 价格"
+        ]
+      }
+    },
+    {
+      "id": 10004,
+      "slug": "limit-buy",
+      "url": "https://gmgn.ai/ai/skills/limit-buy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "⏳",
+      "skills": {
+        "title": "限价自动买入",
+        "subtitle": "挂单等待目标价位，价格跌到后自动触发买入，无需盯盘",
+        "installation": "请学会限价自动买入技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type buy_low --check-price <target_price> --amount-in 100000000\n```\n关键参数说明：--check-price（触发买入的目标价格）、--amount-in（买入金额，单位为最小单位，0.1 SOL = 100000000 lamports）",
+        "capabilities": [
+          "价格下跌至目标价时自动触发买入，无需人工盯盘",
+          "支持设置挂单过期时间",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "在 SOL 链上挂一个限价买入单，当 [token地址] 价格跌到 [目标价] 时自动买入 0.1 SOL",
+          "在 ETH 链上挂一个限价买入单，当 [token地址] 价格跌到 [目标价] 时自动买入 0.01 ETH"
+        ]
+      }
+    },
+    {
+      "id": 10049,
+      "slug": "limit-buy-with-tp-sl-strategy",
+      "url": "https://gmgn.ai/ai/skills/limit-buy-with-tp-sl-strategy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🤖",
+      "skills": {
+        "title": "限价买入时同步设置止盈止损策略订单",
+        "subtitle": "等价格跌到目标位自动买入，买入后自动触发止盈止损保护，支持固定价位止盈止损或动态追踪（价格上涨时触发价自动上移，从最高点回撤到设定幅度才触发）两种模式",
+        "installation": "请学会限价买入时同步设置止盈止损策略订单技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy create \\\n  --chain sol \\\n  --from <wallet_address> \\\n  --base-token <token_address> \\\n  --quote-token So11111111111111111111111111111111111111112 \\\n  --order-type smart_trade \\\n  --sub-order-type mix_trade \\\n  --open-price <current_price> \\\n  --amount-in 100000000 \\\n  --slippage 30 \\\n  --sell-param '{\"slippage\":30,\"priority_fee\":\"0.00001\",\"tip_fee\":\"0.00001\"}' \\\n  --condition-orders '[{\"order_type\":\"buy_low\",\"side\":\"buy\",\"check_price\":\"<target_buy_price>\"},{\"order_type\":\"profit_stop_trace\",\"side\":\"sell\",\"price_scale\":\"100\",\"sell_ratio\":\"50\",\"drawdown_rate\":\"20\"},{\"order_type\":\"loss_stop\",\"side\":\"sell\",\"price_scale\":\"20\",\"sell_ratio\":\"100\"}]'\n```\n关键参数说明：\n- buy_low 的 check_price：跌到该价格时触发买入\n- profit_stop_trace 的 price_scale：涨多少%后开始追踪止盈（如 100 = 涨100%后启动）\n- profit_stop_trace 的 drawdown_rate：从最高点回撤多少%时触发卖出\n- loss_stop 的 price_scale：跌多少%时触发止损（如 20 = 跌20%触发）",
+        "capabilities": [
+          "挂单等价格跌到目标价后自动触发买入，无需盯盘守点位",
+          "买入同时绑定止盈止损策略，无需二次操作",
+          "支持固定价位止盈止损：涨/跌到指定幅度时自动触发",
+          "支持追踪止盈：价格上涨时触发价自动上移，从最高点回撤设定幅度才触发卖出",
+          "支持多档止盈止损同时挂单，精细管理仓位",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "SOL 链，[token地址] 跌20% 时限价买入 0.1 SOL，同时设置追踪止盈：涨 100% 后启动追踪，从最高点回撤 20% 时卖出 50%；跌 20% 时全部止损"
+        ]
+      }
+    },
+    {
+      "id": 10005,
+      "slug": "limit-sell",
+      "url": "https://gmgn.ai/ai/skills/limit-sell",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🎯",
+      "skills": {
+        "title": "限价自动卖出",
+        "subtitle": "挂单等待目标价位，价格涨到后自动触发卖出，支持按比例卖出",
+        "installation": "请学会限价自动卖出技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type take_profit --check-price <target_price> --amount-in-percent 100\n```\n关键参数说明：--check-price（触发卖出的目标价格）、--amount-in-percent（卖出比例，100 = 全部卖出）",
+        "capabilities": [
+          "价格上涨至目标价时自动触发卖出，无需人工盯盘",
+          "支持按持仓百分比卖出（如 50% 或 100%）",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "在 SOL 链上挂一个限价卖出单，当 [token地址] 价格涨到 [目标价] 时自动卖出全部",
+          "在 SOL 链上挂一个限价卖出单，当 [token地址] 价格涨到 [目标价] 时自动卖出 50%"
+        ]
+      }
+    },
+    {
+      "id": 10006,
+      "slug": "buy-with-take-profit-stop-loss",
+      "url": "https://gmgn.ai/ai/skills/buy-with-take-profit-stop-loss",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🦺",
+      "skills": {
+        "title": "买入设置止盈止损",
+        "subtitle": "买入同时绑定多档止盈止损策略，到价自动触发，无需二次操作",
+        "installation": "请学会买入设置止盈止损技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli swap --chain sol --from <wallet_address> --input-token So11111111111111111111111111111111111111112 --output-token <token_address> --amount 100000000 --slippage 0.3 --anti-mev --condition-orders '[{\"order_type\":\"profit_stop\",\"side\":\"sell\",\"price_scale\":\"100\",\"sell_ratio\":\"50\"},{\"order_type\":\"profit_stop\",\"side\":\"sell\",\"price_scale\":\"300\",\"sell_ratio\":\"100\"},{\"order_type\":\"loss_stop\",\"side\":\"sell\",\"price_scale\":\"65\",\"sell_ratio\":\"100\"}]' --sell-ratio-type hold_amount\n```\n关键参数说明：--condition-orders 中 price_scale（触发涨跌幅，如 100 = 涨100%时触发，65 = 跌65%时触发）、sell_ratio（触发后卖出比例，100 = 全部卖出）",
+        "capabilities": [
+          "买入同时一次性绑定多档止盈和止损，无需分步操作",
+          "每档独立设置触发幅度和卖出比例，精细管理仓位",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "用 0.1 SOL 买入 SOL 链上的 [token地址]，涨100%时卖出50%、涨300%时卖出剩余全部、跌65%时全部止损"
+        ]
+      }
+    },
+    {
+      "id": 10007,
+      "slug": "trailing-take-profit",
+      "url": "https://gmgn.ai/ai/skills/trailing-take-profit",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "📈",
+      "skills": {
+        "title": "设置追踪止盈",
+        "subtitle": "止盈线随价格上涨动态上移，从最高点回撤设定幅度后自动卖出",
+        "installation": "请学会设置追踪止盈技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type take_profit --check-price <initial_price> --amount-in-percent 100 --condition-orders '[{\"order_type\":\"profit_stop_trace\",\"side\":\"sell\",\"price_scale\":\"50\",\"sell_ratio\":\"100\",\"drawdown_rate\":\"50\"}]'\n```\n关键参数说明：price_scale（启动追踪的最低涨幅，如 50 = 先涨50%才开始追踪）、drawdown_rate（从最高点回撤多少%时触发卖出，如 50 = 回撤50%触发）",
+        "capabilities": [
+          "止盈目标价随价格上涨动态上移，不错过上涨行情",
+          "价格从最高点回撤到设定幅度后自动触发卖出",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "对我持有的 SOL 链上 [token地址] 设置追踪止盈，先涨50%后开始追踪，从最高点回撤50%时自动卖出全部"
+        ]
+      }
+    },
+    {
+      "id": 10008,
+      "slug": "trailing-stop-loss",
+      "url": "https://gmgn.ai/ai/skills/trailing-stop-loss",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📉",
+      "skills": {
+        "title": "设置追踪止损",
+        "subtitle": "止损线随价格上涨自动抬高，从最高点回撤设定幅度后触发止损",
+        "installation": "请学会设置追踪止损技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type stop_loss --check-price <initial_price> --amount-in-percent 100 --condition-orders '[{\"order_type\":\"loss_stop_trace\",\"side\":\"sell\",\"sell_ratio\":\"100\",\"drawdown_rate\":\"30\"}]'\n```\n关键参数说明：drawdown_rate（从最高点回撤多少%触发止损，如 30 = 回撤30%时触发）、amount-in-percent（止损卖出比例，100 = 全部卖出）",
+        "capabilities": [
+          "止损线随价格上涨自动上移，锁住已有浮盈",
+          "从最高点回撤到设定幅度后自动触发卖出，控制最大回撤",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "对我持有的 SOL 链上 [token地址] 设置追踪止损，从最高点回撤30%时自动全部卖出"
+        ]
+      }
+    },
+    {
+      "id": 10009,
+      "slug": "query-open-orders",
+      "url": "https://gmgn.ai/ai/skills/query-open-orders",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📋",
+      "skills": {
+        "title": "查询挂单列表",
+        "subtitle": "查询所有未触发的限价单和止盈止损策略单，展示订单 ID、触发条件",
+        "installation": "请学会查询挂单列表技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy list --chain sol --group-tag LimitOrder\ngmgn-cli order strategy list --chain sol --group-tag STMix\n```\n关键参数说明：--group-tag（LimitOrder = 限价单，STMix = 止盈止损策略单）",
+        "capabilities": [
+          "分类查看所有待触发的限价单和止盈止损策略单",
+          "展示每笔挂单的订单ID、代币、触发条件",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "查询我在 SOL 链上所有未触发的限价单",
+          "查询我在 SOL 链上所有未触发的止盈止损策略单"
+        ]
+      }
+    },
+    {
+      "id": 10010,
+      "slug": "cancel-strategy-order",
+      "url": "https://gmgn.ai/ai/skills/cancel-strategy-order",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⛔",
+      "skills": {
+        "title": "取消策略挂单",
+        "subtitle": "按订单 ID 精准取消指定挂单，限价单和止盈止损策略单均支持",
+        "installation": "请学会取消策略挂单技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli order strategy cancel --chain sol --from <wallet_address> --order-id <order_id>\n```\n关键参数说明：--order-id（要取消的挂单ID，可通过查看挂单获取）、--from（钱包地址）",
+        "capabilities": [
+          "按订单ID精准取消指定挂单",
+          "支持取消限价单和止盈止损策略单",
+          "支持 SOL / BSC / Base / ETH 多链"
+        ],
+        "prompts": [
+          "取消我在 SOL 链上订单号为 [order_id] 的挂单",
+          "取消我在 SOL 链上所有未触发的挂单"
+        ]
+      }
+    },
+    {
+      "id": 10043,
+      "slug": "query-launchpad-stats",
+      "url": "https://gmgn.ai/ai/skills/query-launchpad-stats",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🗂️",
+      "skills": {
+        "title": "查询各平台发币统计",
+        "subtitle": "查询 Pump.fun、FourMeme、letsbonk、Clanker 等平台通过 GMGN 创建的代币数量",
+        "installation": "请学会查询各平台发币统计技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli cooking stats\n```",
+        "capabilities": [
+          "查询各 launchpad 平台通过 GMGN 创建的 token 数量",
+          "覆盖 Pump.fun / FourMeme / letsbonk / Clanker 等主流平台",
+          "快速了解各平台发币热度",
+          "发币功能支持 SOL / BSC / Base 多链"
+        ],
+        "prompts": [
+          "查一下各个 launchpad 平台通过 GMGN 创建了多少代币"
+        ]
+      }
+    },
+    {
+      "id": 10044,
+      "slug": "launch-on-pumpfun",
+      "url": "https://gmgn.ai/ai/skills/launch-on-pumpfun",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💊",
+      "skills": {
+        "title": "一键发 Pump.fun 新币",
+        "subtitle": "在 Pump.fun 一键部署新代币，支持设置名称、符号、logo、描述、社交链接和初始买入量",
+        "installation": "请学会一键发 Pump.fun 新币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli cooking create --chain sol --dex pump --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.1 --image-url <logo_url> --auto-slippage\n```\n关键参数说明：--buy-amt（初始买入金额，单位为 SOL，如 0.1 = 0.1 SOL）、--image-url（logo图片URL）",
+        "capabilities": [
+          "在 Pump.fun 一键部署新 token 并完成初始买入",
+          "支持设置 token 名称、符号、logo、描述、社交链接",
+          "部署完成后返回 token 合约地址和交易哈希"
+        ],
+        "prompts": [
+          "帮我在 Pump.fun 上发一个新币，名字叫 [token名称]，符号是 [SYMBOL]，初始买入 0.1 SOL，logo 是 [图片URL]，Twitter 是 [Twitter链接]，网站是 [网站链接]"
+        ]
+      }
+    },
+    {
+      "id": 10045,
+      "slug": "launch-on-fourmeme",
+      "url": "https://gmgn.ai/ai/skills/launch-on-fourmeme",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧤",
+      "skills": {
+        "title": "一键发 FourMeme 新币",
+        "subtitle": "在 FourMeme（BSC）一键部署新代币，支持设置名称、符号、logo、描述、社交链接和初始买入量",
+        "installation": "请学会一键发 FourMeme 新币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli cooking create --chain bsc --dex fourmeme --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.05 --image-url <logo_url> --auto-slippage\n```\n关键参数说明：--buy-amt（初始买入金额，单位为 BNB，如 0.05 = 0.05 BNB）、--dex（fourmeme = FourMeme平台）",
+        "capabilities": [
+          "在 FourMeme（BSC）一键部署新 token 并完成初始买入",
+          "支持设置 token 名称、符号、logo、描述、社交链接",
+          "部署完成后返回 token 合约地址和交易哈希"
+        ],
+        "prompts": [
+          "帮我在 FourMeme 上发一个新币，名字叫 [token名称]，符号是 [SYMBOL]，初始买入 0.05 BNB，logo 是 [图片URL]，Twitter 是 [Twitter链接]，网站是 [网站链接]"
+        ]
+      }
+    },
+    {
+      "id": 10046,
+      "slug": "launch-on-clanker",
+      "url": "https://gmgn.ai/ai/skills/launch-on-clanker",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📶",
+      "skills": {
+        "title": "一键发 Clanker 新币",
+        "subtitle": "在 Clanker（Base）一键部署新代币，支持设置名称、符号、logo、描述、社交链接和初始买入量",
+        "installation": "请学会一键发 Clanker 新币技能\n\n先安装GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后检查环境变量是否存在 GMGN_API_KEY，如果不存在请提示我前往 https://gmgn.ai/ai 免费注册获取API KEY。\n如果存在GMGN_API_KEY，立即执行以下命令：\n```\ngmgn-cli cooking create --chain base --dex clanker --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.01 --image-url <logo_url> --auto-slippage\n```\n关键参数说明：--buy-amt（初始买入金额，单位为 ETH，如 0.01 = 0.01 ETH）、--dex（clanker = Clanker平台）",
+        "capabilities": [
+          "在 Clanker（Base）一键部署新 token 并完成初始买入",
+          "支持设置 token 名称、符号、logo、描述、社交链接",
+          "部署完成后返回 token 合约地址和交易哈希"
+        ],
+        "prompts": [
+          "帮我在 Clanker 上发一个新币，名字叫 [token名称]，符号是 [SYMBOL]，初始买入 0.01 ETH，logo 是 [图片URL]，Twitter 是 [Twitter链接]，网站是 [网站链接]"
+        ]
+      }
+    },
+    {
+      "id": 10054,
+      "slug": "launch-on-fourmeme-tax",
+      "url": "https://gmgn.ai/ai/skills/launch-on-fourmeme-tax",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧾",
+      "skills": {
+        "title": "在 FourMeme 创建税币",
+        "subtitle": "一键在 FourMeme（BSC）发行带税代币，支持设置交易税，并将手续费按比例分配至收款地址、销毁、分红及流动性池。",
+        "installation": "了解『在 FourMeme 创建税币』技能。\n\n首先安装 GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后，检查环境变量 GMGN_API_KEY 是否存在。如不存在，请访问 https://gmgn.ai/ai 注册并获取免费的 API KEY（开启 Swap/Cooking 能力），同时配置 GMGN_PRIVATE_KEY 用于签名。\n\n确认凭证已配置后，先向我确认参数信息，然后执行：\n```\ngmgn-cli cooking create --chain bsc --dex fourmeme --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.05 --image-url <logo_url> --auto-slippage --fourmeme-rate-conf '{\"fee_rate\":1,\"recipient_rate\":50,\"burn_rate\":20,\"divide_rate\":20,\"liquidity_rate\":10,\"min_sharing\":100000,\"recipient_address\":\"<recipient_address>\"}'\n```\n核心参数说明：--fourmeme-rate-conf 为税率配置。fee_rate 表示整体税率（1 = 1%）；recipient_rate、burn_rate、divide_rate、liquidity_rate 之和必须为 100；当 recipient_rate > 0 时，min_sharing 必须大于 0；--buy-amt 单位为 BNB。",
+        "capabilities": [
+          "创建支持自定义交易税率（fee_rate）的 FourMeme（BSC）代币",
+          "将手续费按比例分配至收款地址、销毁、分红及流动性池",
+          "支持将收款部分发送至指定钱包地址",
+          "发币同时完成首笔买入，并返回合约地址和交易哈希"
+        ],
+        "prompts": [
+          "创建一个 FourMeme 税币，名称为 [代币名称]，符号为 [SYMBOL]，首笔买入 0.05 BNB，税率 1%，其中 50% 给收款地址、20% 销毁、20% 分红、10% 加入流动性池，收款地址为 [BSC 地址]，Logo 为 [图片链接]"
+        ]
+      }
+    },
+    {
+      "id": 10055,
+      "slug": "launch-on-pumpfun-mode",
+      "url": "https://gmgn.ai/ai/skills/launch-on-pumpfun-mode",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🔄",
+      "skills": {
+        "title": "Pump.fun 特殊模式发币",
+        "subtitle": "一键创建 Pump.fun（SOL）代币，并开启 Cashback 或 Agent 自动回购模式。",
+        "installation": "了解『Pump.fun 特殊模式发币』技能。\n\n首先安装 GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后，检查环境变量 GMGN_API_KEY 是否存在。如不存在，请访问 https://gmgn.ai/ai 注册并获取免费的 API KEY（开启 Swap/Cooking 能力），同时配置 GMGN_PRIVATE_KEY 用于签名。\n\n确认凭证已配置后，先向我确认参数信息，然后执行（Cashback 模式）：\n```\ngmgn-cli cooking create --chain sol --dex pump --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.1 --image-url <logo_url> --auto-slippage --is-cashback\n```\n如需开启 Agent 自动回购模式，请将最后一个参数替换为：\n```\n--is-buy-back\n```\n核心参数说明：--is-cashback（Cashback 模式）与 --is-buy-back（Agent 自动回购模式）仅支持 Pump.fun，且二者不可同时开启；--buy-amt 单位为 SOL。",
+        "capabilities": [
+          "创建开启 Cashback 模式的 Pump.fun 代币",
+          "创建开启 Agent 自动回购模式的 Pump.fun 代币",
+          "两种模式均由系统自动配置对应 Agent 手续费逻辑",
+          "发币同时完成首笔买入，并返回合约地址和交易哈希"
+        ],
+        "prompts": [
+          "创建一个 Pump.fun 代币，名称为 [代币名称]，符号为 [SYMBOL]，开启 Cashback 模式，首笔买入 0.1 SOL，Logo 为 [图片链接]",
+          "创建一个 Pump.fun 代币，名称为 [代币名称]，符号为 [SYMBOL]，开启 Agent 自动回购模式，首笔买入 0.1 SOL，Logo 为 [图片链接]"
+        ]
+      }
+    },
+    {
+      "id": 10056,
+      "slug": "launch-on-flap-tax",
+      "url": "https://gmgn.ai/ai/skills/launch-on-flap-tax",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🏷️",
+      "skills": {
+        "title": "在 Flap 创建税币",
+        "subtitle": "在 Flap（BSC）发行带税代币，支持独立设置买税和卖税，并将手续费分配至 X 账号、钱包地址、销毁、分红及流动性池。",
+        "installation": "了解『在 Flap 创建税币』技能。\n\n首先安装 GMGN Skill：\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\n安装完成后，检查环境变量 GMGN_API_KEY 是否存在。如不存在，请访问 https://gmgn.ai/ai 注册并获取免费的 API KEY（开启 Swap/Cooking 能力），同时配置 GMGN_PRIVATE_KEY 用于签名。\n\n确认凭证已配置后，先向我确认参数信息，然后执行（Gift 模式，手续费分润给 X 账号）：\n```\ngmgn-cli cooking create --chain bsc --dex flap --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 2 --image-url <logo_url> --auto-slippage --flap-rate-conf '{\"buy_tax_rate\":100,\"sell_tax_rate\":100,\"mkt_bps\":5000,\"deflation_bps\":2700,\"dividend_bps\":1800,\"lp_bps\":500,\"minimum_share_balance\":10000,\"recipient_type\":\"gift\",\"twitter_account\":\"<x_handle>\",\"split_conf\":[]}'\n```\n核心参数说明：buy_tax_rate 与 sell_tax_rate 单位为 bps（100 = 1%）；也可使用统一税率 tax_rate；mkt_bps、deflation_bps、dividend_bps、lp_bps 之和必须为 10000；recipient_type 为 gift 时手续费分润给 X 账号，为 split 时分配至多个钱包地址；当 lp_bps > 0 时，minimum_share_balance 必须大于 10000；--buy-amt 单位为 BNB。",
+        "capabilities": [
+          "创建支持独立买税和卖税的 Flap（BSC）代币",
+          "支持统一税率模式",
+          "将手续费分配至 X 账号、钱包地址、销毁、分红及流动性池",
+          "发币同时完成首笔买入，并返回合约地址和交易哈希"
+        ],
+        "prompts": [
+          "创建一个 Flap 税币，名称为 [代币名称]，符号为 [SYMBOL]，买税 1%，卖税 1%，手续费收款人设置为 @[X账号]，其中 27% 用于销毁、18% 用于分红、5% 用于流动性池，首笔买入 2 BNB，Logo 为 [图片链接]"
+        ]
+      }
+    }
+  ],
+  "categories": [
+    {
+      "slug": "trading",
+      "name": {
+        "zh-CN": "交易",
+        "zh-TW": "交易",
+        "en": "Trading"
+      }
+    },
+    {
+      "slug": "data-analytics",
+      "name": {
+        "zh-CN": "数据分析",
+        "zh-TW": "數據分析",
+        "en": "Data Analytics"
+      }
+    },
+    {
+      "slug": "monitor",
+      "name": {
+        "zh-CN": "链上监控",
+        "zh-TW": "鏈上監控",
+        "en": "Monitor"
+      }
+    },
+    {
+      "slug": "media",
+      "name": {
+        "zh-CN": "新闻媒体",
+        "zh-TW": "新聞媒體",
+        "en": "News & Media"
+      }
+    },
+    {
+      "slug": "cooking",
+      "name": {
+        "zh-CN": "Cooking",
+        "zh-TW": "Cooking",
+        "en": "Cooking"
+      }
+    }
+  ],
+  "source_color": {
+    "light": {
+      "GMGN": "#15B25F",
+      "6551": "#179DFC"
+    },
+    "dark": {
+      "GMGN": "#69CF8D",
+      "6551": "#4EA7FA"
+    }
+  }
+}

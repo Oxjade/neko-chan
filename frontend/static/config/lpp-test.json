@@ -1,0 +1,5059 @@
+{
+  "$schema": "../../settings/cloudSnapshot.schema.json",
+  "version": 79,
+  "networks": {
+    "arbitrum": [
+      {
+        "launchpad_platform": "odysfun_v3",
+        "defaultValue": true,
+        "name": "Odys",
+        "href": "https://odys.fun/${noop}",
+        "colorLight": "#2A7BFF",
+        "colorDark": "#5696FF",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#30261C",
+        "cardBgColorLight": "#FEF3E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/odsy100_16px_s.png",
+            "iconSrcLight": "/static/lpp/odsy100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Odys",
+        "logoSrcDark": "/static/lpp/odsy_16px_s.png",
+        "logoSrcLight": "/static/lpp/odsy_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v2",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V2",
+        "href": "https://app.uniswap.org/explore/tokens/arbitrum/${addressRawLower}",
+        "colorLight": "#FB3333",
+        "colorDark": "#FB3333",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#301D21",
+        "cardBgColorLight": "#FEEAEA",
+        "tipsInfo": "Uniswap V2",
+        "logoSrcDark": "/static/lpp/uinswap_16px_s.png",
+        "logoSrcLight": "/static/lpp/uinswap_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v3",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V3",
+        "href": "https://app.uniswap.org/explore/tokens/arbitrum/${addressRawLower}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#311E30",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap V3",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v4",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V4",
+        "href": "https://app.uniswap.org/explore/tokens/arbitrum/${addressRawLower}",
+        "colorLight": "#4875FF",
+        "colorDark": "#5F87FF",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#212636",
+        "cardBgColorLight": "#ECF1FF",
+        "tipsInfo": "Uniswap V4",
+        "logoSrcDark": "/static/lpp/uinswapv4_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/uinswapv4_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_pancake_v2",
+        "tags": [
+          "biz_pool_pancake_v2"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Pancake V2",
+        "href": "https://pancakeswap.finance/${noop}",
+        "colorLight": "#D1884F",
+        "colorDark": "#D1884F",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2C2624",
+        "cardBgColorLight": "#FAF3ED",
+        "tipsInfo": "Pancake V2",
+        "logoSrcDark": "/static/lpp/pancake_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/pancake_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_pancake_v3",
+        "tags": [
+          "biz_pool_pancake_v2"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Pancake V3",
+        "href": "https://pancakeswap.finance/${noop}",
+        "colorLight": "#A855F7",
+        "colorDark": "#BB73FF",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2A2436",
+        "cardBgColorLight": "#F6EEFE",
+        "tipsInfo": "Pancake V3",
+        "logoSrcDark": "/static/lpp/pancakev3_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/pancakev3_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_camelot_v2",
+        "tags": [
+          "biz_pool_camelot_v2"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Camelot V2",
+        "href": "https://app.camelot.exchange/${noop}",
+        "colorLight": "#F58B00",
+        "colorDark": "#F58B00",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#30261C",
+        "cardBgColorLight": "#FEF3E5",
+        "tipsInfo": "Camelot V2",
+        "logoSrcDark": "/static/lpp/camelotv2_16px_s.png",
+        "logoSrcLight": "/static/lpp/camelotv2_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_camelot_v3",
+        "tags": [
+          "biz_pool_camelot_v2"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Camelot V3",
+        "href": "https://app.camelot.exchange/${noop}",
+        "colorLight": "#12AAFF",
+        "colorDark": "#2EB4FF",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#1E3544",
+        "cardBgColorLight": "#D8F1FF",
+        "tipsInfo": "Camelot V3",
+        "logoSrcDark": "/static/lpp/camelotv3_16px_s.png",
+        "logoSrcLight": "/static/lpp/camelotv3_16px_s.png"
+      }
+    ],
+    "arc": [
+      {
+        "launchpad_platform": "trench",
+        "defaultValue": true,
+        "name": "Trench",
+        "filterName": "Trench",
+        "href": "https://trench.today/token/arc/${address}",
+        "colorLight": "#F5221A",
+        "colorDark": "#F5221A",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#301B1F",
+        "cardBgColorLight": "#FEE8E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "trench.today",
+        "logoSrcDark": "/static/lpp/trench_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/trench_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "circlewarp",
+         "tags": [
+          "biz_circlewarp"
+        ],
+        "defaultValue": true,
+        "name": "Warp",
+        "href": "https://circlewarp.fun/trade/${address}",
+        "colorLight": "#5D7DF9",
+        "colorDark": "#5D7DF9",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#242735",
+        "cardBgColorLight": "#EEF2FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/circlewarp100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/circlewarp100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Warp",
+        "logoSrcDark": "/static/lpp/circlewarp_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/circlewarp_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "argus",
+         "tags": [
+          "biz_argus"
+        ],
+        "defaultValue": true,
+        "name": "Argus",
+        "href": "https://arguspad.io/arc-token/${address}",
+        "colorLight": "#C634FF",
+        "colorDark": "#C634FF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#2B1D35",
+        "cardBgColorLight": "#FAEBFF",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/argus100_16px_s.png",
+            "iconSrcLight": "/static/lpp/argus100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Argus",
+        "logoSrcDark": "/static/lpp/argus_16px_s.png",
+        "logoSrcLight": "/static/lpp/argus_16px_s.png"
+      },
+      {
+        "launchpad_platform": "tollylabs_direct",
+         "tags": [
+          "biz_tollylabs_direct"
+        ],
+        "defaultValue": true,
+        "name": "Tollylabs",
+        "href": "https://tollylabs.com/token/${address}",
+        "colorLight": "#A1B205",
+        "colorDark": "#CEE506",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2C2F1D",
+        "cardBgColorLight": "#F5F7E6",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/tollylabs100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/tollylabs100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Tollylabs",
+        "logoSrcDark": "/static/lpp/tollylabs_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/tollylabs_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "radardex",
+         "tags": [
+          "biz_radardex"
+        ],
+        "defaultValue": true,
+        "name": "RadarDEX",
+        "href": "https://radardex.pro/#${address}",
+        "colorLight": "#727AE0",
+        "colorDark": "#8089FB",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1E302F",
+        "cardBgColorLight": "#EBF8F5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/radardex100_16px_s.png",
+            "iconSrcLight": "/static/lpp/radardex100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "RadarDEX",
+        "logoSrcDark": "/static/lpp/radardex_16px_s.png",
+        "logoSrcLight": "/static/lpp/radardex_16px_s.png"
+      },
+      {
+        "launchpad_platform": "o1",
+         "tags": [
+          "biz_o1"
+        ],
+        "defaultValue": true,
+        "name": "o1.exchange",
+        "href": "https://launch.o1.exchange/token/${address}?chain=5042",
+        "colorLight": "#000000",
+        "colorDark": "#FFFFFF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#313236",
+        "cardBgColorLight": "#E5E5E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/o1exchange100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/o1exchange100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "o1.exchange",
+        "logoSrcDark": "/static/lpp/o1exchange_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/o1exchange_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "dyorswap",
+        "defaultValue": true,
+        "name": "Dyor.fun",
+        "href": "https://dyorswap.org/token?address=${address}&chainId=5042",
+        "colorLight": "#1EA2FD",
+        "colorDark": "#4AB5FF",
+        "outDexKey": "dyorswap",
+        "cardBgColorDark": "#1E2A36",
+        "cardBgColorLight": "#E8F5FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun",
+        "logoSrcDark": "/static/lpp/dyorfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/dyorfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "dyorfun_v3",
+        "defaultValue": true,
+        "name": "Dyor.fun V3",
+        "href": "https://dyorv3.org/token/${address}?chain=arc",
+        "colorLight": "#62C123",
+        "colorDark": "#62C123",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#212B20",
+        "cardBgColorLight": "#EFF8E9",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun V3",
+        "logoSrcDark": "/static/lpp/dyorfunv3_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/dyorfunv3_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "sharcfun",
+        "defaultValue": true,
+        "name": "Sharc.fun",
+        "href": "https://sharc.fun/token/${address}",
+        "colorLight": "#28BAA8",
+        "colorDark": "#2DD4BF",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1C2D2F",
+        "cardBgColorLight": "#E9F8F6",
+        "logoSrcDark": "/static/lpp/sharcfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/sharcfun_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/sharcfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/sharcfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Sharc.fun"
+      },
+      {
+        "launchpad_platform": "lift",
+         "tags": [
+          "biz_lift"
+        ],
+        "defaultValue": true,
+        "name": "Lift",
+        "href": "https://lift.fun/token/${address}",
+        "colorLight": "#06B56C",
+        "colorDark": "#06B56C",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#182A27",
+        "cardBgColorLight": "#E7F8F1",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/lift100_16px_s.png",
+            "iconSrcLight": "/static/lpp/lift100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Lift",
+        "logoSrcDark": "/static/lpp/lift_16px_s.png",
+        "logoSrcLight": "/static/lpp/lift_16px_s.png"
+      },
+      {
+        "launchpad_platform": "klik",
+        "defaultValue": true,
+        "name": "Klik",
+        "href": "https://klik.finance/token/${addressLower}?network=arc",
+        "colorLight": "#7B3FE4",
+        "colorDark": "#8B53EB",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#252034",
+        "cardBgColorLight": "#F1EBFC",
+        "logoSrcDark": "/static/lpp/klik_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/klik_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/klik100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/klik100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Klik"
+      },
+      {
+        "launchpad_platform": "actfun",
+         "tags": [
+          "biz_actfun"
+        ],
+        "defaultValue": true,
+        "name": "Actfun",
+        "href": "https://actfun.pro/swap?token=${address}",
+        "colorLight": "#3B8FFF",
+        "colorDark": "#3B8FFF",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1D2636",
+        "cardBgColorLight": "#EBF3FF",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/actfun_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/actfun_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Actfun",
+        "logoSrcDark": "/static/lpp/actfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/actfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "peach",
+         "tags": [
+          "biz_peach"
+        ],
+        "defaultValue": true,
+        "name": "Peach",
+        "href": "https://www.peach.ag/arc-mainnet/tokens/${address}",
+        "colorLight": "#FC7185",
+        "colorDark": "#FC7185",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#302329",
+        "cardBgColorLight": "#FEF0F2",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/peach100_16px_s.png",
+            "iconSrcLight": "/static/lpp/peach100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "peach.ag",
+        "logoSrcDark": "/static/lpp/peach_16px_s.png",
+        "logoSrcLight": "/static/lpp/peach_16px_s.png"
+      },
+      {
+        "launchpad_platform": "ayoo_curve",
+         "tags": [
+          "biz_ayoo_curve"
+        ],
+        "defaultValue": true,
+        "name": "Ayoo.club",
+        "href": "https://ayoo.club/arc/token/${address}",
+        "colorLight": "#ACCC41",
+        "colorDark": "#C1E549",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1E302F",
+        "cardBgColorLight": "#EBF8F5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/ayooclub100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/ayooclub100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Ayoo.club",
+        "logoSrcDark": "/static/lpp/ayooclub_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/ayooclub_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "flutch_v3",
+         "tags": [
+          "biz_flutch_v3"
+        ],
+        "defaultValue": true,
+        "name": "Flutch",
+        "href": "https://flutch.fun/",
+        "colorLight": "#10AB7B",
+        "colorDark": "#12C58E",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#192C2A",
+        "cardBgColorLight": "#E7F6F1",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flutchfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flutchfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flutch",
+        "logoSrcDark": "/static/lpp/flutchfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/flutchfun_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "archemist_v2",
+        "childLppKeys": [
+          "archemist_v2",
+          "archemist_v4"
+        ],
+         "tags": [
+          "biz_archemist_v2"
+        ],
+        "defaultValue": true,
+        "name": "Archemist",
+        "href": "https://archemist.fun/token/${address}",
+        "colorLight": "#FF6A21",
+        "colorDark": "#FF6A21",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#31231F",
+        "cardBgColorLight": "#FFF0E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/archemist100_16px_s.png",
+            "iconSrcLight": "/static/lpp/archemist100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Archemist",
+        "logoSrcDark": "/static/lpp/archemist_16px_s.png",
+        "logoSrcLight": "/static/lpp/archemist_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pegd",
+         "tags": [
+          "biz_pegd"
+        ],
+        "defaultValue": true,
+        "name": "Pegd",
+        "href": "https://pegd.fun/${address}",
+        "colorLight": "#9A69FF",
+        "colorDark": "#9A69FF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#262336",
+        "cardBgColorLight": "#F4F0FF",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/pegd100_16px_s.png",
+            "iconSrcLight": "/static/lpp/pegd100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Pegd",
+        "logoSrcDark": "/static/lpp/pegd_16px_s.png",
+        "logoSrcLight": "/static/lpp/pegd_16px_s.png"
+      },
+      {
+        "launchpad_platform": "akafun",
+         "tags": [
+          "biz_akafun"
+        ],
+        "defaultValue": true,
+        "name": "Aka.fun",
+        "href": "https://aka.fun/",
+        "colorLight": "#2062E5",
+        "colorDark": "#4784FF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#1E2535",
+        "cardBgColorLight": "#E9F0FD",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/akafun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/akafun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Aka.fun",
+        "logoSrcDark": "/static/lpp/akafun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/akafun_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "onmidotfun",
+        "defaultValue": true,
+        "name": "Onmi.fun",
+        "href": "https://app.onmi.fun/token/5042/${address}?chain=ARC",
+        "colorLight": "#BC61EB",
+        "colorDark": "#BC61EB",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2A2234",
+        "cardBgColorLight": "#F8EFFD",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/onmidotfun_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/onmidotfun_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Onmi.fun",
+        "logoSrcDark": "/static/lpp/onmidotfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/onmidotfun_16px_s.png"
+      }
+    ],
+    "stable": [
+      {
+        "launchpad_platform": "trench",
+        "defaultValue": true,
+        "name": "Trench",
+        "href": "https://trench.today/token/stable/${address}",
+        "colorLight": "#F5221A",
+        "colorDark": "#F5221A",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#301B1F",
+        "cardBgColorLight": "#FEE8E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "trench.today",
+        "logoSrcDark": "/static/lpp/trench_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/trench_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "dyorswap",
+        "defaultValue": true,
+        "name": "Dyor.fun",
+        "href": "https://dyorswap.org/token?address=${address}&chainId=988",
+        "colorLight": "#1EA2FD",
+        "colorDark": "#4AB5FF",
+        "outDexKey": "dyorswap",
+        "cardBgColorDark": "#1E2A36",
+        "cardBgColorLight": "#E8F5FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun",
+        "logoSrcDark": "/static/lpp/dyorfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/dyorfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "dyorfun_v3",
+        "defaultValue": true,
+        "name": "Dyor.fun V3",
+        "href": "https://dyorv3.org/token/${address}?chain=stable",
+        "colorLight": "#62C123",
+        "colorDark": "#62C123",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#212B20",
+        "cardBgColorLight": "#EFF8E9",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun V3",
+        "logoSrcDark": "/static/lpp/dyorfunv3_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/dyorfunv3_16px_bold_light_s.png"
+      }
+    ],
+    "sol": [
+      {
+        "launchpad_platform": "Pump.fun",
+        "tags": [
+          "pumpfun",
+          "s_anchor",
+          "biz_Pump.fun",
+          "total_tax"
+        ],
+        "defaultValue": true,
+        "name": "Pump.fun",
+        "filterName": "Pumpfun",
+        "href": "https://pump.fun/coin/${address}",
+        "colorLight": "#01B555",
+        "colorDark": "#86EFAC",
+        "outDexKey": "pumpamm",
+        "cardBgColorDark": "#1C3025",
+        "cardBgColorLight": "#E2FCE0",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/pumplabamm_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/pumplabamm_16px_bold_light_s.png"
+          },
+          {
+            "progressClassDark": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "progressClassLight": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "iconBorderDark": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "iconBorderLight": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "iconSrcDark": "/static/lpp/pumplabraydium_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/pumplabraydium_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Pump.fun",
+        "logoSrcDark": "/static/lpp/pumplab_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/pumplab_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pump_agent",
+        "tags": [
+          "pumpfun",
+          "s_anchor",
+          "biz_Pump.fun",
+          "total_tax"
+        ],
+        "filterRenderType": "addon",
+        "filterAddonParentLaunchpadKey": "Pump.fun",
+        "defaultValue": true,
+        "name": "Pump.fun",
+        "filterName": "Pumpfun",
+        "href": "https://pump.fun/coin/${address}",
+        "colorLight": "#01B555",
+        "colorDark": "#86EFAC",
+        "outDexKey": "pumpamm",
+        "cardBgColorDark": "#1C3025",
+        "cardBgColorLight": "#E2FCE0",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/agent_16px_bold--sol-pump_agent--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/agent_16px_bold--sol-pump_agent--migrate-0--light.png"
+          },
+          {
+            "progressClassDark": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "progressClassLight": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "iconBorderDark": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "iconBorderLight": "linear-gradient(221.54deg, #B50CFB 16.53%, #3D6DFF 51.95%, #4DC5CA 84.75%)",
+            "iconSrcDark": "/static/lpp/agent_16px_bold--sol-pump_agent--migrate-1--dark.png",
+            "iconSrcLight": "/static/lpp/agent_16px_bold--sol-pump_agent--migrate-1--light.png"
+          }
+        ],
+        "tipsInfo": "Pump.fun",
+        "logoSrcDark": "/static/lpp/agent_16px_bold--sol-pump_agent--logo--dark.png",
+        "logoSrcLight": "/static/lpp/agent_16px_bold--sol-pump_agent--logo--light.png"
+      },
+      {
+        "launchpad_platform": "pump_mayhem",
+        "tags": [
+          "pumpfun",
+          "biz_pump_mayhem",
+          "total_tax"
+        ],
+        "defaultValue": true,
+        "name": "Mayhem",
+        "href": "https://pump.fun/coin/${address}",
+        "colorLight": "#E6445C",
+        "colorDark": "#E6445C",
+        "outDexKey": "pumpamm",
+        "cardBgColorDark": "#2E1F25",
+        "cardBgColorLight": "#FCECEE",
+        "tipsInfo": "Mayhem",
+        "logoSrcDark": "/static/lpp/mayhem_16px_s.png",
+        "logoSrcLight": "/static/lpp/mayhem_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pump_mayhem_agent",
+        "tags": [
+          "pumpfun",
+          "biz_pump_mayhem",
+          "total_tax"
+        ],
+        "filterRenderType": "addon",
+        "filterAddonParentLaunchpadKey": "pump_mayhem",
+        "defaultValue": true,
+        "name": "Mayhem",
+        "href": "https://pump.fun/coin/${address}",
+        "colorLight": "#E6445C",
+        "colorDark": "#E6445C",
+        "outDexKey": "pumpamm",
+        "cardBgColorDark": "#2E1F25",
+        "cardBgColorLight": "#FCECEE",
+        "tipsInfo": "Mayhem",
+        "logoSrcDark": "/static/lpp/agent_16px_bold--sol-pump_mayhem_agent--logo--dark.png",
+        "logoSrcLight": "/static/lpp/agent_16px_bold--sol-pump_mayhem_agent--logo--light.png"
+      },
+      {
+        "launchpad_platform": "letsbonk",
+        "tags": [
+          "s_anchor",
+          "biz_ray_launchpad"
+        ],
+        "filterGroupKey": "ray_launchpad",
+        "defaultValue": true,
+        "name": "Bonk",
+        "href": "https://bonk.fun/token/${address}",
+        "colorLight": "#E78C19",
+        "colorDark": "#E78C19",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#372723",
+        "cardBgColorLight": "#FFEDDB",
+        "tipsInfo": "Bonk.fun",
+        "logoSrcDark": "/static/lpp/bonk_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/bonk_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "bonkers",
+        "tags": [
+          "s_anchor",
+          "biz_ray_launchpad"
+        ],
+        "filterGroupKey": "ray_launchpad",
+        "defaultValue": true,
+        "name": "Bonkers",
+        "href": "https://bonk.fun/token/${address}",
+        "colorLight": "#F7270E",
+        "colorDark": "#F7270E",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#301C1D",
+        "cardBgColorLight": "#FEE9E6",
+        "tipsInfo": "Bonkers",
+        "logoSrcDark": "/static/lpp/bokers_16px_s.png",
+        "logoSrcLight": "/static/lpp/bokers_16px_s.png"
+      },
+      {
+        "launchpad_platform": "bags_v2",
+        "tags": [
+          "biz_bags_v2"
+        ],
+        "defaultValue": true,
+        "name": "Bags RWA",
+        "filterName": "Bags RWA",
+        "href": "https://bags.fm/${address}",
+        "colorLight": "#52A5F8",
+        "colorDark": "#52A5F8",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#1F2935",
+        "cardBgColorLight": "#E4EDF5",
+        "logoSrcDark": "/static/lpp/Bags300_16px_dark_s.png",
+        "logoSrcLight": "/static/lpp/Bags300_16px_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/Bags200_16px_dark_s.png",
+            "iconSrcLight": "/static/lpp/Bags200_16px_light_s.png"
+          }
+        ],
+        "tipsInfo": "Bags RWA"
+      },
+      {
+        "launchpad_platform": "bags",
+        "tags": [
+          "s_anchor",
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Bags",
+        "href": "https://bags.fm/${address}",
+        "colorLight": "#00D62B",
+        "colorDark": "#00D62B",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#172D20",
+        "cardBgColorLight": "#E5FAE9",
+        "tipsInfo": "Bags.fm",
+        "logoSrcDark": "/static/lpp/bags_16px_bold_s.png",
+        "logoSrcLight": "/static/lpp/bags_16px_bold_s.png"
+      },
+      {
+        "launchpad_platform": "tren_ch",
+        "defaultValue": true,
+        "name": "Tren.ch",
+        "filterName": "Tren.ch",
+        "href": "https://tren.ch/token/${address}",
+        "colorLight": "#BC7846",
+        "colorDark": "#D68950",
+        "outDexKey": "raydium",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2C2624",
+        "cardBgColorLight": "#F8F1EC",
+        "logoSrcDark": "/static/lpp/trench_16px_s.png",
+        "logoSrcLight": "/static/lpp/trench_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Tren.ch"
+      },
+      {
+        "launchpad_platform": "stonkfun",
+        "tags": [
+          "s_anchor",
+          "total_tax"
+        ],
+        "defaultValue": true,
+        "name": "Stonk.fun",
+        "filterName": "Stonk.fun",
+        "href": "https://www.stonkfun.xyz/token/${address}",
+        "colorLight": "#50ACC5",
+        "colorDark": "#50ACC5",
+        "outDexKey": "raydium",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1B2636",
+        "cardBgColorLight": "#E9F3FF",
+        "logoSrcDark": "/static/lpp/stonkfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/stonkfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stonkfun_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/stonkfun_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Stonk.fun"
+      },
+      {
+        "launchpad_platform": "virtuals",
+        "tags": [
+          "biz_virtuals"
+        ],
+        "defaultValue": true,
+        "name": "Vitruals",
+        "filterName": "Virtuals",
+        "href": "https://app.virtuals.io/",
+        "colorLight": "#20A7A8",
+        "colorDark": "#3AB7B8",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#1F2E29",
+        "cardBgColorLight": "#E7F7ED",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/vitrualspro200_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/vitrualspro200_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Virtuals",
+        "logoSrcDark": "/static/lpp/vitrualspro100_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/vitrualspro100_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "stoxes",
+        "defaultValue": true,
+        "name": "Stoxes RWA",
+        "filterName": "Stoxes RWA",
+        "href": "https://stoxes.fun/${addressRaw}",
+        "colorLight": "#AD24F0",
+        "colorDark": "#BA42FE",
+        "outDexKey": "raydium",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2A1F35",
+        "cardBgColorLight": "#F6E9FD",
+        "logoSrcDark": "/static/lpp/stoxesfun200_16px_s.png",
+        "logoSrcLight": "/static/lpp/stoxesfun200_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stoxesfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/stoxesfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Stoxes RWA"
+      },
+      {
+        "launchpad_platform": "kickstart",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Kickstart",
+        "href": "https://kickstart.easya.io/token/${address}",
+        "colorLight": "#27C36E",
+        "colorDark": "#52FFA1",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#1F322C",
+        "cardBgColorLight": "#E9F9F0",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/kickstart100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/kickstart100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "EasyA Kickstart",
+        "logoSrcDark": "/static/lpp/kickstart_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/kickstart_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "orynth",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Orynth",
+        "href": "https://www.orynth.dev/",
+        "colorLight": "#CF32A4",
+        "colorDark": "#CF32A4",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#2C1D2C",
+        "cardBgColorLight": "#FAEAF5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/orynth_16px_s.png",
+            "iconSrcLight": "/static/lpp/orynth_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Orynth.dev",
+        "logoSrcDark": "/static/lpp/orynth_16px_s.png",
+        "logoSrcLight": "/static/lpp/orynth_16px_s.png"
+      },
+      {
+        "launchpad_platform": "swarms",
+        "defaultValue": true,
+        "name": "Swarms",
+        "filterName": "Swarms",
+        "href": "https://swarms.world/",
+        "colorLight": "#F5070C",
+        "colorDark": "#FF4D50",
+        "outDexKey": "meteora",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#312024",
+        "cardBgColorLight": "#FEE6E6",
+        "logoSrcDark": "/static/lpp/swarmse_16px_s.png",
+        "logoSrcLight": "/static/lpp/swarmse_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/swarms_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/swarms_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Swarms"
+      },
+      {
+        "launchpad_platform": "memoo",
+        "defaultValue": true,
+        "name": "Memoo",
+        "href": "https://memoo.fun/token/${address}",
+        "colorLight": "#1BC36A",
+        "colorDark": "#07E993",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#301F22",
+        "cardBgColorLight": "#FEECEB",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/memoo100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/memoo100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Memoo",
+        "logoSrcDark": "/static/lpp/memoo_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/memoo_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "liquid",
+        "defaultValue": true,
+        "name": "Liquid",
+        "href": "https://liquid.af/coins/${address}",
+        "colorLight": "#2894CB",
+        "colorDark": "#2894CB",
+        "outDexKey": "liquid",
+        "cardBgColorDark": "#1D2533",
+        "cardBgColorLight": "#EAF5FA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/liquid_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/liquid_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Liquid",
+        "logoSrcDark": "/static/lpp/liquid_16px_s.png",
+        "logoSrcLight": "/static/lpp/liquid_16px_s.png"
+      },
+      {
+        "launchpad_platform": "bankr",
+        "tags": [
+          "biz_ray_launchpad"
+        ],
+        "defaultValue": true,
+        "name": "Bankr",
+        "href": "https://bankr.bot/",
+        "colorLight": "#9472FF",
+        "colorDark": "#9472FF",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#262335",
+        "cardBgColorLight": "#F5F1FF",
+        "tipsInfo": "Bankr",
+        "logoSrcDark": "/static/lpp/bankr_16px_s.png",
+        "logoSrcLight": "/static/lpp/bankr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "zora",
+        "defaultValue": true,
+        "name": "Zora",
+        "href": "https://zora.co/ca/${address}",
+        "colorLight": "#3468FF",
+        "colorDark": "#5A81F1",
+        "outDexKey": "vertigo",
+        "cardBgColorDark": "#202534",
+        "cardBgColorLight": "#EAEFFF",
+        "tipsInfo": "Zora Content",
+        "logoSrcDark": "/static/lpp/zora_16px_s.png",
+        "logoSrcLight": "/static/lpp/zora_16px_s.png"
+      },
+      {
+        "launchpad_platform": "surge",
+        "tags": [
+          "biz_ray_launchpad"
+        ],
+        "filterGroupKey": "ray_launchpad",
+        "defaultValue": true,
+        "name": "Surge",
+        "href": "https://app.surge.xyz/trade/${address}",
+        "colorLight": "#00B73C",
+        "colorDark": "#56CB7C",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#202C28",
+        "cardBgColorLight": "#E5F7EB",
+        "tipsInfo": "Surge",
+        "logoSrcDark": "/static/lpp/surgesyz_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/surgesyz_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "anoncoin",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "defaultValue": true,
+        "name": "Anoncoin.it",
+        "filterName": "Anoncoin",
+        "href": "https://anoncoin.it/${symbol}",
+        "colorLight": "#8A63F7",
+        "colorDark": "#9978F6",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#262435",
+        "cardBgColorLight": "#F3EFFE",
+        "tipsInfo": "Anoncoin.it",
+        "logoSrcDark": "/static/lpp/anoncoin_16px_s.png",
+        "logoSrcLight": "/static/lpp/anoncoin_16px_s.png"
+      },
+      {
+        "launchpad_platform": "moonshot_app",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Moonshot",
+        "href": "https://moonshot.com/${address}",
+        "colorLight": "#FF88FE",
+        "colorDark": "#FF88FE",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#332332",
+        "cardBgColorLight": "#FCE8FC",
+        "tipsInfo": "Moonshot",
+        "logoSrcDark": "/static/lpp/moonshotnew_16px_dark_s.png",
+        "logoSrcLight": "/static/lpp/moonshotnew_16px_light_s.png"
+      },
+      {
+        "launchpad_platform": "wendotdev",
+        "tags": [
+          "biz_ray_launchpad"
+        ],
+        "filterGroupKey": "ray_launchpad",
+        "defaultValue": true,
+        "name": "Wen.dev",
+        "href": "https://wen.dev/token/SOL/${address}",
+        "colorLight": "#5353FF",
+        "colorDark": "#6060FF",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#202135",
+        "cardBgColorLight": "#F0F0FF",
+        "tipsInfo": "Wen.dev",
+        "logoSrcDark": "/static/lpp/wendotdevicondark.png",
+        "logoSrcLight": "/static/lpp/wendotdeviconlight.png"
+      },
+      {
+        "launchpad_platform": "heaven",
+        "defaultValue": true,
+        "name": "Heaven",
+        "href": "https://heaven.xyz/token/${address}",
+        "colorLight": "#9AA0AA",
+        "colorDark": "#e5e5e6",
+        "cardBgColorDark": "#22242E",
+        "cardBgColorLight": "#EDEDED",
+        "tipsInfo": "Heaven",
+        "logoSrcDark": "/static/lpp/heaven_16px_dark_s.png",
+        "logoSrcLight": "/static/lpp/heaven_16px_light_s.png"
+      },
+      {
+        "launchpad_platform": "sugar",
+        "defaultValue": true,
+        "name": "Sugar",
+        "href": "https://sugar.money/coin/${address}",
+        "colorLight": "#FA73A5",
+        "colorDark": "#EF89AE",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#2F262D",
+        "cardBgColorLight": "#FEF1F6",
+        "tipsInfo": "Sugar",
+        "logoSrcDark": "/static/lpp/sugaricon.png",
+        "logoSrcLight": "/static/lpp/sugaricon.png"
+      },
+      {
+        "launchpad_platform": "token_mill",
+        "defaultValue": true,
+        "name": "TokenMill",
+        "href": "https://LFJ.gg/solana/trade/${address}",
+        "colorLight": "#FF5252",
+        "colorDark": "#FF5252",
+        "cardBgColorDark": "#331C1C",
+        "cardBgColorLight": "#FFEBEC",
+        "tipsInfo": "TokenMill",
+        "logoSrcDark": "/static/lpp/tokenmillicon.png",
+        "logoSrcLight": "/static/lpp/tokenmillicon.png"
+      },
+      {
+        "launchpad_platform": "believe",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Believe",
+        "href": "https://believe.app/coin/${address}",
+        "colorLight": "#00CD44",
+        "colorDark": "#00CD44",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#183320",
+        "cardBgColorLight": "#E1FAE8",
+        "tipsInfo": "Believe",
+        "logoSrcDark": "/static/lpp/launchacoin_16px--sol-believe--logo--dark.png",
+        "logoSrcLight": "/static/lpp/launchacoin_16px--sol-believe--logo--light.png"
+      },
+      {
+        "launchpad_platform": "trendsfun",
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Trends",
+        "href": "https://trends.fun/token/${address}",
+        "colorLight": "#F64838",
+        "colorDark": "#F64838",
+        "outDexKey": "trends",
+        "cardBgColorDark": "#301F22",
+        "cardBgColorLight": "#FEECEB",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trends200_16px_s.png",
+            "iconSrcLight": "/static/lpp/trends200_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Trends",
+        "logoSrcDark": "/static/lpp/trends100_16px_s.png",
+        "logoSrcLight": "/static/lpp/trends100_16px_s.png"
+      },
+      {
+        "launchpad_platform": "trends_fun",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Trends.fun",
+        "href": "https://trends.fun/token/${address}",
+        "colorLight": "#F2307D",
+        "colorDark": "#F2307D",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#2F1D29",
+        "cardBgColorLight": "#FDEAF2",
+        "tipsInfo": "Trends.fun",
+        "logoSrcDark": "/static/lpp/trends_16px_s.png",
+        "logoSrcLight": "/static/lpp/trends_16px_s.png"
+      },
+      {
+        "launchpad_platform": "jup_studio",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Studio",
+        "href": "https://jup.ag/tokens/${address}",
+        "colorLight": "#00B19B",
+        "colorDark": "#69D0B2",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#1A3029",
+        "cardBgColorLight": "#DCFAF0",
+        "tipsInfo": "Studio",
+        "logoSrcDark": "/static/lpp/jupstudio_16px_s.png",
+        "logoSrcLight": "/static/lpp/jupstudio_16px_s.png"
+      },
+      {
+        "launchpad_platform": "Moonshot",
+        "defaultValue": true,
+        "name": "Moonit",
+        "href": "https://moon.it/tokens/${address}",
+        "colorLight": "#ADCA00",
+        "colorDark": "#dfff18",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#2A2E11",
+        "cardBgColorLight": "#F0FACF",
+        "tipsInfo": "Moonit",
+        "logoSrcDark": "/static/lpp/moonit_16px_bold_dark--sol-moonshot--logo--dark.png",
+        "logoSrcLight": "/static/lpp/moonit_16px_bold_light--sol-moonshot--logo--light.png"
+      },
+      {
+        "launchpad_platform": "boop",
+        "defaultValue": true,
+        "name": "Boop",
+        "href": "https://boop.fun/tokens/${address}",
+        "colorLight": "#2bbdee",
+        "colorDark": "#2bbdee",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#1F2C36",
+        "cardBgColorLight": "#E8F2FF",
+        "tipsInfo": "Boop.fun",
+        "logoSrcDark": "/static/lpp/boop_16px_s.png",
+        "logoSrcLight": "/static/lpp/boop_16px_s.png"
+      },
+      {
+        "launchpad_platform": "xstocks",
+        "filterGroupKey": "meteora_virtual_curve",
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "xStocks",
+        "href": "https://xstocks.com/products",
+        "colorLight": "#00BA77",
+        "colorDark": "#69D0B2",
+        "outDexKey": "meteora",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#1E2D30",
+        "cardBgColorLight": "#E1F7FC",
+        "logoSrcDark": "/static/lpp/xstocks_16px_bold--sol-xstocks--logo--dark.png",
+        "logoSrcLight": "/static/lpp/xstocks_16px_bold--sol-xstocks--logo--light.png"
+      },
+      {
+        "launchpad_platform": "ray_launchpad",
+        "tags": [
+          "biz_ray_launchpad"
+        ],
+        "filterGroupKey": "ray_launchpad",
+        "defaultValue": true,
+        "name": "Launchlab",
+        "href": "https://raydium.io/launchpad/token/?mint=${address}",
+        "colorLight": "#FF3BB8",
+        "colorDark": "#FF3BB8",
+        "outDexKey": "raydium",
+        "cardBgColorDark": "#362031",
+        "cardBgColorLight": "#FFE5FA",
+        "tipsInfo": "Launchlab",
+        "logoSrcDark": "/static/lpp/raydium_16px--sol-ray_launchpad--logo--dark.png",
+        "logoSrcLight": "/static/lpp/raydium_16px--sol-ray_launchpad--logo--light.png"
+      },
+      {
+        "launchpad_platform": "meteora_virtual_curve",
+        "tags": [
+          "biz_meteora_virtual_curve"
+        ],
+        "filterGroupKey": "meteora_virtual_curve",
+        "defaultValue": true,
+        "name": "Dynamic BC",
+        "href": "https://www.meteora.ag/pools#dynamicpools?${address}",
+        "colorLight": "#f55832",
+        "colorDark": "#f55832",
+        "outDexKey": "meteora",
+        "cardBgColorDark": "#382225",
+        "cardBgColorLight": "#FFE8EB",
+        "tipsInfo": "Dynamic BC",
+        "logoSrcDark": "/static/lpp/meteora_16px_bold--sol-meteora_virtual_curve--logo--dark.png",
+        "logoSrcLight": "/static/lpp/meteora_16px_bold--sol-meteora_virtual_curve--logo--light.png"
+      },
+      {
+        "launchpad_platform": "pool_ray",
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Raydium",
+        "href": "https://raydium.io/swap/?inputMint=sol&outputMint=${address}",
+        "colorLight": "#3675F9",
+        "colorDark": "#3675F9",
+        "logoSrcDark": "/static/lpp/raydium_16px--sol-pool_ray--logo--dark.png",
+        "logoSrcLight": "/static/lpp/raydium_16px--sol-pool_ray--logo--light.png",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2E233B",
+        "cardBgColorLight": "#F4EBFF",
+        "tipsInfo": "Raydium"
+      },
+      {
+        "launchpad_platform": "pool_meteora",
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Meteora",
+        "href": "https://www.meteora.ag?${address}",
+        "colorLight": "#FB5134",
+        "colorDark": "#FB5134",
+        "logoSrcDark": "/static/lpp/meteora_16px_bold--sol-pool_meteora--logo--dark.png",
+        "logoSrcLight": "/static/lpp/meteora_16px_bold--sol-pool_meteora--logo--light.png",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#36251C",
+        "cardBgColorLight": "#FCEDDE",
+        "tipsInfo": "Meteora"
+      },
+      {
+        "launchpad_platform": "pool_pump_amm",
+        "tags": [
+          "pumpfun"
+        ],
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Pump AMM",
+        "href": "https://swap.pump.fun/?output=${address}",
+        "colorLight": "#666C77",
+        "colorDark": "#9AA0AA",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#292929",
+        "cardBgColorLight": "#F0F0F0",
+        "tipsInfo": "Pump AMM",
+        "logoSrcDark": "/static/lpp/pumpamm_16px_bold_s.png",
+        "logoSrcLight": "/static/lpp/pumpamm_16px_bold_s.png"
+      },
+      {
+        "launchpad_platform": "pool_orca",
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Orca",
+        "href": "https://www.orca.so/?tokenOut=${address}",
+        "colorLight": "#E7A700",
+        "colorDark": "#FED15C",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#332B16",
+        "cardBgColorLight": "#FCF0D2",
+        "tipsInfo": "Orca",
+        "logoSrcDark": "/static/lpp/orca_16px_s.png",
+        "logoSrcLight": "/static/lpp/orca_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap",
+        "visiblePages": [],
+        "name": "Uniswap",
+        "href": "https://app.uniswap.org/explore/tokens/sol/${addressRawLower}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "pancake",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#30222C",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_pancake",
+        "visiblePages": [],
+        "name": "Pancake",
+        "href": "https://pancakeswap.finance/",
+        "colorLight": "#D1884F",
+        "colorDark": "#D1884F",
+        "outDexKey": "pancake",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2F2A26",
+        "cardBgColorLight": "#F5E8DC",
+        "tipsInfo": "Pancake",
+        "logoSrcDark": "/static/lpp/cake_16px_s.png",
+        "logoSrcLight": "/static/lpp/cake_16px_s.png"
+      }
+    ],
+    "tron": [
+      {
+        "launchpad_platform": "sunpump",
+        "name": "SunPump",
+        "href": "https://sunpump.meme/token/${address}",
+        "colorLight": "#f8ba3a",
+        "colorDark": "#f8ba3a",
+        "outDexKey": "sunswap",
+        "tipsInfo": "SunPump",
+        "logoSrcDark": "/static/lpp/sunpumplab_16px_s.png",
+        "logoSrcLight": "/static/lpp/sunpumplab_16px_s.png"
+      }
+    ],
+    "bsc": [
+      {
+        "launchpad_platform": "fourmeme",
+        "tags": [
+          "fourmeme",
+          "biz_fourmeme"
+        ],
+        "filterRenderType": "normal",
+        "defaultValue": true,
+        "name": "Fourmeme",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#00BA77",
+        "colorDark": "#7CE660",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#23301A",
+        "cardBgColorLight": "#E2FCD2",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/fourmeme100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/fourmeme100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Fourmeme",
+        "logoSrcDark": "/static/lpp/fourmeme_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/fourmeme_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "fourmeme_agent",
+        "tags": [
+          "fourmeme",
+          "biz_fourmeme"
+        ],
+        "filterRenderType": "addon",
+        "filterAddonParentLaunchpadKey": "fourmeme",
+        "defaultValue": true,
+        "name": "Fourmeme",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#00BA77",
+        "colorDark": "#7CE660",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#23301A",
+        "cardBgColorLight": "#E2FCD2",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--migrate-0--light.png"
+          }
+        ],
+        "tipsInfo": "Fourmeme",
+        "logoSrcDark": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--logo--dark.png",
+        "logoSrcLight": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--logo--light.png"
+      },
+      {
+        "launchpad_platform": "cubepeg",
+        "tags": [
+          "openfour",
+          "biz_cubepeg"
+        ],
+        "defaultValue": true,
+        "name": "Cubepeg",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#884FD6",
+        "colorDark": "#BC9CE8",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2A2833",
+        "cardBgColorLight": "#F4EEFB",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/cubepeg100_16px_s.png",
+            "iconSrcLight": "/static/lpp/cubepeg100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Cubepeg",
+        "logoSrcDark": "/static/lpp/cubepeg_16px_s.png",
+        "logoSrcLight": "/static/lpp/cubepeg_16px_s.png"
+      },
+      {
+        "launchpad_platform": "likwid",
+        "tags": [
+          "openfour",
+          "biz_cubepeg"
+        ],
+        "defaultValue": true,
+        "name": "Likwid Dex",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#F98291",
+        "colorDark": "#FFB9C2",
+        "outDexKey": "likwid",
+        "cardBgColorDark": "#302A2F",
+        "cardBgColorLight": "#FFF3F4",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/ikwiddex_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/ikwiddex_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Likwid.fi",
+        "logoSrcDark": "/static/lpp/likwiddex_16px_s.png",
+        "logoSrcLight": "/static/lpp/likwiddex_16px_s.png"
+      },
+      {
+        "launchpad_platform": "goplus_creator",
+        "tags": [
+          "openfour",
+          "biz_cubepeg"
+        ],
+        "defaultValue": true,
+        "name": "Goplus Creator",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#D09000",
+        "colorDark": "#D09000",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2C261C",
+        "cardBgColorLight": "#FBF4E6",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/gopluscreator_16px_s.png",
+            "iconSrcLight": "/static/lpp/gopluscreator_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Goplus Creator",
+        "logoSrcDark": "/static/lpp/gopluscreator_16px_s.png",
+        "logoSrcLight": "/static/lpp/gopluscreator_16px_s.png"
+      },
+      {
+        "launchpad_platform": "goplus_skills",
+        "tags": [
+          "openfour",
+          "biz_cubepeg"
+        ],
+        "defaultValue": true,
+        "name": "Goplus Skill",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#DE8F0D",
+        "colorDark": "#DE8F0D",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#1B2B34",
+        "cardBgColorLight": "#E9F8FD",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/goplusskill_16px_s.png",
+            "iconSrcLight": "/static/lpp/goplusskill_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Goplus Skill",
+        "logoSrcDark": "/static/lpp/goplusskill_16px_s.png",
+        "logoSrcLight": "/static/lpp/goplusskill_16px_s.png"
+      },
+      {
+        "launchpad_platform": "openfour",
+        "tags": [
+          "openfour",
+          "biz_cubepeg"
+        ],
+        "defaultValue": true,
+        "name": "OpenFour",
+        "href": "https://four.meme/token/${address}",
+        "colorLight": "#2BBDEE",
+        "colorDark": "#2BBDEE",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#1B2B34",
+        "cardBgColorLight": "#E9F8FD",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "linear-gradient(222.08deg, #F7DC56 -0.78%, #C68300 47.67%, #F7DC56 96.12%)",
+            "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
+            "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
+            "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
+            "iconSrcDark": "/static/lpp/openfour_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/openfour_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "OpenFour",
+        "logoSrcDark": "/static/lpp/openfour_16px_s.png",
+        "logoSrcLight": "/static/lpp/openfour_16px_s.png"
+      },
+      {
+        "launchpad_platform": "bn_fourmeme",
+        "tags": [
+          "biz_fourmeme"
+        ],
+        "filterRenderType": "normal",
+        "defaultValue": true,
+        "name": "X Mode",
+        "href": "https://web3.binance.com/en/token/bsc/${address}",
+        "colorLight": "#F47004",
+        "colorDark": "#EAA231",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2E2821",
+        "cardBgColorLight": "#FDF0E5",
+        "tipsInfo": "X Mode",
+        "logoSrcDark": "/static/lpp/bnfourmemeicon.png",
+        "logoSrcLight": "/static/lpp/bnfourmemeicon.png"
+      },
+      {
+        "launchpad_platform": "four_xmode_agent",
+        "tags": [
+          "biz_fourmeme"
+        ],
+        "filterRenderType": "addon",
+        "filterAddonParentLaunchpadKey": "bn_fourmeme",
+        "defaultValue": true,
+        "name": "X Mode",
+        "href": "https://web3.binance.com/en/token/bsc/${address}",
+        "colorLight": "#F47004",
+        "colorDark": "#EAA231",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2E2821",
+        "cardBgColorLight": "#FDF0E5",
+        "tipsInfo": "X Mode",
+        "logoSrcDark": "/static/lpp/agent_16px_bold--bsc-four_xmode_agent--logo--dark.png",
+        "logoSrcLight": "/static/lpp/agent_16px_bold--bsc-four_xmode_agent--logo--light.png"
+      },
+      {
+        "launchpad_platform": "flap",
+        "tags": [
+          "flap",
+          "biz_flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap Tax",
+        "href": "https://flap.sh/bnb/${addressRaw}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap Tax",
+        "filterTipMsg": {
+          "zhCN": "Flap 税收代币",
+          "zhTW": "Flap 稅收代幣",
+          "en": "Flap Tax Token"
+        },
+        "logoSrcDark": "/static/lpp/flap_14px--bsc-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--bsc-flap--logo--light.png"
+      },
+      {
+        "launchpad_platform": "flap_stocks",
+        "tags": [
+          "flap",
+          "biz_flap"
+        ],
+        "filterRenderType": "addon",
+        "filterAddonParentLaunchpadKey": "flap",
+        "defaultValue": true,
+        "name": "Flap Stocks",
+        "filterName": "Stocks",
+        "href": "https://flap.sh/bnb/${addressRaw}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stocks_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/stocks_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap Stocks",
+        "logoSrcDark": "/static/lpp/stocks_16px_s.png",
+        "logoSrcLight": "/static/lpp/stocks_16px_s.png"
+      },
+      {
+        "launchpad_platform": "flap_pve",
+        "tags": [
+          "flap",
+          "biz_flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap",
+        "href": "https://flap.sh/bnb/${addressRaw}",
+        "colorLight": "#82BF00",
+        "colorDark": "#D0FF00",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2C321C",
+        "cardBgColorLight": "#F2F8E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap",
+        "filterTipMsg": {
+          "zhCN": "Flap 无税代币",
+          "zhTW": "Flap 無稅代幣",
+          "en": "Flap Non-tax Token"
+        },
+        "logoSrcDark": "/static/lpp/flappve_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/flappve_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "flap_aioracle",
+        "tags": [
+          "flap",
+          "biz_flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap AI Oracle",
+        "filterName": "Flap AI",
+        "href": "https://flap.sh/bnb/${addressRaw}",
+        "colorLight": "#6F3CE7",
+        "colorDark": "#8450FE",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#252035",
+        "cardBgColorLight": "#F1EBFD",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap200_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap200_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap AI Oracle",
+        "logoSrcDark": "/static/lpp/flap_16px_s.png",
+        "logoSrcLight": "/static/lpp/flap_16px_s.png"
+      },
+      {
+        "launchpad_platform": "brew",
+        "tags": [
+          "biz_brew"
+        ],
+        "defaultValue": true,
+        "name": "Brew",
+        "filterName": "Brew",
+        "href": "https://brew.family/",
+        "colorLight": "#CBA160",
+        "colorDark": "#F1E6C1",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2F2F2F",
+        "cardBgColorLight": "#F9F5EF",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/brew100_16px_s.png",
+            "iconSrcLight": "/static/lpp/brew100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Brew",
+        "logoSrcDark": "/static/lpp/brew_16px_s.png",
+        "logoSrcLight": "/static/lpp/brew_16px_s.png"
+      },
+      {
+        "launchpad_platform": "stoxes_tax",
+        "tags": [
+          "biz_stoxes"
+        ],
+        "defaultValue": true,
+        "name": "Stoxes RWA",
+        "filterName": "Stoxes RWA",
+        "href": "https://stoxes.fun/bnb/${addressRaw}",
+        "colorLight": "#AD24F0",
+        "colorDark": "#BA42FE",
+        "outDexKey": "pancake",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2A1F35",
+        "cardBgColorLight": "#F6E9FD",
+        "logoSrcDark": "/static/lpp/stoxesfun200_16px_s.png",
+        "logoSrcLight": "/static/lpp/stoxesfun200_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stoxesfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/stoxesfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Stoxes RWA"
+      },
+      {
+        "launchpad_platform": "stoxes",
+        "tags": [
+          "biz_stoxes"
+        ],
+        "defaultValue": true,
+        "name": "Stoxes",
+        "filterName": "Stoxes",
+        "href": "https://stoxes.fun/bnb/${addressRaw}",
+        "colorLight": "#00B875",
+        "colorDark": "#00D084",
+        "outDexKey": "pancake",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#172D29",
+        "cardBgColorLight": "#E6F8F2",
+        "logoSrcDark": "/static/lpp/stoxesfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/stoxesfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stoxesfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/stoxesfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Stoxes"
+      },
+      {
+        "launchpad_platform": "memecoinfun_v2",
+        "defaultValue": true,
+        "name": "Memecoin.fun V2",
+        "href": "https://memecoin.fun/${address}/56",
+        "colorDark": "#4DBD72",
+        "colorLight": "#4DBD72",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#1F2B27",
+        "cardBgColorLight": "#EDF8F0",
+        "logoSrcDark": "/static/lpp/memecoinfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/memecoinfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/memecoinfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/memecoinfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Memecoin.fun V2"
+      },
+      {
+        "launchpad_platform": "printr",
+        "defaultValue": true,
+        "name": "Printr",
+        "href": "https://app.printr.money/trade/${addressLower}",
+        "colorLight": "#00B2F7",
+        "colorDark": "#00B2F7",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#172A35",
+        "cardBgColorLight": "#E5F7FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/printr_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/printr_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Printr",
+        "logoSrcDark": "/static/lpp/printr_16px_s.png",
+        "logoSrcLight": "/static/lpp/printr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "cheesepad_launchpad",
+        "tags": [
+          "biz_cheesepad_launchpad"
+        ],
+        "defaultValue": true,
+        "name": "Cheesepad",
+        "href": "https://www.cheesepad.ai/sale",
+        "colorLight": "#ED7C49",
+        "colorDark": "#ED7C49",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2F2423",
+        "cardBgColorLight": "#FEF2ED",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/cheesepad_16px_s.png",
+            "iconSrcLight": "/static/lpp/cheesepad_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Cheesepad",
+        "logoSrcDark": "/static/lpp/cheesepad_16px_s.png",
+        "logoSrcLight": "/static/lpp/cheesepad_16px_s.png"
+      },
+      {
+        "launchpad_platform": "cheesepad_microsale",
+        "tags": [
+          "biz_cheesepad_launchpad"
+        ],
+        "defaultValue": true,
+        "name": "Microsales",
+        "href": "https://www.cheesepad.ai/microsale",
+        "colorLight": "#DC4B3A",
+        "colorDark": "#DC4B3A",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2D1F22",
+        "cardBgColorLight": "#FCEDEC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/microsale_16px_s.png",
+            "iconSrcLight": "/static/lpp/microsale_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Microsales",
+        "logoSrcDark": "/static/lpp/microsale_16px_s.png",
+        "logoSrcLight": "/static/lpp/microsale_16px_s.png"
+      },
+      {
+        "launchpad_platform": "cheesepad_melt",
+        "tags": [
+          "biz_cheesepad_launchpad"
+        ],
+        "defaultValue": true,
+        "name": "Cheesepad Melt",
+        "filterName": "Cheesepad Melt",
+        "href": "https://www.cheesepad.ai/melt-curve/bsc/${address}",
+        "colorLight": "#1BA5FD",
+        "colorDark": "#57BDFF",
+        "outDexKey": "pancake",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#202B36",
+        "cardBgColorLight": "#E8F6FE",
+        "logoSrcDark": "/static/lpp/cheesepadmelt_16px_s.png",
+        "logoSrcLight": "/static/lpp/cheesepadmelt_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/cheesepad_16px_s.png",
+            "iconSrcLight": "/static/lpp/cheesepad_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Cheesepad Melt"
+      },
+      {
+        "launchpad_platform": "clanker",
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Clanker",
+        "href": "https://clanker.world/clanker/${addressLower}",
+        "colorLight": "#8A63D2",
+        "colorDark": "#8A63D2",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2B2636",
+        "cardBgColorLight": "#F3EFFA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FAB802",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FAB802",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/clanker100_14px--bsc-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker200_14px--bsc-clanker--migrate-0--light.png"
+          }
+        ],
+        "tipsInfo": "Clanker",
+        "logoSrcDark": "/static/lpp/clanker_14px--bsc-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--bsc-clanker--logo--light.png"
+      },
+      {
+        "launchpad_platform": "lunafun",
+        "defaultValue": true,
+        "name": "Luna.fun",
+        "href": "https://luna.fun/${symbol}",
+        "colorLight": "#F1338D",
+        "colorDark": "#F1338D",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2F1D2A",
+        "cardBgColorLight": "#FDEAF3",
+        "tipsInfo": "Luna.fun",
+        "logoSrcDark": "/static/lpp/luna_16px_s.png",
+        "logoSrcLight": "/static/lpp/luna_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_pancake",
+        "visiblePages": [],
+        "defaultValue": false,
+        "name": "Pancake",
+        "href": "https://pancakeswap.finance/",
+        "colorLight": "#D1884F",
+        "colorDark": "#D1884F",
+        "outDexKey": "pancake",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2F2A26",
+        "cardBgColorLight": "#F5E8DC",
+        "tipsInfo": "Pancake",
+        "logoSrcDark": "/static/lpp/cake_16px_s.png",
+        "logoSrcLight": "/static/lpp/cake_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap",
+        "visiblePages": [],
+        "defaultValue": false,
+        "name": "Uniswap",
+        "href": "https://app.uniswap.org/explore/tokens/bnb/${addressRaw}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "pancake",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#30222C",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      }
+    ],
+    "base": [
+      {
+        "launchpad_platform": "flap",
+        "defaultValue": true,
+        "name": "Flap Tax",
+        "href": "https://flap.sh/base/{${addressLower}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap Tax",
+        "filterTipMsg": {
+          "zhCN": "Flap 税收代币",
+          "zhTW": "Flap 稅收代幣",
+          "en": "Flap Tax Token"
+        },
+        "logoSrcDark": "/static/lpp/flap_14px--base-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--base-flap--logo--light.png"
+      },
+      {
+        "launchpad_platform": "clanker",
+        "defaultValue": true,
+        "name": "Clanker",
+        "href": "https://clanker.world/clanker/${addressLower}",
+        "colorLight": "#8A63D2",
+        "colorDark": "#8A63D2",
+        "outDexKey": "uniswap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2B2636",
+        "cardBgColorLight": "#F3EFFA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FAB802",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FAB802",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/clanker100_14px--base-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker200_14px--base-clanker--migrate-0--light.png"
+          }
+        ],
+        "tipsInfo": "Clanker",
+        "logoSrcDark": "/static/lpp/clanker_14px--base-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--base-clanker--logo--light.png"
+      },
+      {
+        "launchpad_platform": "bankr",
+        "defaultValue": true,
+        "name": "Bankr",
+        "href": "https://bankr.bot/launches/${address}",
+        "colorLight": "#9472FF",
+        "colorDark": "#9472FF",
+        "outDexKey": "uniswap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#262335",
+        "cardBgColorLight": "#F5F1FF",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FDC220",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FDC220",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/bankr_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/bankr_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Bankr",
+        "logoSrcDark": "/static/lpp/bankr_16px_s.png",
+        "logoSrcLight": "/static/lpp/bankr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "o1_rwa",
+        "defaultValue": true,
+        "name": "o1 RWA",
+        "filterName": "o1 RWA",
+        "href": "https://launch.o1.exchange/token/${address}?chain=8453",
+        "colorLight": "#67ACE0",
+        "colorDark": "#73C0FA",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#232B35",
+        "cardBgColorLight": "#EFF6FB",
+        "logoSrcDark": "/static/lpp/o1rwa_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/o1rwa_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/o1exchange100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/o1exchange100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "o1 RWA"
+      },
+      {
+        "launchpad_platform": "o1",
+        "defaultValue": true,
+        "name": "o1.exchange",
+        "filterName": "o1.exchange",
+        "href": "https://launch.o1.exchange/token/${address}",
+        "colorLight": "#000000",
+        "colorDark": "#FFFFFF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#313236",
+        "cardBgColorLight": "#E5E5E5",
+        "tipsInfo": "o1.exchange",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/o1exchange100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/o1exchange100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/o1exchange_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/o1exchange_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "feelcash",
+        "defaultValue": true,
+        "name": "Feel.cash",
+        "filterName": "Feel.cash",
+        "href": "https://feel.cash/",
+        "colorLight": "#358CFF",
+        "colorDark": "#47A3FF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#1E2836",
+        "cardBgColorLight": "#EAF3FF",
+        "tipsInfo": "Feel.cash",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/feelcash100_16px_s.png",
+            "iconSrcLight": "/static/lpp/feelcash100_16px_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/feelcash_16px_s.png",
+        "logoSrcLight": "/static/lpp/feelcash_16px_s.png"
+      },
+      {
+        "launchpad_platform": "flaunch",
+        "defaultValue": true,
+        "name": "Flaunch",
+        "href": "https://flaunch.gg/base/coin/${address}",
+        "colorLight": "#E162E6",
+        "colorDark": "#EB88EF",
+        "outDexKey": "uniswap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2F2634",
+        "cardBgColorLight": "#FCEFFC",
+        "tipsInfo": "Flaunch",
+        "logoSrcDark": "/static/lpp/flaunch_16px_s.png",
+        "logoSrcLight": "/static/lpp/flaunch_16px_s.png"
+      },
+      {
+        "launchpad_platform": "zora",
+        "tags": [
+          "biz_zora"
+        ],
+        "defaultValue": true,
+        "name": "Zora Content",
+        "href": "https://zora.co/coin/base:${address}",
+        "colorLight": "#3468FF",
+        "colorDark": "#5A81F1",
+        "cardBgColorDark": "#202534",
+        "cardBgColorLight": "#EAEFFF",
+        "tipsInfo": "Zora Content",
+        "logoSrcDark": "/static/lpp/zora_16px_s.png",
+        "logoSrcLight": "/static/lpp/zora_16px_s.png"
+      },
+      {
+        "launchpad_platform": "zora_creator",
+        "tags": [
+          "biz_zora"
+        ],
+        "defaultValue": true,
+        "name": "Zora Creator",
+        "href": "https://zora.co/coin/base:${address}",
+        "colorLight": "#3468FF",
+        "colorDark": "#5A81F1",
+        "cardBgColorDark": "#243132",
+        "cardBgColorLight": "#E5F7F2",
+        "tipsInfo": "Zora Creator",
+        "logoSrcDark": "/static/lpp/tokenzoracreatoricon.png",
+        "logoSrcLight": "/static/lpp/tokenzoracreatoricon.png"
+      },
+      {
+        "launchpad_platform": "baseapp",
+        "tags": [
+          "biz_zora"
+        ],
+        "defaultValue": true,
+        "name": "Baseapp",
+        "href": "https://zora.co/coin/base:${address}",
+        "colorLight": "#3679FF",
+        "colorDark": "#3679FF",
+        "cardBgColorDark": "#1C2436",
+        "cardBgColorLight": "#DEE9FF",
+        "tipsInfo": "Base.app",
+        "logoSrcDark": "/static/lpp/baseapp_16px_s.png",
+        "logoSrcLight": "/static/lpp/baseapp_16px_s.png"
+      },
+      {
+        "launchpad_platform": "basememe",
+        "defaultValue": true,
+        "name": "Base.meme",
+        "filterName": "Basememe",
+        "href": "https://base.meme/coin/base:${address}",
+        "colorLight": "#446AFF",
+        "colorDark": "#446AFF",
+        "outDexKey": "uniswap",
+        "cardBgColorDark": "#1E2336",
+        "cardBgColorLight": "#ECF0FF",
+        "tipsInfo": "Base.meme",
+        "logoSrcDark": "/static/lpp/base_16px_s.png",
+        "logoSrcLight": "/static/lpp/base_16px_s.png"
+      },
+      {
+        "launchpad_platform": "virtuals_v2",
+        "defaultValue": true,
+        "name": "Virtuals Unicorn",
+        "href": "https://app.virtuals.io/prototypes/",
+        "colorLight": "#11B84C",
+        "colorDark": "#4BDE7F",
+        "outDexKey": "uniswap",
+        "cardBgColorDark": "#1F2E29",
+        "cardBgColorLight": "#E7F7ED",
+        "tipsInfo": "Virtuals",
+        "logoSrcDark": "/static/lpp/vitrualsuni100_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/vitrualsuni100_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "klik",
+        "defaultValue": true,
+        "name": "Klik",
+        "href": "https://klik.finance/base/${addressRaw}",
+        "colorLight": "#7B3FE4",
+        "colorDark": "#8B53EB",
+        "cardBgColorDark": "#252034",
+        "cardBgColorLight": "#F1EBFC",
+        "tipsInfo": "Klik",
+        "logoSrcDark": "/static/lpp/klik_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/klik_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "rwagmi",
+        "defaultValue": true,
+        "name": "Rwagmi",
+        "href": "https://rwagmi.com/token/${addressLower}",
+        "colorLight": "#448FF0",
+        "colorDark": "#57A0FF",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#202836",
+        "cardBgColorLight": "#ECF3FD",
+        "tipsInfo": "Rwagmi",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/rwagmi100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/rwagmi100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/rwagmi_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/rwagmi_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap",
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap",
+        "href": "https://app.uniswap.org/explore/tokens/base/${addressRawLower}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "pancake",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#30222C",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_pancake",
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Pancake",
+        "href": "https://pancakeswap.finance/",
+        "colorLight": "#D1884F",
+        "colorDark": "#D1884F",
+        "outDexKey": "pancake",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2F2A26",
+        "cardBgColorLight": "#F5E8DC",
+        "tipsInfo": "Pancake",
+        "logoSrcDark": "/static/lpp/cake_16px_s.png",
+        "logoSrcLight": "/static/lpp/cake_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_sushiswap",
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Sushiswap",
+        "href": "https://www.sushi.com/base/swap",
+        "colorLight": "#FA52A0",
+        "colorDark": "#FA52A0",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#30222C",
+        "cardBgColorLight": "#FFEEF6",
+        "tipsInfo": "Sushiswap",
+        "logoSrcDark": "/static/lpp/sushiswap_16px_s.png",
+        "logoSrcLight": "/static/lpp/sushiswap_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_aerodrome",
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Aerodrome",
+        "href": "https://aerodrome.finance/",
+        "colorLight": "#3E5FFF",
+        "colorDark": "#879CFF",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#252836",
+        "cardBgColorLight": "#EBEFFF",
+        "tipsInfo": "Aerodrome",
+        "logoSrcDark": "/static/lpp/aerodrome_16px_s.png",
+        "logoSrcLight": "/static/lpp/aerodrome_16px_s.png"
+      }
+    ],
+    "monad": [
+      {
+        "launchpad_platform": "nadfun",
+        "defaultValue": true,
+        "name": "Nadfun",
+        "filterName": "Nad.fun",
+        "href": "https://nad.fun/tokens/${address}",
+        "colorLight": "#835AF1",
+        "colorDark": "#835AF1",
+        "outDexKey": "uniswap",
+        "cardBgColorDark": "#242134",
+        "cardBgColorLight": "#F2EEFD",
+        "tipsInfo": "Nad.fun",
+        "logoSrcDark": "/static/lpp/nadfun100_16px_s.png",
+        "logoSrcLight": "/static/lpp/nadfun100_16px_s.png"
+      },
+      {
+        "launchpad_platform": "kuru",
+        "defaultValue": true,
+        "name": "Kuru",
+        "href": "https://kuru.io/token/${address}",
+        "colorLight": "#62C123",
+        "colorDark": "#A4E877",
+        "cardBgColorDark": "#272F28",
+        "cardBgColorLight": "#EFF8E9",
+        "tipsInfo": "Kuru",
+        "logoSrcDark": "/static/lpp/kuru_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/kuru_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "flap",
+        "tags": [
+          "flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap",
+        "href": "https://flap.sh/monad/${addressRawLower}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap",
+        "logoSrcDark": "/static/lpp/flap_14px--monad-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--monad-flap--logo--light.png"
+      },
+      {
+        "launchpad_platform": "bonadfun",
+        "defaultValue": true,
+        "name": "Bonad.fun",
+        "filterName": "Bonadfun",
+        "href": "https://bonad.fun/",
+        "colorLight": "#FF4646",
+        "colorDark": "#FF4646",
+        "cardBgColorDark": "#1E0000",
+        "cardBgColorLight": "#FFEAEA",
+        "tipsInfo": "Bonad.fun",
+        "logoSrcDark": "/static/lpp/bonadfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/bonadfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "clanker",
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Clanker",
+        "href": "https://clanker.world/clanker/${addressLower}",
+        "colorLight": "#8A63D2",
+        "colorDark": "#8A63D2",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2B2636",
+        "cardBgColorLight": "#F3EFFA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FAB802",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FAB802",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/clanker100_14px--monad-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker200_14px--monad-clanker--migrate-0--light.png"
+          }
+        ],
+        "tipsInfo": "Clanker",
+        "logoSrcDark": "/static/lpp/clanker_14px--monad-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--monad-clanker--logo--light.png"
+      }
+    ],
+    "hyperevm": [
+      {
+        "launchpad_platform": "altfun",
+        "defaultValue": true,
+        "name": "alt.fun",
+        "href": "https://alt.fun/token/${address}",
+        "colorLight": "#11B28B",
+        "colorDark": "#00EBB2",
+        "outDexKey": "hyperswap",
+        "cardBgColorDark": "#17302E",
+        "cardBgColorLight": "#E7F7F3",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/altfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/altfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "alt.fun",
+        "logoSrcDark": "/static/lpp/altfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/altfun_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "motion_meme",
+        "defaultValue": true,
+        "name": "motion.meme",
+        "filterName": "motion.meme",
+        "href": "https://motion.meme/coin/${address}",
+        "colorLight": "#45B2A4",
+        "colorDark": "#4ECBBA",
+        "outDexKey": "hyperswap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1F2C2F",
+        "cardBgColorLight": "#ECF7F6",
+        "logoSrcDark": "/static/lpp/motionmeme_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/motionmeme_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/motionmeme100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/motionmeme100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "motion.meme"
+      },
+      {
+        "launchpad_platform": "liqd",
+        "defaultValue": true,
+        "name": "Liquid Launch",
+        "filterName": "Liquid Launch",
+        "href": "https://liquidlaunch.app/token/${address}",
+        "colorDark": "#C0FCEC",
+        "colorLight": "#274E44",
+        "outDexKey": "hyperswap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2A3134",
+        "cardBgColorLight": "#E9EDEC",
+        "logoSrcDark": "/static/lpp/liquidlaunch_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/liquidlaunch_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/liquidlaunch100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/liquidlaunch100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Liquid Launch"
+      }
+    ],
+    "eth": [
+      {
+        "launchpad_platform": "trench",
+        "defaultValue": true,
+        "name": "Trench",
+        "href": "https://trench.today/token/${addressRaw}",
+        "colorLight": "#F5221A",
+        "colorDark": "#F5221A",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#301B1F",
+        "cardBgColorLight": "#FEE8E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "trench.today",
+        "logoSrcDark": "/static/lpp/trench_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/trench_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "clanker",
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Clanker",
+        "href": "https://clanker.world/clanker/${addressLower}",
+        "colorLight": "#8A63D2",
+        "colorDark": "#8A63D2",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2B2636",
+        "cardBgColorLight": "#F3EFFA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FAB802",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FAB802",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/clanker100_14px--eth-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker200_14px--eth-clanker--migrate-0--light.png"
+          }
+        ],
+        "tipsInfo": "Clanker",
+        "logoSrcDark": "/static/lpp/clanker_14px--eth-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--eth-clanker--logo--light.png"
+      },
+      {
+        "launchpad_platform": "klik",
+        "name": "Klik",
+        "href": "https://klik.finance/token/${addressRawLower}",
+        "colorLight": "#7B3FE4",
+        "colorDark": "#8B53EB",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#252034",
+        "cardBgColorLight": "#F1EBFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/klik100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/klik100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Klik",
+        "logoSrcDark": "/static/lpp/klik_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/klik_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "livo",
+        "name": "Livo",
+        "href": "https://www.livo.trade/token/${addressRawLower}?chain=ethereum",
+        "colorLight": "#18C5B8",
+        "colorDark": "#59E1D7",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#202F32",
+        "cardBgColorLight": "#E7F9F7",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/livo100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/livo100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Livo",
+        "logoSrcDark": "/static/lpp/livo_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/livo_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "stroid",
+        "name": "Stroid",
+        "href": "https://stroid.fun/token?address=${addressLower}",
+        "colorLight": "#598BB7",
+        "colorDark": "#719CC3",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#222830",
+        "cardBgColorLight": "#EEF3F7",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stroid100_16px_s.png",
+            "iconSrcLight": "/static/lpp/stroid100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Stroid",
+        "logoSrcDark": "/static/lpp/stroid_16px_s.png",
+        "logoSrcLight": "/static/lpp/stroid_16px_s.png"
+      },
+      {
+        "launchpad_platform": "printr",
+        "name": "Printr",
+        "href": "https://app.printr.money/trade/${addressLower}",
+        "colorLight": "#00B2F7",
+        "colorDark": "#00B2F7",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#172A35",
+        "cardBgColorLight": "#E5F7FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/printr_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/printr_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Printr",
+        "logoSrcDark": "/static/lpp/printr_16px_s.png",
+        "logoSrcLight": "/static/lpp/printr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "programmable",
+        "childLppKeys": [
+          "programmable",
+          "programmable_custom"
+        ],
+        "defaultValue": false,
+        "name": "Programmable",
+        "filterName": "Programmable",
+        "href": "https://programmable.family/token/${address}",
+        "colorLight": "#D677A1",
+        "colorDark": "#F085B5",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2F252E",
+        "cardBgColorLight": "#FAF1F5",
+        "logoSrcDark": "/static/lpp/programmable_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/programmable_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/programmable100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/programmable100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Programmable"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v2",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V2",
+        "href": "https://app.uniswap.org/explore/tokens/ethereum/${addressRawLower}",
+        "colorLight": "#FB3333",
+        "colorDark": "#FB3333",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#301D21",
+        "cardBgColorLight": "#FEEAEA",
+        "tipsInfo": "Uniswap V2",
+        "logoSrcDark": "/static/lpp/uinswap_16px_s.png",
+        "logoSrcLight": "/static/lpp/uinswap_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v3",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V3",
+        "href": "https://app.uniswap.org/explore/tokens/ethereum/${addressRawLower}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#311E30",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap V3",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v4",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": true,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V4",
+        "href": "https://app.uniswap.org/explore/tokens/ethereum/${addressRawLower}",
+        "colorLight": "#4875FF",
+        "colorDark": "#5F87FF",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#212636",
+        "cardBgColorLight": "#ECF1FF",
+        "tipsInfo": "Uniswap V4",
+        "logoSrcDark": "/static/lpp/uinswapv4_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/uinswapv4_16px_bold_light_s.png"
+      }
+    ],
+    "megaeth": [
+      {
+        "launchpad_platform": "trench",
+        "defaultValue": true,
+        "name": "Trench",
+        "href": "https://trench.today/token/eth/${addressRaw}",
+        "colorLight": "#F5221A",
+        "colorDark": "#F5221A",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#301B1F",
+        "cardBgColorLight": "#FEE8E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "trench.today",
+        "logoSrcDark": "/static/lpp/trench_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/trench_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "kumbaya",
+        "defaultValue": false,
+        "name": "Kumbaya",
+        "href": "https://www.kumbaya.xyz/#/launch/${addressRaw}",
+        "colorLight": "#FB6121",
+        "colorDark": "#FB6121",
+        "outDexKey": "kumbaya",
+        "cardBgColorDark": "#30221F",
+        "cardBgColorLight": "#FEEFE8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FAB802",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FAB802",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/kumbaya100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/kumbaya100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Kumbaya",
+        "logoSrcDark": "/static/lpp/kumbaya_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/kumbaya_16px_bold_light_s.png"
+      }
+    ],
+    "xlayer": [
+      {
+        "launchpad_platform": "flap",
+        "tags": [
+          "flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap",
+        "href": "https://flap.sh/xlayer/${addressRawLower}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "potatoswap",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap",
+        "logoSrcDark": "/static/lpp/flap_14px--xlayer-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--xlayer-flap--logo--light.png"
+      },
+      {
+        "launchpad_platform": "ignix",
+        "tags": [
+          "biz_ignix"
+        ],
+        "defaultValue": true,
+        "name": "Ignix",
+        "href": "https://ignix.bot/launch?token=${address}",
+        "colorLight": "#F33AA6",
+        "colorDark": "#FF43B1",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#311F2E",
+        "cardBgColorLight": "#FDEBF6",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/ingix100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/ingix100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Ignix",
+        "logoSrcDark": "/static/lpp/ingix_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/ingix_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "eulr",
+        "defaultValue": true,
+        "name": "Eulr.fun",
+        "href": "https://www.eulr.fun/token/${addressRaw}",
+        "colorLight": "#00B568",
+        "colorDark": "#00EC87",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#24311C",
+        "cardBgColorLight": "#EEF5E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/eulr100_16px_s.png",
+            "iconSrcLight": "/static/lpp/eulr100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "eulr.fun",
+        "logoSrcDark": "/static/lpp/eulr_16px_s.png",
+        "logoSrcLight": "/static/lpp/eulr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "dyorswap",
+        "defaultValue": true,
+        "name": "Dyor.fun",
+        "href": "https://dyorswap.org/token?address=${address}&chainId=196",
+        "colorLight": "#1EA2FD",
+        "colorDark": "#4AB5FF",
+        "outDexKey": "dyorswap",
+        "cardBgColorDark": "#1E2A36",
+        "cardBgColorLight": "#E8F5FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun",
+        "logoSrcDark": "/static/lpp/dyorfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/dyorfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "dyorfun_v3",
+        "defaultValue": true,
+        "name": "Dyor.fun V3",
+        "filterName": "Dyor.fun V3",
+        "href": "https://dyorv3.org/token/${address}?chain=xlayer",
+        "colorLight": "#62C123",
+        "colorDark": "#62C123",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#212B20",
+        "cardBgColorLight": "#EFF8E9",
+        "logoSrcDark": "/static/lpp/dyorfunv3_16px_bold_s.png",
+        "logoSrcLight": "/static/lpp/dyorfunv3_16px_bold_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun V3"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v2",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V2",
+        "href": "https://app.uniswap.org/explore/tokens/xlayer/${addressRawLower}",
+        "colorLight": "#FB3333",
+        "colorDark": "#FB3333",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#301D21",
+        "cardBgColorLight": "#FEEAEA",
+        "tipsInfo": "Uniswap V2",
+        "logoSrcDark": "/static/lpp/uinswap_16px_s.png",
+        "logoSrcLight": "/static/lpp/uinswap_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v3",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V3",
+        "href": "https://app.uniswap.org/explore/tokens/xlayer/${addressRawLower}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#311E30",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap V3",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v4",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V4",
+        "href": "https://app.uniswap.org/explore/tokens/xlayer/${addressRawLower}",
+        "colorLight": "#4875FF",
+        "colorDark": "#5F87FF",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#212636",
+        "cardBgColorLight": "#ECF1FF",
+        "tipsInfo": "Uniswap V4",
+        "logoSrcDark": "/static/lpp/uinswapv4_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/uinswapv4_16px_bold_light_s.png"
+      }
+    ],
+    "robinhood": [
+      {
+        "launchpad_platform": "pons_v2",
+        "defaultValue": true,
+        "name": "Pons V2",
+        "filterName": "Pons V2",
+        "href": "https://www.ponsfamily.com/launchpad/${addressRaw}",
+        "colorLight": "#52A7E5",
+        "colorDark": "#5BB9FF",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#202B36",
+        "cardBgColorLight": "#EDF6FC",
+        "logoSrcDark": "/static/lpp/ponsv2_16px_s.png",
+        "logoSrcLight": "/static/lpp/ponsv2_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/ponsfamily100_16px_s.png",
+            "iconSrcLight": "/static/lpp/ponsfamily100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Pons V2"
+      },
+      {
+        "launchpad_platform": "pons",
+        "defaultValue": true,
+        "name": "Pons",
+        "href": "http://ponsfamily.com/launchpad/${addressRaw}",
+        "colorLight": "#9EBD37",
+        "colorDark": "#D4FC50",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2C3124",
+        "cardBgColorLight": "#F5F8EB",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/ponsfamily100_16px_s.png",
+            "iconSrcLight": "/static/lpp/ponsfamily100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Pons",
+        "logoSrcDark": "/static/lpp/ponsfamily_16px_s.png",
+        "logoSrcLight": "/static/lpp/ponsfamily_16px_s.png"
+      },
+      {
+        "launchpad_platform": "longxyz",
+        "defaultValue": true,
+        "name": "Long.xyz",
+        "filterName": "Long.xyz",
+        "href": "https://app.long.xyz/tokens/${address}",
+        "colorLight": "#00CC00",
+        "colorDark": "#00CC00",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#172C1C",
+        "cardBgColorLight": "#E5F9E5",
+        "tipsInfo": "Long.xyz",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/longxyz_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/longxyz_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/longxyz_16px_s.png",
+        "logoSrcLight": "/static/lpp/longxyz_16px_s.png"
+      },
+      {
+        "launchpad_platform": "o1_rwa",
+        "defaultValue": true,
+        "name": "o1 RWA",
+        "filterName": "o1 RWA",
+        "href": "https://launch.o1.exchange/token/${address}",
+        "colorLight": "#67ACE0",
+        "colorDark": "#73C0FA",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#232B35",
+        "cardBgColorLight": "#EFF6FB",
+        "logoSrcDark": "/static/lpp/o1rwa_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/o1rwa_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/o1exchange100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/o1exchange100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "o1 RWA"
+      },
+      {
+        "launchpad_platform": "o1",
+        "defaultValue": true,
+        "name": "o1.exchange",
+        "filterName": "o1.exchange",
+        "href": "https://launch.o1.exchange/token/${address}",
+        "colorLight": "#000000",
+        "colorDark": "#FFFFFF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#313236",
+        "cardBgColorLight": "#E5E5E5",
+        "tipsInfo": "o1.exchange",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/o1exchange100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/o1exchange100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/o1exchange_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/o1exchange_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "bankr",
+        "defaultValue": true,
+        "name": "Bankr",
+        "href": "https://bankr.bot/terminal/discover/",
+        "colorLight": "#9472FF",
+        "colorDark": "#9472FF",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#262335",
+        "cardBgColorLight": "#F5F1FF",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FDC220",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FDC220",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/bankr_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/bankr_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Bankr",
+        "logoSrcDark": "/static/lpp/bankr_16px_s.png",
+        "logoSrcLight": "/static/lpp/bankr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "trench_tax",
+        "tags": [
+          "biz_trench"
+        ],
+        "defaultValue": true,
+        "name": "Trench Tax",
+        "filterName": "Trench Tax",
+        "href": "https://trench.today/token/robinhood/${addressRaw}",
+        "colorLight": "#4899E5",
+        "colorDark": "#4DA5F7",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1F2935",
+        "cardBgColorLight": "#E3EBF3",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "trench.today tax",
+        "logoSrcDark": "/static/lpp/trench200_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/trench200_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "trench",
+        "defaultValue": true,
+        "name": "Trench",
+        "href": "https://trench.today/token/robinhood/${addressRaw}",
+        "colorLight": "#F5221A",
+        "colorDark": "#F5221A",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#301B1F",
+        "cardBgColorLight": "#FEE8E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/trench100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/trench100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "trench.today",
+        "logoSrcDark": "/static/lpp/trench_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/trench_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pools_trade_instant",
+        "defaultValue": true,
+        "name": "Pools Instant",
+        "filterName": "Pools Instant",
+        "href": "https://pools.trade/t/${address}",
+        "colorLight": "#7BB036",
+        "colorDark": "#8DC93E",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#252C22",
+        "cardBgColorLight": "#F1F7EA",
+        "logoSrcDark": "/static/lpp/poolstrade_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/poolstrade_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/poolstrade100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/poolstrade100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Pools Instant"
+      },
+
+      {
+        "launchpad_platform": "flap",
+        "tags": [
+          "flap",
+          "biz_flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap Tax",
+        "href": "https://flap.sh/robinhood/${addressRawLower}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap Tax",
+        "filterTipMsg": {
+          "zhCN": "Flap 税收代币",
+          "zhTW": "Flap 稅收代幣",
+          "en": "Flap Tax Token"
+        },
+        "logoSrcDark": "/static/lpp/flap_14px--robinhood-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--robinhood-flap--logo--light.png"
+      },
+      {
+        "launchpad_platform": "flap_stocks",
+        "tags": [
+          "flap",
+          "biz_flap"
+        ],
+        "filterRenderType": "addon",
+        "filterAddonParentLaunchpadKey": "flap",
+        "defaultValue": true,
+        "name": "Flap Stocks",
+        "filterName": "Stocks",
+        "href": "https://flap.sh/robinhood/${addressRawLower}",
+        "colorLight": "#7B59FF",
+        "colorDark": "#967AFF",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#292636",
+        "cardBgColorLight": "#F1EDFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stocks_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/stocks_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap Stocks",
+        "logoSrcDark": "/static/lpp/stocks_16px_s.png",
+        "logoSrcLight": "/static/lpp/stocks_16px_s.png"
+      },
+      {
+        "launchpad_platform": "flap_pve",
+        "tags": [
+          "flap"
+        ],
+        "defaultValue": true,
+        "name": "Flap",
+        "href": "https://flap.sh/robinhood/${addressRawLower}",
+        "colorLight": "#82BF00",
+        "colorDark": "#D0FF00",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#2C321C",
+        "cardBgColorLight": "#F2F8E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flap100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flap100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flap",
+        "filterTipMsg": {
+          "zhCN": "Flap 无税代币",
+          "zhTW": "Flap 無稅代幣",
+          "en": "Flap Non-tax Token"
+        },
+        "logoSrcDark": "/static/lpp/flappve_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/flappve_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pools_trade_cca",
+        "defaultValue": true,
+        "name": "Pools CCA",
+        "filterName": "Pools CCA",
+        "href": "https://pools.trade/t/${address}",
+        "colorLight": "#52A5F8",
+        "colorDark": "#52A5F8",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1F2935",
+        "cardBgColorLight": "#EDF6FE",
+        "logoSrcDark": "/static/lpp/poolstradev2_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/poolstradev2_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/poolstrade100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/poolstrade100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Pools CCA"
+      },
+      {
+        "launchpad_platform": "pair_fund",
+        "childLppKeys": [
+          "pair_fund",
+          "pair_fund_v2"
+        ],
+        "tags": [
+          "biz_pair_fund"
+        ],
+        "defaultValue": true,
+        "name": "Pair",
+        "filterName": "Pair",
+        "href": "https://pair.fund/tokens/${address}",
+        "colorLight": "#A855F7",
+        "colorDark": "#B972FD",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2A2335",
+        "cardBgColorLight": "#EDE5F5",
+        "logoSrcDark": "/static/lpp/pairfund_16px_s.png",
+        "logoSrcLight": "/static/lpp/pairfund_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/pairfund100_16px_s.png",
+            "iconSrcLight": "/static/lpp/pairfund100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Pair"
+      },
+      {
+        "launchpad_platform": "letscash",
+        "defaultValue": true,
+        "name": "letscash.fun",
+        "filterName": "letscash.fun",
+        "href": "https://www.letscash.fun/token/${address}",
+        "colorLight": "#846521",
+        "colorDark": "#B4934A",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#292723",
+        "cardBgColorLight": "#F2EFE8",
+        "logoSrcDark": "/static/lpp/letscash.fun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/letscash.fun_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/letscash.fun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/letscash.fun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "letscash.fun"
+      },
+      {
+        "launchpad_platform": "bags",
+        "childLppKeys": [
+          "bags",
+          "bags_v3"
+        ],
+        "defaultValue": true,
+        "name": "Bags",
+        "href": "https://bags.fm/${address}",
+        "colorLight": "#00D62B",
+        "colorDark": "#00D62B",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#172D20",
+        "cardBgColorLight": "#E5FAE9",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/bags200_16px_dark_s.png",
+            "iconSrcLight": "/static/lpp/bags200_16px_light_s.png"
+          }
+        ],
+        "tipsInfo": "Bags.fm",
+        "logoSrcDark": "/static/lpp/bags_16px_bold_s.png",
+        "logoSrcLight": "/static/lpp/bags_16px_bold_s.png"
+      },
+      {
+        "launchpad_platform": "bowfun",
+        "defaultValue": true,
+        "name": "Bow.fun",
+        "href": "https://bow.fun/?token=${addressRaw}",
+        "colorLight": "#00B058",
+        "colorDark": "#00C361",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#172C26",
+        "cardBgColorLight": "#E5F7EE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/bowfun_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/bowfun_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Bow.fun",
+        "logoSrcDark": "/static/lpp/bowfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/bowfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "varo",
+        "defaultValue": true,
+        "name": "Varo",
+        "filterName": "Varo",
+        "href": "https://varo.rialto.xyz/token/${address}",
+        "colorLight": "#997761",
+        "colorDark": "#FBC895",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#302C2B",
+        "cardBgColorLight": "#F4F1EF",
+        "logoSrcDark": "/static/lpp/rialto_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/rialto_16px_bold_light_s.png",
+        "noInternalExternal": false,
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/rialto100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/rialto100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Varo.rialto"
+      },
+      {
+        "launchpad_platform": "pools_fun",
+        "defaultValue": true,
+        "name": "Pools.fun",
+        "filterName": "Pools.fun",
+        "href": "https://www.sushi.com/robinhood/launchpad/token/${address}",
+        "colorLight": "#EA4898",
+        "colorDark": "#FF4DA6",
+        "outDexKey": "sushiSwap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#31202D",
+        "cardBgColorLight": "#FCECF4",
+        "logoSrcDark": "/static/lpp/poolsfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/poolsfun_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/poolsfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/poolsfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Pools.fun"
+      },
+      {
+        "launchpad_platform": "stonkbroker_v2",
+        "tags": [
+          "biz_stonkbroker_v2"
+        ],
+        "defaultValue": true,
+        "name": "StonkLauncher",
+        "filterName": "StonkLauncher",
+        "href": "https://stonkbrokers.wtf/",
+        "colorLight": "#52A5F8",
+        "colorDark": "#52A5F8",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1F2935",
+        "cardBgColorLight": "#E4EDF5",
+        "logoSrcDark": "/static/lpp/stonkboker100_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/stonkboker100_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stonkboker_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/stonkboker_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "StonkLauncher"
+      },
+      {
+        "launchpad_platform": "stonkbroker",
+        "defaultValue": true,
+        "name": "StonkBroker Safe",
+        "filterName": "StonkBroker Safe",
+        "href": "https://stonkbrokers.io/safe-launch/",
+        "colorLight": "#E56400",
+        "colorDark": "#E56400",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2E221C",
+        "cardBgColorLight": "#FCEFE5",
+        "logoSrcDark": "/static/lpp/stonkboker_16px_s.png",
+        "logoSrcLight": "/static/lpp/stonkboker_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stonkboker_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/stonkboker_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "StonkBroker Safe Launch",
+        "filterTipMsg": {
+          "zhCN": "StonkBroker Safe Launch",
+          "zhTW": "StonkBroker Safe Launch",
+          "en": "StonkBroker Safe Launch"
+        }
+      },
+      {
+        "launchpad_platform": "dontblink",
+        "defaultValue": true,
+        "name": "Dontblink",
+        "filterName": "Dontblink",
+        "href": "https://dontblink.family/",
+        "colorLight": "#7263E3",
+        "colorDark": "#806FFF",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#242336",
+        "cardBgColorLight": "#F0EFFC",
+        "logoSrcDark": "/static/lpp/dontblink_16px_s.png",
+        "logoSrcLight": "/static/lpp/dontblink_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dontblink_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/dontblink_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Dontblink"
+      },
+      {
+        "launchpad_platform": "sentry",
+        "defaultValue": true,
+        "name": "Sentry",
+        "filterName": "Sentry",
+        "href": "https://www.sentry.trading/desktop/tokens",
+        "colorLight": "#2CB281",
+        "colorDark": "#34D399",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1C2D2B",
+        "cardBgColorLight": "#E1EFEA",
+        "logoSrcDark": "/static/lpp/sentry_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/sentry_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/sentry100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/sentry100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Sentry.trading"
+      },
+      {
+        "launchpad_platform": "sushi",
+        "childLppKeys": [
+          "sushi",
+          "sushi_v2"
+        ],
+        "defaultValue": true,
+        "name": "Sushi",
+        "filterName": "Sushi",
+        "href": "https://www.sushi.com/robinhood/launchpad/token/${address}",
+        "colorLight": "#327CF5",
+        "colorDark": "#508FF6",
+        "outDexKey": "sushiSwap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1F2635",
+        "cardBgColorLight": "#EAF1FE",
+        "logoSrcDark": "/static/lpp/sushi_16px_s.png",
+        "logoSrcLight": "/static/lpp/sushi_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/sushi100_16px_s.png",
+            "iconSrcLight": "/static/lpp/sushi100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Sushi"
+      },
+      {
+        "launchpad_platform": "circus",
+        "defaultValue": true,
+        "name": "Circus",
+        "href": "https://circus.trade/coin/${address}",
+        "colorLight": "#FF8D58",
+        "colorDark": "#FF8D58",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#312625",
+        "cardBgColorLight": "#FFF3EE",
+        "tipsInfo": "Circus",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/circus_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/circus_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/circus_16px_s.png",
+        "logoSrcLight": "/static/lpp/circus_16px_s.png"
+      },
+      {
+        "launchpad_platform": "rally",
+        "defaultValue": true,
+        "name": "Rally",
+        "filterName": "Rally",
+        "href": "https://www.rallypad.fun/tokens/robinhood/${address}",
+        "colorLight": "#83B203",
+        "colorDark": "#B9E503",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2A2F1C",
+        "cardBgColorLight": "#E9EEDC",
+        "logoSrcDark": "/static/lpp/rally_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/rally_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/rally_16px_s.png",
+            "iconSrcLight": "/static/lpp/rally_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Rally"
+      },
+      {
+        "launchpad_platform": "orbofi",
+        "defaultValue": true,
+        "name": "Orbofi",
+        "filterName": "Orbofi",
+        "href": "https://www.orbofi.com/",
+        "colorLight": "#4D5FFF",
+        "colorDark": "#6190FF",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#212635",
+        "cardBgColorLight": "#E4E6F6",
+        "logoSrcDark": "/static/lpp/orbofi_16px_s.png",
+        "logoSrcLight": "/static/lpp/orbofi_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/orbofi_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/orbofi_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Orbofi"
+      },
+      {
+        "launchpad_platform": "arrowfinance",
+        "defaultValue": true,
+        "name": "ArrowFinance",
+        "filterName": "ArrowFinance",
+        "href": "https://app.arrowfinance.io/launchpad/${address}",
+        "colorLight": "#A5C834",
+        "colorDark": "#CEF120",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2C301F",
+        "cardBgColorLight": "#F5F8E8",
+        "tipsInfo": "ArrowFinance",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/arrorfinance100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/arrorfinance100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/arrorfinance_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/arrorfinance_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "motion",
+        "defaultValue": true,
+        "name": "Motion",
+        "filterName": "Motion",
+        "href": "https://trymotion.fun/token/${address}",
+        "colorLight": "#0AC49F",
+        "colorDark": "#0BDEB4",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#182E2E",
+        "cardBgColorLight": "#E6F9F5",
+        "tipsInfo": "Motion",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/motion100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/motion100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/motion_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/motion_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "arenatrade",
+        "defaultValue": true,
+        "name": "Arena",
+        "filterName": "Arena",
+        "href": "https://arenatrade.ai/token/${address}",
+        "colorLight": "#8FB200",
+        "colorDark": "#B8E500",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#292F1C",
+        "cardBgColorLight": "#F3F7E5",
+        "logoSrcDark": "/static/lpp/arenatrade_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/arenatrade_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/arenatrade100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/arenatrade100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Arenatrade"
+      },
+      {
+        "launchpad_platform": "stoxes_tax",
+        "tags": [
+          "biz_stoxes"
+        ],
+        "defaultValue": true,
+        "name": "Stoxes RWA",
+        "filterName": "Stoxes RWA",
+        "href": "https://stoxes.fun/robinhood/${addressRaw}",
+        "colorLight": "#AD24F0",
+        "colorDark": "#BA42FE",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#2A1F35",
+        "cardBgColorLight": "#F6E9FD",
+        "tipsInfo": "Stoxes RWA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stoxesfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/stoxesfun100_16px_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/stoxesfun200_16px_s.png",
+        "logoSrcLight": "/static/lpp/stoxesfun200_16px_s.png"
+      },
+      {
+        "launchpad_platform": "stoxes",
+        "tags": [
+          "biz_stoxes"
+        ],
+        "defaultValue": true,
+        "name": "Stoxes",
+        "filterName": "Stoxes",
+        "href": "https://stoxes.fun/robinhood/${addressRaw}",
+        "colorLight": "#00B875",
+        "colorDark": "#00D084",
+        "outDexKey": "pancake",
+        "cardBgColorDark": "#172D29",
+        "cardBgColorLight": "#E6F8F2",
+        "tipsInfo": "Stoxes",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/stoxesfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/stoxesfun100_16px_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/stoxesfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/stoxesfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "lunch_v3",
+        "childLppKeys": [
+          "lunch_v3",
+          "lunch_v4",
+          "lunch_pair_v3",
+          "lunch_pair_v4"
+        ],
+        "defaultValue": true,
+        "name": "Lunch.fun",
+        "href": "https://www.lunch.fun/coin/${address}",
+        "colorDark": "#92CC4F",
+        "colorLight": "#89BF4A",
+        "outDexKey": "uniswap",
+        "cardBgColorDark": "#262C24",
+        "cardBgColorLight": "#F3F8EC",
+        "logoSrcDark": "/static/lpp/lunchfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/lunchfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/lunchfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/lunchfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Lunch.fun"
+      },
+      {
+        "launchpad_platform": "holoworld",
+        "defaultValue": true,
+        "name": "Holoworld",
+        "href": "https://app.hololaunch.ai/tokens/${addressRaw}",
+        "colorLight": "#28CCC0",
+        "colorDark": "#28CCC0",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1D3033",
+        "cardBgColorLight": "#E9F9F8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/holoworld100_16px_s.png",
+            "iconSrcLight": "/static/lpp/holoworld100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "app.holoworld",
+        "logoSrcDark": "/static/lpp/holoworld_16px_s.png",
+        "logoSrcLight": "/static/lpp/holoworld_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pewfun",
+        "defaultValue": true,
+        "name": "Pew.fun",
+        "href": "https://pew.fun/token/${addressRaw}",
+        "colorLight": "#86EFAC",
+        "colorDark": "#86EFAC",
+        "outDexKey": "sushiSwap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#24302D",
+        "cardBgColorLight": "#F1FAF5",
+        "tipsInfo": "Pew.fun",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/pewfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/pewfun100_16px_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/pewfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/pewfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "livo",
+        "defaultValue": true,
+        "name": "Livo",
+        "href": "https://www.livo.trade/token/${addressRawLower}?chain=robinhood",
+        "colorLight": "#18C5B8",
+        "colorDark": "#59E1D7",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#202F32",
+        "cardBgColorLight": "#E7F9F7",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/livo100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/livo100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Livo",
+        "logoSrcDark": "/static/lpp/livo_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/livo_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "virtuals_v2",
+        "tags": [
+          "biz_virtuals_v2"
+        ],
+        "defaultValue": true,
+        "name": "Virtuals",
+        "href": "https://app.virtuals.io/prototypes/${addressRaw}",
+        "colorLight": "#20A7A8",
+        "colorDark": "#3AB7B8",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#1F2E29",
+        "cardBgColorLight": "#E7F7ED",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/vitrualspro200_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/vitrualspro200_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Virtuals",
+        "logoSrcDark": "/static/lpp/vitrualspro100_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/vitrualspro100_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "clanker",
+        "defaultValue": true,
+        "name": "Clanker",
+        "href": "https://clanker.world/clanker/${addressLower}",
+        "colorLight": "#8A63D2",
+        "colorDark": "#8A63D2",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2B2636",
+        "cardBgColorLight": "#F3EFFA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#FAB802",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#FAB802",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/clanker_14px--robinhood-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker_14px--robinhood-clanker--migrate-0--light.png"
+          }
+        ],
+        "tipsInfo": "Clanker",
+        "logoSrcDark": "/static/lpp/clanker_14px--robinhood-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--robinhood-clanker--logo--light.png"
+      },
+      {
+        "launchpad_platform": "klik",
+        "defaultValue": true,
+        "name": "Klik",
+        "href": "https://klik.finance/token/${addressLower}",
+        "colorLight": "#7B3FE4",
+        "colorDark": "#8B53EB",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#252034",
+        "cardBgColorLight": "#F1EBFC",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/klik100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/klik100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Klik",
+        "logoSrcDark": "/static/lpp/klik_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/klik_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "printr",
+        "defaultValue": true,
+        "name": "Printr",
+        "href": "https://app.printr.money/trade/${addressLower}",
+        "colorLight": "#00B2F7",
+        "colorDark": "#00B2F7",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#172A35",
+        "cardBgColorLight": "#E5F7FE",
+        "tipsInfo": "Printr",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/printr_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/printr_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/printr_16px_s.png",
+        "logoSrcLight": "/static/lpp/printr_16px_s.png"
+      },
+      {
+        "launchpad_platform": "dyorswap",
+        "defaultValue": true,
+        "name": "Dyor.fun",
+        "href": "https://dyorswap.org/token?address=${address}&chainId=4663",
+        "colorLight": "#1EA2FD",
+        "colorDark": "#4AB5FF",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#1E2A36",
+        "cardBgColorLight": "#E8F5FE",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun",
+        "logoSrcDark": "/static/lpp/dyorfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/dyorfun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "dyorfun_v3",
+        "defaultValue": true,
+        "name": "Dyor.fun V3",
+        "href": "https://dyorv3.org/token/${address}?chain=robinhood",
+        "colorLight": "#62C123",
+        "colorDark": "#62C123",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#212B20",
+        "cardBgColorLight": "#EFF8E9",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/dyorfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/dyorfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Dyor.fun V3",
+        "logoSrcDark": "/static/lpp/dyorfunv3_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/dyorfunv3_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "apestore",
+        "defaultValue": true,
+        "name": "Ape.store",
+        "href": "https://ape.store/robinhood/${addressRaw}",
+        "colorLight": "#E3B129",
+        "colorDark": "#FFED43",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#313023",
+        "cardBgColorLight": "#FBF8ED",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/apestore100_16px_s.png",
+            "iconSrcLight": "/static/lpp/apestore100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Ape.store",
+        "logoSrcDark": "/static/lpp/apestore_16px_s.png",
+        "logoSrcLight": "/static/lpp/apestore_16px_s.png"
+      },
+      {
+        "launchpad_platform": "basedbid",
+        "defaultValue": false,
+        "name": "Based.bid",
+        "filterName": "Based.bid",
+        "href": "https://trade.based.bid/robinhood/pool/${address}",
+        "colorLight": "#26A649",
+        "colorDark": "#2CBF54",
+        "outDexKey": "uniswapV4",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#1B2B24",
+        "cardBgColorLight": "#E9F6EC",
+        "logoSrcDark": "/static/lpp/basedbid_16px_s.png",
+        "logoSrcLight": "/static/lpp/basedbid_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#1B2B24",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/basedbid100_16px_s.png",
+            "iconSrcLight": "/static/lpp/basedbid100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Based.bid"
+      },
+      {
+        "launchpad_platform": "potatopad_curve",
+        "childLppKeys": [
+          "potatopad_curve",
+          "potatopad_direct"
+        ],
+        "defaultValue": false,
+        "name": "Potato.fm",
+        "filterName": "Potato.fm",
+        "href": "https://potato.fm/token/${address}",
+        "colorLight": "#C16F3D",
+        "colorDark": "#C16F3D",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2A2322",
+        "cardBgColorLight": "#F8F0EB",
+        "logoSrcDark": "/static/lpp/potatopad_16px_s.png",
+        "logoSrcLight": "/static/lpp/potatopad_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/potatopad100_16px_s.png",
+            "iconSrcLight": "/static/lpp/potatopad100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Potato.fm"
+      },
+      {
+        "launchpad_platform": "launchhood",
+        "defaultValue": false,
+        "name": "LaunchHood",
+        "href": "https://launchhood.com/token/${address}",
+        "colorLight": "#00C805",
+        "colorDark": "#00C805",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2C3124",
+        "cardBgColorLight": "#F6F9EA",
+        "tipsInfo": "LaunchHood",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/launchhood100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/launchhood100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/launchhood_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/launchhood_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "hypermeme",
+        "defaultValue": false,
+        "name": "Hyper.meme",
+        "filterName": "Hyper.meme",
+        "href": "https://www.hyper.meme/coin/${address}",
+        "colorLight": "#5EB259",
+        "colorDark": "#66C160",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#212B26",
+        "cardBgColorLight": "#EEF7EE",
+        "tipsInfo": "Hyper.meme",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/hypermeme100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/hypermeme100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/hypermeme_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/hypermeme_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pmav",
+        "defaultValue": false,
+        "name": "Pmav.fun",
+        "href": "https://pmav.fun/#/coin/${addressRaw}",
+        "colorLight": "#9BA53E",
+        "colorDark": "#B5BD68",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#292B26",
+        "cardBgColorLight": "#F5F6EB",
+        "tipsInfo": "Pmav.fun",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/pmav100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/pmav100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/pmav_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/pmav_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "coinbarrel",
+        "defaultValue": false,
+        "name": "Coinbarrel",
+        "href": "https://coinbarrel.com/token/${address}",
+        "colorLight": "#37C75E",
+        "colorDark": "#3EE06A",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2C3124",
+        "cardBgColorLight": "#F5F8EB",
+        "tipsInfo": "Coinbarrel",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/coinbarrel100_16px_s.png",
+            "iconSrcLight": "/static/lpp/coinbarrel100_16px_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/coinbarrel_16px_s.png",
+        "logoSrcLight": "/static/lpp/coinbarrel_16px_s.png"
+      },
+      {
+        "launchpad_platform": "leavehood",
+        "defaultValue": false,
+        "name": "LeaveHood",
+        "href": "https://leavehood.com/token/${addressRaw}",
+        "colorLight": "#A3BF19",
+        "colorDark": "#CEF120",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#2C301F",
+        "cardBgColorLight": "#F5F8E8",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/leavehood100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/leavehood100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "LeaveHood",
+        "logoSrcDark": "/static/lpp/leavehood_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/leavehood_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "hoodfun",
+        "defaultValue": false,
+        "name": "Hood.fun",
+        "href": "https://www.hood.fun/coin/${addressRaw}",
+        "colorLight": "#0DAE2F",
+        "colorDark": "#22C946",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1A2C23",
+        "cardBgColorLight": "#E6F6EA",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/hoodfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/hoodfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Hood.fun",
+        "logoSrcDark": "/static/lpp/hoodfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/hoodfun_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "oro",
+        "defaultValue": false,
+        "name": "ORO",
+        "filterName": "ORO",
+        "href": "https://oro.build/explore#t/${address}",
+        "colorLight": "#D4AF37",
+        "colorDark": "#D4AF37",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#2C2921",
+        "cardBgColorLight": "#FBF7EB",
+        "tipsInfo": "ORO",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/oro_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/oro_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/oro_16px_s.png",
+        "logoSrcLight": "/static/lpp/oro_16px_s.png"
+      },
+      {
+        "launchpad_platform": "realfun",
+        "defaultValue": false,
+        "name": "Real.fun",
+        "href": "https://real.fun/token/${addressRaw}",
+        "colorLight": "#A2B706",
+        "colorDark": "#D3ED13",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2C301E",
+        "cardBgColorLight": "#FAFDE7",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/realfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/realfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Real.fun",
+        "logoSrcDark": "/static/lpp/realfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/realfun_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "robinfun",
+        "defaultValue": false,
+        "name": "Robinfun",
+        "href": "https://robinfun.live/token/${address}",
+        "colorLight": "#9BC200",
+        "colorDark": "#CCFF00",
+        "outDexKey": "uniswapV2",
+        "cardBgColorDark": "#2B321C",
+        "cardBgColorLight": "#F5F8E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/robinfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/robinfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Robinfun",
+        "logoSrcDark": "/static/lpp/robinfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/robinfun_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "noxa",
+        "defaultValue": true,
+        "name": "Noxa.fun",
+        "href": "https://fun.noxa.eth.limo/#/rh/token/${addressRaw}",
+        "colorLight": "#DDB100",
+        "colorDark": "#E6C200",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2E2B1C",
+        "cardBgColorLight": "#FBF7E5",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/noxafun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/noxafun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Noxa.fun",
+        "logoSrcDark": "/static/lpp/noxafun_16px_s.png",
+        "logoSrcLight": "/static/lpp/noxafun_16px_s.png"
+      },
+      {
+        "launchpad_platform": "noxafi",
+        "defaultValue": true,
+        "name": "Noxa.fi",
+        "filterName": "Noxa.fi",
+        "tipsInfo": "Noxa.fi",
+        "href": "https://noxa.fi/token/${address}",
+        "colorDark": "#B7E53B",
+        "colorLight": "#92B82F",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#312625",
+        "cardBgColorLight": "#FFF3EE",
+        "noInternalExternal": false,
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/noxafi100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/noxafi100_16px_bold_light_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/noxafi_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/noxafi_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "noxafi_v2",
+        "defaultValue": true,
+        "name": "Noxa.fi V2",
+        "filterName": "Noxa.fi V2",
+        "tipsInfo": "Noxa.fi V2",
+        "href": "https://noxa.fi/token/${address}",
+        "colorDark": "#4DA5F7",
+        "colorLight": "#4899E5",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#1F2935",
+        "cardBgColorLight": "#ECF4FC",
+        "noInternalExternal": false,
+        "logoSrcDark": "/static/lpp/noxafiv2_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/noxafiv2_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/noxafi100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/noxafi100_16px_bold_light_s.png"
+          }
+        ]
+      },
+      {
+        "launchpad_platform": "memecoinfun",
+        "defaultValue": false,
+        "name": "Memecoin.fun",
+        "href": "https://memecoin.fun/${address}/4663",
+        "colorDark": "#4DBD72",
+        "colorLight": "#4DBD72",
+        "outDexKey": "uniswapV3",
+        "cardBgColorDark": "#1F2B27",
+        "cardBgColorLight": "#EDF8F0",
+        "logoSrcDark": "/static/lpp/memecoinfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/memecoinfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/memecoinfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/memecoinfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Memecoin.fun"
+      },
+      {
+        "launchpad_platform": "memecoinfun_v2",
+        "defaultValue": false,
+        "name": "Memecoin.fun V2",
+        "href": "https://memecoin.fun/${address}/4663",
+        "colorDark": "#4DBD72",
+        "colorLight": "#4DBD72",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#1F2B27",
+        "cardBgColorLight": "#EDF8F0",
+        "logoSrcDark": "/static/lpp/memecoinfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/memecoinfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/memecoinfun100_16px_s.png",
+            "iconSrcLight": "/static/lpp/memecoinfun100_16px_s.png"
+          }
+        ],
+        "tipsInfo": "Memecoin.fun V2"
+      },
+      {
+        "launchpad_platform": "lemonswap",
+        "defaultValue": false,
+        "name": "Lemon.fun",
+        "filterName": "Lemon.fun",
+        "href": "https://lemon.fun/terminal/${address}",
+        "colorDark": "#E5C400",
+        "colorLight": "#DBB700",
+        "outDexKey": "uniswapV3",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#2E2C1C",
+        "cardBgColorLight": "#FBF7E5",
+        "logoSrcDark": "/static/lpp/lemonfun_16px_s.png",
+        "logoSrcLight": "/static/lpp/lemonfun_16px_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/lemonfun_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/lemonfun_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Lemon.fun"
+      },
+      {
+        "launchpad_platform": "nasdank_v2",
+        "childLppKeys": [
+          "nasdank_v2",
+          "nasdank_v3",
+          "nasdank_v4"
+        ],
+        "defaultValue": false,
+        "name": "Nasdank",
+        "filterName": "Nasdank",
+        "href": "https://nasdank.fun/terminal/${address}",
+        "colorDark": "#B8F24A",
+        "colorLight": "#88B237",
+        "outDexKey": "uniswap",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#293023",
+        "cardBgColorLight": "#F3F7EB",
+        "logoSrcDark": "/static/lpp/nasdankfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/nasdankfun_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/nasdankfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/nasdankfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Nasdank"
+      },
+      {
+        "launchpad_platform": "flutch",
+        "defaultValue": false,
+        "name": "Flutch",
+        "filterName": "Flutch",
+        "href": "https://flutch.fun/token.php?id=${address}",
+        "colorDark": "#12C58E",
+        "colorLight": "#10AB7B",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": false,
+        "cardBgColorDark": "#192C2A",
+        "cardBgColorLight": "#E7F6F1",
+        "logoSrcDark": "/static/lpp/flutchfun_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/flutchfun_16px_bold_light_s.png",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/flutchfun100_16px_bold_dark_s.png",
+            "iconSrcLight": "/static/lpp/flutchfun100_16px_bold_light_s.png"
+          }
+        ],
+        "tipsInfo": "Flutch"
+      },
+      {
+        "launchpad_platform": "feelcash",
+        "defaultValue": false,
+        "name": "Feel.cash",
+        "filterName": "Feel.cash",
+        "href": "https://feel.cash/",
+        "colorLight": "#358CFF",
+        "colorDark": "#47A3FF",
+        "outDexKey": "uniswapV4",
+        "cardBgColorDark": "#1E2836",
+        "cardBgColorLight": "#EAF3FF",
+        "tipsInfo": "Feel.cash",
+        "migrateConfigs": [
+          {
+            "progressClassDark": "#EBA94E",
+            "progressClassLight": "#F7A501",
+            "iconBorderDark": "#EBA94E",
+            "iconBorderLight": "#F7A501",
+            "iconSrcDark": "/static/lpp/feelcash100_16px_s.png",
+            "iconSrcLight": "/static/lpp/feelcash100_16px_s.png"
+          }
+        ],
+        "logoSrcDark": "/static/lpp/feelcash_16px_s.png",
+        "logoSrcLight": "/static/lpp/feelcash_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v2",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V2",
+        "href": "https://app.uniswap.org/explore/tokens/robinhood/${addressRawLower}",
+        "colorLight": "#FB3333",
+        "colorDark": "#FB3333",
+        "outDexKey": "uniswapV2",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#301D21",
+        "cardBgColorLight": "#FEEAEA",
+        "tipsInfo": "Uniswap V2",
+        "logoSrcDark": "/static/lpp/uinswap_16px_s.png",
+        "logoSrcLight": "/static/lpp/uinswap_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v3",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V3",
+        "href": "https://app.uniswap.org/explore/tokens/robinhood/${addressRawLower}",
+        "colorLight": "#FF37C7",
+        "colorDark": "#FF37C7",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#311E30",
+        "cardBgColorLight": "#FFEBF9",
+        "tipsInfo": "Uniswap V3",
+        "logoSrcDark": "/static/lpp/uniswap_16px_bold_light_s.png",
+        "logoSrcLight": "/static/lpp/uniswap_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_uniswap_v4",
+        "tags": [
+          "biz_pool_uniswap_v3"
+        ],
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Uniswap V4",
+        "href": "https://app.uniswap.org/explore/tokens/robinhood/${addressRawLower}",
+        "colorLight": "#4875FF",
+        "colorDark": "#5F87FF",
+        "outDexKey": "uniswap",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#212636",
+        "cardBgColorLight": "#ECF1FF",
+        "tipsInfo": "Uniswap V4",
+        "logoSrcDark": "/static/lpp/uinswapv4_16px_bold_dark_s.png",
+        "logoSrcLight": "/static/lpp/uinswapv4_16px_bold_light_s.png"
+      },
+      {
+        "launchpad_platform": "pool_pancake",
+        "defaultValue": false,
+        "visiblePages": [],
+        "name": "Pancake",
+        "href": "https://pancakeswap.finance/",
+        "colorLight": "#D1884F",
+        "colorDark": "#D1884F",
+        "outDexKey": "pancake",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#2F2A26",
+        "cardBgColorLight": "#F5E8DC",
+        "tipsInfo": "Pancake",
+        "logoSrcDark": "/static/lpp/cake_16px_s.png",
+        "logoSrcLight": "/static/lpp/cake_16px_s.png"
+      },
+      {
+        "launchpad_platform": "pool_sushiswap",
+        "defaultValue": false,
+        "disablePages": [
+          "Completing",
+          "Completed"
+        ],
+        "name": "Sushiswap",
+        "href": "https://www.sushi.com/robinhood/swap",
+        "colorLight": "#FA52A0",
+        "colorDark": "#FA52A0",
+        "noInternalExternal": true,
+        "cardBgColorDark": "#30222C",
+        "cardBgColorLight": "#FFEEF6",
+        "tipsInfo": "Sushiswap",
+        "logoSrcDark": "/static/lpp/sushiswap_16px_s.png",
+        "logoSrcLight": "/static/lpp/sushiswap_16px_s.png"
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "perpGray": {
+    "userIds": [
+      "ff55beca-864f-4f38-981b-795de976a4ac",
+      "99a6bb23-eeb1-4970-8c21-6a3939d4697b",
+      "e051135b-5713-43eb-932d-4eaa6b4fc491",
+      "d5aa4ba0-f302-4835-a8c7-4308c95ba5c5",
+      "d5d60533-716e-4d05-b127-642f91d7d2d5",
+      "c033aad2-254d-4575-80b5-3c48a34155d0",
+      "4fad00da-ce34-453e-985c-ef5dcd4bd9b4",
+      "a8cc01d8-6b60-4931-8206-396d8a47d2f6",
+      "cac26549-eb22-4897-ac34-15dbd204419f",
+      "3fbcb511-e0ca-4073-91a9-89f4330ba096",
+      "9625e89c-5f65-4537-889c-74accbbcca49",
+      "2c97458f-c92d-4b69-a8b4-4ae58815562f",
+      "f9e79ee0-62e9-4813-86e6-36fd8732cc95",
+      "440bfab8-b4f1-41f3-aa85-441f3ac2dd49",
+      "f9a6c922-6478-49d4-a700-f061a31d9426",
+      "74a50c12-f421-4ba9-95f8-4fad602045db",
+      "1978d2d3-0808-4cbd-816d-363c4964afb4",
+      "2d91cecf-463b-4105-92cc-79e3f1dd59ea",
+      "e10f93c5-a0c0-48ab-8a61-500fa1c6ea22",
+      "e1f1e6ce-3694-462d-ace3-3f2ac059d31b",
+      "5bfda4b1-2079-4d22-be49-9e4d4b407904",
+      "4d32c2ba-753c-4965-acf6-69e1130cf968",
+      "e2c7dca8-c74a-4335-97ff-d0ef3d0376a4",
+      "706e806e-91b7-4448-8fbf-c2d25777fda8",
+      "6810b21e-b5cd-4c21-9915-80ec6e348250",
+      "91d446ca-66f1-455d-a10a-326ef136959f",
+      "351ecb30-5aea-4f90-bb21-d57ca5e3b166",
+      "cf87a7cc-e863-401b-84d4-36119f278b44",
+      "9a0814aa-6d7e-468c-a2d7-82fe6858eb87",
+      "25f4e09a-145b-4d8e-98ce-3db62bdc3115",
+      "4bfceabc-db53-459b-ba9f-7c5923d45f2c",
+      "32c28dbb-223f-4688-a15b-624824344fb4",
+      "6b4b1679-3cce-4239-8ee5-30ce1b9e733b",
+      "9164c8b8-1657-49cf-953a-d72790602476",
+      "99a6bb23-eeb1-4970-8c21-6a3939d4697b",
+      "b63141bf-f2c9-4529-b0fd-e3e9508e3e6b",
+      "db19ffa5-854f-4574-8b12-f561a2a519b5",
+      "48539ee5-7334-4e1d-9453-70d890e5dcf9",
+      "cbe1f46b-5c77-48fc-836d-6d4e12bbaf2e",
+      "9cdad3b0-fdcc-479e-915c-ae9cd2fa8644",
+      "44a0cd0b-a23f-4b16-a006-2dc727071fe5",
+      "3709d9a8-56fe-4bfd-9224-50838fc41d0c",
+      "91c96006-87c7-4986-8e49-6b839e7248ff",
+      "2841295b-d307-4e46-b063-e683ca8aeacc",
+      "f635bc21-c325-4606-85ca-bb77d0d6736e",
+      "4c425e74-9a45-4bed-959b-da3cb01cfa82"
+    ],
+    "devicePercent": 50
+  },
+  "trendingMixGray": {
+    "userIds": [
+      "a33456d3-883a-4e16-98c9-4491d1fed1e4",
+      "55298d78-c5e1-4227-baca-0912fc37b4ff",
+      "b63141bf-f2c9-4529-b0fd-e3e9508e3e6b",
+      "1978d2d3-0808-4cbd-816d-363c4964afb4",
+      "adaf20ce-62a7-4731-aaf9-06478510b72d"
+    ],
+    "devicePercent": 100
+  },
+  "trenchesProgressScaleV2Gray": {
+    "userIds": [],
+    "devicePercent": 70
+  }
+}

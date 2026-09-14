@@ -1,0 +1,555 @@
+{
+  "defaults": {
+    "usdAmountRange": {
+      "min": 5,
+      "max": 20000
+    },
+    "noGasUsdcMinAmount": 2,
+    "note": "usdAmountRange 是单笔兑换额度的全局兜底，单位美元，按发起 token 币价换算成代币数量后校验；供应商可在自己那行部分覆盖（只写想改的那一项）。只对跨链生效——同链兑换不受额度约束（下限 0、上限为余额减预留），这是平移改造前的现状。币价取不到时跳过额度校验（fail-open），不阻断提交。⚠️ 改这两个数值需要前端跟一次：前端内置了同样的 5 ~ 20000 作为「本字段整块写坏」时的兜底（parse.ts 的 FALLBACK_USD_RANGE），刻意不回落成「不限额」，否则一份坏配置会静默取消上限；供应商级覆盖不涉及此问题。noGasUsdcMinAmount 是免 gas 通道（同链 + 发起 USDC + 接收本币）的最小额，单位 USDC；该路径由 GMGN 垫 gas 并跳过本币余额检查，门槛刻意低于普通兑换，且与走哪个桥无关，故不参与 usdAmountRange 那套额度。"
+  },
+  "vendors": [
+    {
+      "id": "relay",
+      "name": "Relay",
+      "website": "https://support.relay.link/",
+      "icon": "/static/img/relay.png",
+      "orderUrlTemplate": "https://relay.link/transaction/{orderId}",
+      "estimatedSeconds": [
+        10,
+        14
+      ],
+      "routeMode": "anyPair",
+      "note": "NATIVE 含 xlayer 是平移现状（relay 的支持链原本取「所有开启 swap 的链」），但业务上 OKB 只走 bridgers，由 chains.xlayer.vendors 挡住——这个「能力有 / 策略无」的分歧是刻意保留的，删掉就是偷偷改现状。USDC 只有 4 条链：arbitrum / eth / base 的 USDC 侧未与 Relay 确认，加进去会让这些链的 USDC 变为可提交然后被后端拒。",
+      "tokens": [
+        {
+          "symbol": "NATIVE",
+          "chains": [
+            "arbitrum",
+            "arc",
+            "base",
+            "bsc",
+            "eth",
+            "hyperevm",
+            "megaeth",
+            "monad",
+            "robinhood",
+            "sol",
+            "stable",
+            "xlayer"
+          ]
+        },
+        {
+          "symbol": "USDC",
+          "chains": [
+            "bsc",
+            "hyperevm",
+            "monad",
+            "sol"
+          ]
+        },
+        {
+          "symbol": "USDT",
+          "chains": [
+            "base",
+            "bsc",
+            "sol"
+          ]
+        },
+        {
+          "symbol": "USD1",
+          "chains": [
+            "bsc",
+            "sol"
+          ]
+        },
+        {
+          "symbol": "USDG",
+          "chains": [
+            "robinhood"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "debridge",
+      "name": "deBridge",
+      "website": "https://app.debridge.com/",
+      "icon": "/static/img/debridge.png",
+      "orderUrlTemplate": "https://app.debridge.com/order?orderId={orderId}",
+      "estimatedSeconds": [
+        10,
+        14
+      ],
+      "routeMode": "anyPair",
+      "tokens": [
+        {
+          "symbol": "NATIVE",
+          "chains": [
+            "bsc",
+            "sol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bridgers",
+      "name": "Bridgers",
+      "website": "https://bridgers.xyz/#/?sourceFlag=bridgers",
+      "icon": "/static/img/bridgers.png",
+      "orderUrlTemplate": "https://explorer.bridgers.xyz/#/search/{orderId}",
+      "estimatedSeconds": [
+        60,
+        180
+      ],
+      "routeMode": "directed",
+      "usdAmountRange": {
+        "min": 20
+      },
+      "note": "只服务 XLayer(OKB) 与 5 个对手方的配对，不是「支持这四条链随便互换」——sol → bsc 走 bridgers 是不允许的，所以必须用 directed 精确列举而不能写成 anyPair。这 10 条由「OKB 只走 bridgers」+「OKB 对手方白名单」两条既有规则联合推导而来，不是新决策。usdAmountRange 只覆盖 min（20 美元），max 继承全局 20000——这个下限原先写在 chains.xlayer.usdAmountRange 上，而 xlayer 的 vendors 恰只有 bridgers，所以它一直是 bridgers 的额度而非 XLayer 这条链的额度，本次只是归位。",
+      "routes": [
+        {
+          "from": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "sol",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "sol",
+            "symbol": "USDC"
+          }
+        },
+        {
+          "from": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "bsc",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "bsc",
+            "symbol": "USDC"
+          }
+        },
+        {
+          "from": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "robinhood",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "sol",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "sol",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "bsc",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "bsc",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "robinhood",
+            "symbol": "NATIVE"
+          },
+          "to": {
+            "chain": "xlayer",
+            "symbol": "NATIVE"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cctp",
+      "name": "CCTP",
+      "website": "",
+      "icon": "/static/img/cctp.png",
+      "orderUrlTemplate": "",
+      "estimatedSeconds": [
+        10,
+        20
+      ],
+      "routeMode": "directed",
+      "note": "website 与 orderUrlTemplate 为空串是刻意约定、不是缺配：前者使底部改用通用提示文案，后者使订单只展示 ID、不展示跳转图标。Arc 的原生币就是 USDC（链上无独立 USDC 合约），故 Arc 侧一律写 NATIVE。",
+      "routes": [
+        {
+          "from": {
+            "chain": "sol",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "arc",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "eth",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "arc",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "base",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "arc",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "monad",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "arc",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "hyperevm",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "arc",
+            "symbol": "NATIVE"
+          }
+        },
+        {
+          "from": {
+            "chain": "eth",
+            "symbol": "USDC"
+          },
+          "to": {
+            "chain": "base",
+            "symbol": "USDC"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lifi",
+      "name": "LI.FI",
+      "website": "",
+      "icon": "/static/img/lifi.png",
+      "orderUrlTemplate": "https://scan.li.fi/tx/{orderId}",
+      "estimatedSeconds": [
+        10,
+        14
+      ],
+      "routeMode": "anyPair",
+      "tokens": [
+        {
+          "symbol": "NATIVE",
+          "chains": [
+            "base",
+            "bsc",
+            "eth",
+            "hyperevm",
+            "megaeth",
+            "robinhood",
+            "sol"
+          ]
+        },
+        {
+          "symbol": "NATIVE",
+          "chains": [
+            "monad"
+          ],
+          "direction": "outputOnly"
+        },
+        {
+          "symbol": "USDC",
+          "chains": [
+            "base",
+            "bsc",
+            "eth",
+            "hyperevm",
+            "monad",
+            "sol"
+          ]
+        },
+        {
+          "symbol": "USD1",
+          "chains": [
+            "bsc",
+            "sol"
+          ]
+        },
+        {
+          "symbol": "USDG",
+          "chains": [
+            "robinhood"
+          ]
+        }
+      ]
+    }
+  ],
+  "chains": {
+    "arbitrum": {
+      "vendors": [
+        "relay"
+      ],
+      "reserve": {
+        "crossChain": 0.0005,
+        "sameChain": 0.0002
+      },
+      "note": "只确认了 Relay 的 native ETH，其余供应商未向对方确认故不列（fail-closed）。本链开了 USDC 兑换开关，所以 USDC 会出现在币种列表里，但 relay 的 USDC 清单不含本链，导致 arbitrum USDC 在所有供应商下都灰掉——这是刻意的安全默认，不是漏配。要放开需先与 Relay 确认，再在 relay 的 USDC 行加一个链名。"
+    },
+    "arc": {
+      "vendors": [
+        "cctp",
+        "relay"
+      ],
+      "reserve": {
+        "crossChain": 0.5,
+        "sameChain": 0.5
+      }
+    },
+    "base": {
+      "vendors": [
+        "relay",
+        "cctp",
+        "lifi"
+      ],
+      "reserve": {
+        "crossChain": 0.0005,
+        "sameChain": 0.0002
+      },
+      "note": "cctp 排在 lifi 前，决定了 eth USDC → base USDC 的默认供应商是 cctp（理由：USDC ↔ USDC 走 Circle 原生桥）。此前该组合默认 relay，但 relay 不支持 base 的 USDC，等于默认选中一个灰掉的供应商。待产品追认，改顺序即可调整。"
+    },
+    "bsc": {
+      "vendors": [
+        "relay",
+        "lifi",
+        "debridge",
+        "bridgers"
+      ],
+      "reserve": {
+        "crossChain": 0.0005,
+        "sameChain": 0.0002
+      },
+      "note": "列表里的 bridgers 是为与 XLayer 配对而存在——候选集取两侧链列表的交集，对手方链不声明就交集为空、功能丢失。它不会因此泄漏到 bsc ↔ sol 之类组合，那由 bridgers 的有向路由挡住。robinhood 与 sol 同理。"
+    },
+    "eth": {
+      "vendors": [
+        "relay",
+        "lifi",
+        "cctp"
+      ],
+      "reserve": {
+        "crossChain": 0.0005,
+        "sameChain": 0.0002
+      }
+    },
+    "hyperevm": {
+      "vendors": [
+        "relay",
+        "lifi",
+        "cctp"
+      ],
+      "reserve": {
+        "crossChain": 0.008,
+        "sameChain": 0.005
+      }
+    },
+    "megaeth": {
+      "vendors": [
+        "relay",
+        "lifi"
+      ],
+      "reserve": {
+        "crossChain": 0.0005,
+        "sameChain": 0.0002
+      }
+    },
+    "monad": {
+      "vendors": [
+        "relay",
+        "lifi",
+        "cctp"
+      ],
+      "reserve": {
+        "crossChain": 60,
+        "sameChain": 50
+      }
+    },
+    "robinhood": {
+      "vendors": [
+        "relay",
+        "lifi",
+        "bridgers"
+      ],
+      "reserve": {
+        "crossChain": 0.0005,
+        "sameChain": 0.0002
+      },
+      "hopVia": "USDG"
+    },
+    "sol": {
+      "vendors": [
+        "relay",
+        "lifi",
+        "debridge",
+        "cctp",
+        "bridgers"
+      ],
+      "reserve": {
+        "crossChain": 0.008,
+        "sameChain": 0.005
+      }
+    },
+    "stable": {
+      "vendors": [
+        "relay"
+      ],
+      "reserve": {
+        "crossChain": 0.5,
+        "sameChain": 0.5
+      },
+      "pairWhitelist": [
+        {
+          "chain": "robinhood",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "robinhood",
+          "symbol": "USDG"
+        },
+        {
+          "chain": "base",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "base",
+          "symbol": "USDC"
+        },
+        {
+          "chain": "base",
+          "symbol": "USDT"
+        },
+        {
+          "chain": "bsc",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "bsc",
+          "symbol": "USDC"
+        },
+        {
+          "chain": "bsc",
+          "symbol": "USDT"
+        },
+        {
+          "chain": "sol",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "sol",
+          "symbol": "USDC"
+        },
+        {
+          "chain": "sol",
+          "symbol": "USDT"
+        },
+        {
+          "chain": "eth",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "eth",
+          "symbol": "USDC"
+        }
+      ]
+    },
+    "xlayer": {
+      "vendors": [
+        "bridgers"
+      ],
+      "reserve": {
+        "crossChain": 0.05,
+        "sameChain": 0.05
+      },
+      "pairWhitelist": [
+        {
+          "chain": "sol",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "sol",
+          "symbol": "USDC"
+        },
+        {
+          "chain": "bsc",
+          "symbol": "NATIVE"
+        },
+        {
+          "chain": "bsc",
+          "symbol": "USDC"
+        },
+        {
+          "chain": "robinhood",
+          "symbol": "NATIVE"
+        }
+      ],
+      "note": "vendors 只有一项 = 强制：OKB 仅走 Bridgers。候选集恒为单元素，其余供应商在本链全灰，等效于把下拉锁死。pairWhitelist 这 5 条已被 bridgers 的 10 条有向路由完整覆盖，保留作第二道防线。"
+    }
+  }
+}

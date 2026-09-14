@@ -1,0 +1,1496 @@
+{
+  "version": 8,
+  "skills": [
+    {
+      "id": 10025,
+      "slug": "5min-trending-tokens",
+      "url": "https://gmgn.ai/ai/skills/5min-trending-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🔥",
+      "skills": {
+        "title": "5-Min Trending Tokens",
+        "subtitle": "Scan the most actively traded tokens on-chain over the past 5 minutes with numeric range filters for market cap, liquidity, volume, and more, showing market cap, liquidity, volume, and holder count.",
+        "installation": "Learn the 5-Min Trending Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trending --chain sol --interval 5m\n```\nReplace --chain with sol/bsc/eth/base to query other chains.",
+        "capabilities": [
+          "Scan the highest-volume tokens on-chain over the past 5 minutes",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Sort by market cap, volume, trade count, or holder count; filter by platform",
+          "Supports numeric range filters for market cap, liquidity, volume, price change %, smart money count, bundle rate, and more",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show the top trending tokens on SOL in the past 5 minutes",
+          "Show the top trending tokens on SOL in the past 1 hour"
+        ]
+      }
+    },
+    {
+      "id": 10026,
+      "slug": "pumpfun-trending-tokens",
+      "url": "https://gmgn.ai/ai/skills/pumpfun-trending-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🏆",
+      "skills": {
+        "title": "Pump.fun Trending Tokens",
+        "subtitle": "Query the hottest Pump.fun tokens over the past hour with numeric range filters for market cap, liquidity, volume, and more, sortable by volume, market cap, or holder count.",
+        "installation": "Learn the Pump.fun Trending Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trending --chain sol --interval 1h --platform Pump.fun\n```\nReplace --platform with Pump.fun / letsbonk / fourmeme / Clanker to query other platforms.",
+        "capabilities": [
+          "Filter to trending tokens on Pump.fun only",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Sort by market cap, volume, trade count, or holder count; filter by platform; exclude wash-traded tokens",
+          "Supports numeric range filters for market cap, liquidity, volume, price change %, smart money count, bundle rate, and more",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show the top trending tokens on Pump.fun on SOL in the past 1 hour",
+          "Show the top trending tokens on FourMeme on BSC in the past 1 hour"
+        ]
+      }
+    },
+    {
+      "id": 10011,
+      "slug": "token-basic-info",
+      "url": "https://gmgn.ai/ai/skills/token-basic-info",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 3,
+      "emoji": "🪪",
+      "skills": {
+        "title": "Token Basic Info",
+        "subtitle": "Query a token's price, market cap, liquidity, holder count, top-10 concentration, dev holding, rat wallet %, bundle %, and KOL buyer count.",
+        "installation": "Learn the Token Basic Info skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token info --chain sol --address <token_address>\n```\nKey parameters: --address (token contract address), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "Query current price, liquidity, holder count, and launchpad progress",
+          "Show top-10 holding concentration, dev holding %, sniper wallet %, and bundle %",
+          "Show KOL buyer count and social links (Twitter / website / Telegram)",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get basic info for [token address] on SOL, including dev holding and top-10 concentration",
+          "Get basic info for [token address] on BSC, including KOL buyer count and sniper wallet %",
+          "Get basic info for [token address] on Base, including bundle % and dev holding"
+        ]
+      }
+    },
+    {
+      "id": 10029,
+      "slug": "pumpfun-newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/pumpfun-newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 3,
+      "emoji": "🌱",
+      "skills": {
+        "title": "Pump.fun Newly Created Tokens",
+        "subtitle": "Scan only freshly created Pump.fun tokens, filterable by smart money count, bundle %, and sniper %.",
+        "installation": "Learn the Pump.fun Newly Created Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trenches --chain sol --type new_creation --launchpad-platform Pump.fun\n```\nKey parameters: --launchpad-platform (platform filter, replaceable with letsbonk / fourmeme / Clanker, etc.)",
+        "capabilities": [
+          "Scan only Pump.fun newly created tokens, excluding other platforms",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Multi-dimensional filtering by KOL count, smart money count, market cap, liquidity, volume, holder count, creation time, bundle %, and sniper %",
+          "SOL chain only"
+        ],
+        "prompts": [
+          "Show newly created tokens on Pump.fun",
+          "Show newly created Pump.fun tokens with at least 1 smart money buy"
+        ]
+      }
+    },
+    {
+      "id": 10042,
+      "slug": "opentwitter",
+      "url": "https://gmgn.ai/ai/skills/opentwitter",
+      "category": "media",
+      "source": "6551",
+      "hot_level": 2,
+      "emoji": "🕊️",
+      "skills": {
+        "title": "OpenTwitter MCP",
+        "subtitle": "Query Twitter profiles, search tweets, monitor follower changes, identify KOL followers, track deleted tweets, and subscribe to real-time updates — 15 tools.",
+        "installation": "Learn the OpenTwitter MCP skill.\n\nFirst, install the OpenTwitter Skill:\n```\nnpx skills add 6551Team/opentwitter-mcp\n```\nAfter installation, check whether the environment variable TWITTER_TOKEN exists. If not, prompt me to visit https://6551.io/mcp to register and get a free API Token.",
+        "capabilities": [
+          "Query Twitter user profiles, follower/following count, and recent tweets",
+          "Search by keyword or hashtag; filter by likes, retweets, and other engagement metrics",
+          "Query quote tweets and retweeter lists for any tweet",
+          "Identify KOL followers of a specific account to gauge influencer attention on a project",
+          "Monitor new follows and unfollows to track abnormal follower activity",
+          "Capture deleted tweets, name changes, avatar changes, and bio updates",
+          "Real-time subscription to all activity types from monitored accounts: new tweets, replies, retweets, and quotes",
+          "Monitor multiple accounts simultaneously"
+        ],
+        "prompts": [
+          "Get the Twitter profile of @elonmusk",
+          "Show me recent tweets from @VitalikButerin",
+          "Search Twitter for the latest tweets about Bitcoin",
+          "Search #crypto tweets with over 1000 likes",
+          "Show who has quoted this tweet",
+          "Which KOLs follow @[project Twitter account]?",
+          "Has @[username] recently gained or lost followers?",
+          "Has @[username] recently deleted tweets or changed their profile?",
+          "Monitor @[username] on Twitter and alert me on new tweets or follower changes"
+        ]
+      }
+    },
+    {
+      "id": 10041,
+      "slug": "opennews",
+      "url": "https://gmgn.ai/ai/skills/opennews",
+      "category": "media",
+      "source": "6551",
+      "hot_level": 0,
+      "emoji": "📰",
+      "skills": {
+        "title": "OpenNews MCP",
+        "subtitle": "Real-time crypto news from 84+ sources with AI impact scores, trade signals, and bilingual summaries — exchange listings, whales, market moves, and AI predictions.",
+        "installation": "Learn the OpenNews MCP skill.\n\nFirst, install the OpenNews Skill:\n```\nnpx skills add 6551Team/opennews-mcp\n```\nAfter installation, check whether the environment variable OPENNEWS_TOKEN exists. If not, prompt me to visit https://6551.io/mcp to register and get a free API Token.",
+        "capabilities": [
+          "Aggregate latest articles from 84+ sources including Bloomberg, Reuters, CoinDesk, and Cointelegraph",
+          "Each article includes an AI impact score (0-100), a trade signal (long / short / neutral), and a bilingual summary",
+          "Real-time monitoring of listing announcements from 9 exchanges: Binance, Coinbase, OKX, Bybit, Hyperliquid, and more",
+          "Monitor Hyperliquid whale large trades, large position openings, and KOL on-chain activity",
+          "Monitor price anomalies, funding rate changes, large liquidations, and OI changes",
+          "Covers 12 AI prediction dimensions: smart money trades, whale positioning, insider patterns, new wallet entries, and more",
+          "Multi-dimensional filtering by coin, keyword, source, and trade signal"
+        ],
+        "prompts": [
+          "Show me the latest crypto news",
+          "Find recent Bloomberg and Reuters reports on BTC",
+          "Show high-impact news with an AI score above 80",
+          "Which exchanges have listed new tokens recently?",
+          "Show recent Binance listing announcements",
+          "Are there any whales opening large positions on Hyperliquid recently?",
+          "Show recent funding rate anomalies or large liquidation events",
+          "Show recent news with a bearish AI signal",
+          "Show recent AI prediction signals related to smart money trading"
+        ]
+      }
+    },
+    {
+      "id": 10001,
+      "slug": "market-buy",
+      "url": "https://gmgn.ai/ai/skills/market-buy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⚡",
+      "skills": {
+        "title": "Market Buy",
+        "subtitle": "Instantly buy a token at the current market price with anti-MEV sandwich protection.",
+        "installation": "Learn the Market Buy skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli swap --chain sol --from <wallet_address> --input-token So11111111111111111111111111111111111111112 --output-token <token_address> --amount 100000000 --anti-mev\n```\nKey parameters: --amount (buy amount in smallest unit, 0.1 SOL = 100000000 lamports), --from (your wallet address)",
+        "capabilities": [
+          "Buy a specified token instantly at current market price",
+          "Display actual fill price, tokens received, and gas fee",
+          "Supports multi-chain trading: SOL / BSC / Base / ETH"
+        ],
+        "prompts": [
+          "Buy [token address] on SOL with 0.1 SOL, enable anti-MEV protection",
+          "Buy [token address] on SOL with 0.1 SOL, without anti-MEV protection"
+        ]
+      }
+    },
+    {
+      "id": 10058,
+      "slug": "query-5m-hot-search-tokens",
+      "url": "https://gmgn.ai/ai/skills/query-5m-hot-search-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 3,
+      "emoji": "🌡️",
+      "skills": {
+        "title": "Query 5m Hot Search Tokens",
+        "subtitle": "Query the most-searched token rankings across chains. Supports 1m/5m/1h/6h/24h time windows and filtering by platform, market cap, volume, holder concentration, and more.",
+        "installation": "Learn the Query 5m Hot Search Tokens skill.\n\nInstall the GMGN Skill first:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check that the GMGN_API_KEY environment variable exists. If it is missing, prompt the user to visit https://gmgn.ai/ai to register for a free API key.\nIf GMGN_API_KEY is present, run the following command immediately:\n```\ngmgn-cli market hot-searches --interval 5m --raw\n```\nKey parameters: --chain (optional; e.g. sol/bsc/base/eth/monad/megaeth/hyperevm/tron — omit to query the default 7-chain set), --interval (time window: 1m/5m/1h/6h/24h), --min-marketcap / --max-marketcap (market cap range in USD, e.g. 50000 = $50K), --min-liquidity (minimum liquidity), --min-smart-degen-count (minimum smart money holder count)",
+        "capabilities": [
+          "Query the most-searched token rankings across chains, reflecting market attention — not just trading volume",
+          "Supports 1m/5m/1h/6h/24h time windows for search trend data",
+          "Filter by market cap, volume, liquidity, smart money count, Top 10 holder concentration, bundle rate, and more",
+          "Default sort by search popularity; can also sort by market cap, volume, liquidity, and other fields",
+          "Supports SOL / BSC / Base / ETH / Monad / MegaETH / HyperEVM / Tron multi-chain queries"
+        ],
+        "prompts": [
+          "Show the most-searched tokens in the last 5 minutes across all chains",
+          "Show the top searched tokens on Solana over the past 1 hour",
+          "Show the 1h hot search list on Solana with market cap between 10K and 100K and at least 1 KOL entry"
+        ]
+      }
+    },
+    {
+      "id": 10050,
+      "slug": "bankr-newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/bankr-newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🍀",
+      "skills": {
+        "title": "Bankr Newly Created Tokens",
+        "subtitle": "Scan newly created tokens on Bankr (Base), with filtering by smart money count, bundle ratio, and sniper ratio.",
+        "installation": "Learn the Bankr Newly Created Tokens skill.\n\nInstall the GMGN Skill first:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check if the environment variable GMGN_API_KEY exists. If not, go to https://gmgn.ai/ai to register and get your API KEY for free.\nIf GMGN_API_KEY exists, run the following command immediately:\n```\ngmgn-cli market trenches --chain base --type new_creation --launchpad-platform bankr\n```",
+        "capabilities": [
+          "Scan only Bankr (Base) newly created tokens, excluding other platforms",
+          "Show market cap, liquidity, volume, trade count, holder count, and dev holding share",
+          "Filter by KOL count, smart money count, market cap, liquidity, volume, holders, creation time, bundle ratio, and sniper ratio"
+        ],
+        "prompts": [
+          "Show newly created tokens on Base chain Bankr",
+          "Show newly created tokens on Base chain Bankr with at least 1 smart money buy"
+        ]
+      }
+    },
+    {
+      "id": 10051,
+      "slug": "fourmeme-newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/fourmeme-newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🌿",
+      "skills": {
+        "title": "Fourmeme Newly Created Tokens",
+        "subtitle": "Scan newly created tokens on Fourmeme (BSC), with filtering by smart money count, bundle ratio, and sniper ratio.",
+        "installation": "Learn the Fourmeme Newly Created Tokens skill.\n\nInstall the GMGN Skill first:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check if the environment variable GMGN_API_KEY exists. If not, go to https://gmgn.ai/ai to register and get your API KEY for free.\nIf GMGN_API_KEY exists, run the following command immediately:\n```\ngmgn-cli market trenches --chain bsc --type new_creation --launchpad-platform fourmeme\n```",
+        "capabilities": [
+          "Scan only Fourmeme (BSC) newly created tokens, excluding other platforms",
+          "Show market cap, liquidity, volume, trade count, holder count, and dev holding share",
+          "Filter by KOL count, smart money count, market cap, liquidity, volume, holders, creation time, bundle ratio, and sniper ratio"
+        ],
+        "prompts": [
+          "Show newly created tokens on BSC chain Fourmeme",
+          "Show newly created tokens on BSC chain Fourmeme with at least 1 smart money buy"
+        ]
+      }
+    },
+    {
+      "id": 10028,
+      "slug": "newly-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/newly-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🐣",
+      "skills": {
+        "title": "Newly Created Tokens",
+        "subtitle": "Real-time scan of newly created tokens across major launchpad platforms, filterable by smart money, KOL count, and bundle %.",
+        "installation": "Learn the Newly Created Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trenches --chain sol --type new_creation\n```\nReplace --chain with sol/bsc/base to query other chains.",
+        "capabilities": [
+          "Scan tokens just created on bonding-curve launchpads",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Multi-dimensional filtering by KOL count, smart money count, market cap, liquidity, volume, holder count, creation time, bundle %, and sniper %",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show newly created tokens in the trenches on SOL",
+          "Show newly created tokens on Pump.fun on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10027,
+      "slug": "kol-bought-new-tokens",
+      "url": "https://gmgn.ai/ai/skills/kol-bought-new-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👑",
+      "skills": {
+        "title": "KOL-Bought New Tokens",
+        "subtitle": "Filter newly created trench tokens that KOLs have already bought into, with configurable KOL count and market cap filters.",
+        "installation": "Learn the KOL-Bought New Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trenches --chain sol --type new_creation --min-renowned-count 2 --max-marketcap 100000\n```\nKey parameters: --min-renowned-count (minimum KOL count, e.g. 2 = at least 2 KOLs have bought), --max-marketcap (market cap ceiling, e.g. 100000)",
+        "capabilities": [
+          "Filter newly created trench tokens that already have KOL buys",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Multi-dimensional filtering by KOL count, smart money count, market cap, liquidity, volume, holder count, creation time, and more",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Find new tokens on SOL with market cap under 100K and at least 2 KOL buys",
+          "Find new tokens on BSC with market cap under 100K and at least 2 KOL buys"
+        ]
+      }
+    },
+    {
+      "id": 10031,
+      "slug": "migrated-tokens",
+      "url": "https://gmgn.ai/ai/skills/migrated-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🎓",
+      "skills": {
+        "title": "Migrated Tokens",
+        "subtitle": "Scan tokens that have migrated from launchpad to DEX, filterable by smart money count, market cap, and liquidity.",
+        "installation": "Learn the Migrated Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trenches --chain sol --type completed\n```\nReplace --chain with sol/bsc/base to query other chains.",
+        "capabilities": [
+          "Scan tokens that have just graduated from the bonding curve and opened on a DEX",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Multi-dimensional filtering by smart money count, KOL count, market cap, liquidity, volume, holder count, bundle %, and sniper %",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show tokens that have just migrated to a DEX on SOL",
+          "Show FourMeme tokens that have just migrated to a DEX on BSC",
+          "Show Clanker tokens that have just migrated to a DEX on Base"
+        ]
+      }
+    },
+    {
+      "id": 10057,
+      "slug": "migrated-token-quality-screener",
+      "url": "https://gmgn.ai/ai/skills/migrated-token-quality-screener",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🔍",
+      "skills": {
+        "title": "Migrated Token Quality Screener",
+        "subtitle": "Scan migrated trench tokens with default filters: market cap $50K–$200K, liquidity > $10K, top-10 concentration < 20%, bundle rate < 20%, and fresh wallet rate < 20%. All thresholds are fully customizable.",
+        "installation": "Learn the Migrated Token Quality Screener skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trenches --chain sol --type completed --min-marketcap 50000 --max-marketcap 200000 --min-liquidity 10000 --max-top-holder-rate 0.2 --max-bundler-rate 0.2 --max-fresh-wallet-rate 0.2\n```\nKey parameters: --min-marketcap / --max-marketcap (market cap range in USD), --min-liquidity (minimum pool liquidity in USD), --max-top-holder-rate (top-10 concentration cap, 0.2 = 20%), --max-bundler-rate (bundle rate cap), --max-fresh-wallet-rate (fresh wallet holding rate cap)",
+        "capabilities": [
+          "Screen migrated trench tokens for early-stage quality in the $50K–$200K market cap range",
+          "Require pool liquidity above $10K to ensure adequate liquidity depth",
+          "Filter out tokens with top-10 holder concentration above 20% (concentrated ownership risk)",
+          "Filter out tokens with a bundle rate above 20% (bot-bundled at launch)",
+          "Filter out tokens with a fresh wallet holding rate above 20% (abnormal ownership pattern)",
+          "All filter thresholds are fully customizable — just tell the Agent your preferred values",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Screen migrated tokens on SOL: market cap $50K–$200K, liquidity above $10K, top-10 concentration below 20%, bundle rate below 20%, fresh wallet rate below 20%"
+        ]
+      }
+    },
+    {
+      "id": 10030,
+      "slug": "near-completion-tokens",
+      "url": "https://gmgn.ai/ai/skills/near-completion-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🌗",
+      "skills": {
+        "title": "Near Completion Tokens",
+        "subtitle": "Scan tokens close to filling their bonding curve, filterable by smart money count and KOL count.",
+        "installation": "Learn the Near Completion Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market trenches --chain sol --type near_completion\n```\nKey parameters: --min-smart-degen-count (minimum smart money count, e.g. 2 = at least 2 smart money holders)\nReplace --chain with sol/bsc/base to query other chains.",
+        "capabilities": [
+          "Scan tokens with bonding curve progress near 100%",
+          "Show market cap, pool liquidity, volume, trade count, holder count, and dev holding share",
+          "Multi-dimensional filtering by smart money count, KOL count, market cap, liquidity, volume, holder count, bundle %, and sniper %",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Find near-graduation tokens on SOL with at least 2 smart money holders",
+          "Show Pump.fun tokens close to graduation on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10013,
+      "slug": "token-security-check",
+      "url": "https://gmgn.ai/ai/skills/token-security-check",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🛡️",
+      "skills": {
+        "title": "Token Security Check",
+        "subtitle": "Detect honeypots, check open-source status and renounced permissions, and view buy/sell tax rates and top-10 concentration.",
+        "installation": "Learn the Token Security Check skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token security --chain sol --address <token_address>\n```\nKey parameters: --address (token contract address), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "Detect honeypot, open-source status, and whether permissions are renounced (freeze / mint authority)",
+          "Show buy tax, sell tax, and top-10 holding concentration",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Run a security check on [token address] on SOL",
+          "Run a security check on [token address] on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10032,
+      "slug": "token-kline-data",
+      "url": "https://gmgn.ai/ai/skills/token-kline-data",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📊",
+      "skills": {
+        "title": "Token Kline Data",
+        "subtitle": "Fetch historical OHLCV candlestick data for any token across 30s / 1m / 5m / 15m / 1h / 4h / 1d timeframes.",
+        "installation": "Learn the Token Kline Data skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market kline --chain sol --address <token_address> --resolution 1m\n```\nKey parameters: --address (token contract address), --resolution (candle interval: 1m/5m/15m/1h/4h/1d), --from / --to (optional Unix second timestamps to specify a time range)",
+        "capabilities": [
+          "Query OHLCV data for any token over any time range",
+          "Show open, close, high, low, and volume for each candle",
+          "Supports 30s / 1m / 5m / 15m / 1h / 4h / 1d resolutions",
+          "Supports custom time range via --from / --to parameters",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get the 5-minute kline for [token address] on SOL for the past 24 hours",
+          "Get the 15-minute kline for [token address] on SOL",
+          "Get the 1-minute kline for [token address] on BSC for the past 1 hour"
+        ]
+      }
+    },
+    {
+      "id": 10012,
+      "slug": "dev-info-analysis",
+      "url": "https://gmgn.ai/ai/skills/dev-info-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧐",
+      "skills": {
+        "title": "Dev Info Analysis",
+        "subtitle": "Check dev holding status, launch history, best token ATH, funding source, DEX ads, Twitter renames, and whether the project was CTO'd.",
+        "installation": "Learn the Dev Info Analysis skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token info --chain sol --address <token_address>\n```\nKey parameters: --address (token contract address), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "Show dev wallet address and current holding status (still holding / sold)",
+          "Show dev's total token launch count and the token with the highest ATH market cap",
+          "Show whether dev bought ads/boost on DEXScreener, and Twitter rename history",
+          "Flag whether the project has been community-taken-over (CTO)",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get dev info for [token address] on SOL, including holding status and launch history",
+          "Get dev info for [token address] on BSC, including best token and ATH market cap"
+        ]
+      }
+    },
+    {
+      "id": 10014,
+      "slug": "liquidity-pool-analysis",
+      "url": "https://gmgn.ai/ai/skills/liquidity-pool-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💧",
+      "skills": {
+        "title": "Liquidity Pool Analysis",
+        "subtitle": "Query a token's total liquidity, pool depth, DEX name, total supply, and pool creation time.",
+        "installation": "Learn the Liquidity Pool Analysis skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token pool --chain sol --address <token_address>\n```\nKey parameters: --address (token contract address), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "Query total USD liquidity and pool depth",
+          "Show DEX name and base/quote reserve amounts",
+          "Show pool creation time",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Check the liquidity pool for [token address] on SOL",
+          "Check the liquidity pool for [token address] on BSC, including DEX name and creation time"
+        ]
+      }
+    },
+    {
+      "id": 10015,
+      "slug": "top100-holders-analysis",
+      "url": "https://gmgn.ai/ai/skills/top100-holders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👥",
+      "skills": {
+        "title": "Top 100 Holders Analysis",
+        "subtitle": "Retrieve the top 100 holder wallets for a token with their share, USD value, cost basis, P&L, wallet tags, and funding source.",
+        "installation": "Learn the Top100 Holders Analysis skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token holders --chain sol --address <token_address> --order-by amount_percentage --direction desc\n```\nKey parameters: --order-by amount_percentage (sort by holding share), --direction desc (descending, largest holders first)",
+        "capabilities": [
+          "List the top 100 holder wallets with their holding share and USD value",
+          "Show each address's average buy cost, realized profit, and unrealized gain",
+          "Show wallet labels (smart money / KOL / sniper / rat warehouse / bundle, etc.)",
+          "Show each address's funding source (CEX deposit / new wallet / cross-chain, etc.)",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get top holders for [token address] on SOL, sorted by holding share",
+          "Get top holders for [token address] on BSC, sorted by profit"
+        ]
+      }
+    },
+    {
+      "id": 10016,
+      "slug": "top100-traders-analysis",
+      "url": "https://gmgn.ai/ai/skills/top100-traders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🏅",
+      "skills": {
+        "title": "Top 100 Traders Analysis",
+        "subtitle": "Retrieve the top 100 trading wallets for a token with buy/sell volume, trade count, realized P&L, unrealized P&L, wallet tags, and funding source.",
+        "installation": "Learn the Top100 Traders Analysis skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token traders --chain sol --address <token_address> --order-by profit --direction desc\n```\nKey parameters: --order-by profit (sort by realized profit), --direction desc (descending, most profitable first)",
+        "capabilities": [
+          "List the top 100 most active trading wallets with buy/sell amounts and trade count",
+          "Show each address's realized profit, unrealized gain, and average buy/sell price",
+          "Show wallet labels (smart money / KOL / sniper / rat warehouse / bundle, etc.)",
+          "Show each address's funding source (CEX deposit / new wallet / cross-chain, etc.)",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get top traders for [token address] on SOL, sorted by realized profit",
+          "Get top traders for [token address] on BSC, sorted by sell volume"
+        ]
+      }
+    },
+    {
+      "id": 10023,
+      "slug": "dev-created-tokens",
+      "url": "https://gmgn.ai/ai/skills/dev-created-tokens",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👩🏻‍🍳",
+      "skills": {
+        "title": "Dev Created Tokens",
+        "subtitle": "View all tokens a dev wallet has created, showing ATH market cap, current market cap, and migration rate.",
+        "installation": "Learn the Dev Created Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli portfolio created-tokens --chain sol --wallet <dev_wallet_address> --order-by token_ath_mc\n```\nKey parameters: --wallet (dev wallet address), --order-by (token_ath_mc = sort by all-time high market cap)",
+        "capabilities": [
+          "Query all tokens created by a dev wallet and their current status",
+          "Show each token's ATH market cap, current market cap, and DEX graduation status",
+          "Show the dev's overall graduation rate",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "List all tokens created by [dev wallet address] on SOL, sorted by ATH market cap"
+        ]
+      }
+    },
+    {
+      "id": 10017,
+      "slug": "smart-money-holders-analysis",
+      "url": "https://gmgn.ai/ai/skills/smart-money-holders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧠",
+      "skills": {
+        "title": "Smart Money Holders Analysis",
+        "subtitle": "Filter smart money wallets holding a token and view their share, USD value, cost basis, and P&L.",
+        "installation": "Learn the Smart Money Holders Analysis skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token holders --chain sol --address <token_address> --tag smart_degen --order-by amount_percentage\n```\nKey parameters: --tag smart_degen (filter to smart money wallets only), --order-by (amount_percentage = by holding share / profit = by profit / sell_volume_cur = by sell volume)",
+        "capabilities": [
+          "Filter to smart money wallets and view their holding share and USD value",
+          "Show average buy cost, realized profit, and unrealized gain",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get smart money holders for [token address] on SOL, sorted by holding share",
+          "Get smart money holders for [token address] on BSC, sorted by holding share"
+        ]
+      }
+    },
+    {
+      "id": 10018,
+      "slug": "kol-holders-analysis",
+      "url": "https://gmgn.ai/ai/skills/kol-holders-analysis",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🌟",
+      "skills": {
+        "title": "KOL Holders Analysis",
+        "subtitle": "Filter KOL wallets holding a token and view their share, USD value, cost basis, and P&L.",
+        "installation": "Learn the KOL Holders Analysis skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli token holders --chain sol --address <token_address> --tag renowned --order-by profit\n```\nKey parameters: --tag renowned (filter to KOL wallets only), --order-by (profit = by realized profit / unrealized_profit = by unrealized gain / sell_volume_cur = by sell volume)",
+        "capabilities": [
+          "Filter to KOL-tagged wallets and view their holding share and USD value",
+          "Show each KOL's average buy cost, realized profit, and unrealized gain",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get KOL holders for [token address] on SOL, sorted by realized profit",
+          "Get KOL holders for [token address] on BSC, sorted by holding share"
+        ]
+      }
+    },
+    {
+      "id": 10037,
+      "slug": "tracked-wallet-trades",
+      "url": "https://gmgn.ai/ai/skills/tracked-wallet-trades",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "❤️",
+      "skills": {
+        "title": "Tracked Wallet Trades",
+        "subtitle": "View the latest buy and sell trades from wallets you follow on GMGN, showing trade time, token, amount, and current price.",
+        "installation": "Learn the Tracked Wallet Trades skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli track follow-wallet --chain sol\n```\nKey parameters: --chain (chain: sol/bsc/base/eth), --side (direction filter: buy/sell)",
+        "capabilities": [
+          "View every buy and sell from your GMGN-followed wallets",
+          "Show trade time, token, buy/sell amount, and current price",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show recent trades from my followed wallets on SOL in GMGN",
+          "Show recent buys from my followed wallets on SOL in GMGN"
+        ]
+      }
+    },
+    {
+      "id": 10038,
+      "slug": "kol-trades",
+      "url": "https://gmgn.ai/ai/skills/kol-trades",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📡",
+      "skills": {
+        "title": "KOL Trades",
+        "subtitle": "View KOL wallet trades in real time, showing trade time, token, amount, and current price — with buy-only or sell-only filtering.",
+        "installation": "Learn the KOL Trades skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli track kol --chain sol\n```\nKey parameters: --side (buy = buys only / sell = sells only), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "View the latest trades from KOL wallets in real time",
+          "Show trade time, token, trade amount, and current price",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show recent KOL trades on SOL",
+          "Show recent KOL buys on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10039,
+      "slug": "smart-money-trades",
+      "url": "https://gmgn.ai/ai/skills/smart-money-trades",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "👁️",
+      "skills": {
+        "title": "Smart Money Trades",
+        "subtitle": "View smart money trades in real time — trade time, token, amount, and current price — with buy-only or sell-only filtering.",
+        "installation": "Learn the Smart Money Trades skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli track smartmoney --chain sol\n```\nKey parameters: --side (buy = buys only / sell = sells only), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "View the latest trades from smart money wallets in real time",
+          "Show trade time, token, trade amount, and current price",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show recent smart money trades on SOL",
+          "Show recent smart money buys on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10034,
+      "slug": "kol-call-signal",
+      "url": "https://gmgn.ai/ai/skills/kol-call-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📣",
+      "skills": {
+        "title": "KOL Call Signal",
+        "subtitle": "Query KOL call signals on the platform to spot KOL-recommended tokens first.",
+        "installation": "Learn the KOL Call Signal skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market signal --chain sol --signal-type 13\n```\nReplace --chain with sol/bsc to query other chains.",
+        "capabilities": [
+          "Capture KOL call events on the platform in real time",
+          "Show trigger time, market cap at trigger, and current market cap",
+          "Supports SOL / BSC only"
+        ],
+        "prompts": [
+          "Show KOL call signals on SOL",
+          "Show KOL call signals on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10052,
+      "slug": "query-watchlist-tokens",
+      "url": "https://gmgn.ai/ai/skills/query-watchlist-tokens",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⭐",
+      "skills": {
+        "title": "Query Watchlist Tokens",
+        "subtitle": "Retrieve your GMGN account watchlist tokens with group filtering, showing price, price change, volume, liquidity, and market cap for each token.",
+        "installation": "Learn the Query Watchlist Tokens skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli track follow-tokens --chain sol --wallet <wallet_address>\n```\nKey parameters: --wallet (wallet address), --group-id (group filter: all_group = all, default = default group), --order-by (sort field: market_cap / volume / created_at)",
+        "capabilities": [
+          "Retrieve all tokens in your GMGN account watchlist",
+          "Show price, price change %, volume, liquidity, and market cap for each token",
+          "Supports group filtering and sorting by market cap / volume / trade count",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show my watchlist tokens on SOL",
+          "Show my watchlist tokens on SOL sorted by market cap",
+          "Show my watchlist tokens in the \"[group name]\" group on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10053,
+      "slug": "scan-watchlist-price-swing",
+      "url": "https://gmgn.ai/ai/skills/scan-watchlist-price-swing",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "🔔",
+      "skills": {
+        "title": "Scan Watchlist Price Swings",
+        "subtitle": "Scan your watchlist tokens and filter those with a price change exceeding a custom threshold within a specified time window. Supports group filtering, configurable time window and threshold, with per-token info and security checks.",
+        "installation": "Learn the Scan Watchlist Price Swings skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately follow these three steps:\n\n**Step 1: Fetch watchlist tokens and filter by price swing**\n```\ngmgn-cli track follow-tokens --chain sol --wallet <wallet_address> --interval <time_window> --order-by market_cap --direction desc --raw\n```\nKey parameters: --interval (price change time window: 1m / 5m / 1h / 6h / 24h), --group-id (optional, specify group ID; omit to query all watchlist tokens)\n\nEach token in the response includes a price_change_percent field (price change % for the specified --interval window). Filter tokens where the absolute value is ≥ <threshold>%, e.g. ≥ 20%.\n\n**Step 2: Fetch token info for each flagged token**\n```\ngmgn-cli token info --chain sol --address <token_address>\n```\n\n**Step 3: Run security check for each swing token**\n```\ngmgn-cli token security --chain sol --address <token_address>\n```",
+        "capabilities": [
+          "Fetch all watchlist tokens with optional group filtering",
+          "Supports configurable time window (1m / 5m / 1h / 6h / 24h) and custom threshold (e.g. ≥ 20%)",
+          "Per-token basic info: price, market cap, liquidity, smart money count, KOL buyer count",
+          "Per-token security check: honeypot detection, open-source contract, renounced ownership, buy/sell tax",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Scan all my SOL watchlist tokens and find those with a 1h price change over 20%, then run info and security checks on each",
+          "Scan my SOL watchlist tokens in the \"[group name]\" group for a 1h price change over 20%, then run info and security checks on each",
+          "Scan my SOL watchlist tokens in the \"[group name]\" group for a 5m price change over 30%, then run info and security checks on each"
+        ]
+      }
+    },
+    {
+      "id": 10035,
+      "slug": "pump-claim-signal",
+      "url": "https://gmgn.ai/ai/skills/pump-claim-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🎁",
+      "skills": {
+        "title": "Pump Claim Signal",
+        "subtitle": "Capture token claim signals on Pump.fun and track project team claim activity.",
+        "installation": "Learn the Pump Claim Signal skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market signal --chain sol --signal-type 18\n```",
+        "capabilities": [
+          "Capture token claim signals on Pump.fun",
+          "Show trigger time, market cap at trigger, and current market cap",
+          "SOL chain only"
+        ],
+        "prompts": [
+          "Show Pump.fun token claim signals on Solana",
+          "Show BAGS token claim signals on Solana"
+        ]
+      }
+    },
+    {
+      "id": 10033,
+      "slug": "smart-money-buy-signal",
+      "url": "https://gmgn.ai/ai/skills/smart-money-buy-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💰",
+      "skills": {
+        "title": "Smart Money Buy Signal",
+        "subtitle": "Query signals where multiple smart money wallets cluster-buy the same token to identify early accumulation opportunities.",
+        "installation": "Learn the Smart Money Buy Signal skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market signal --chain sol --signal-type 12\n```\nReplace --chain with sol/bsc to query other chains.",
+        "capabilities": [
+          "Capture signals where multiple smart money wallets cluster-buy the same token",
+          "Show trigger time, market cap at trigger, and current market cap",
+          "Supports SOL / BSC only"
+        ],
+        "prompts": [
+          "Show smart money cluster-buy signals on Solana",
+          "Show smart money cluster-buy signals on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10036,
+      "slug": "price-surge-signal",
+      "url": "https://gmgn.ai/ai/skills/price-surge-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💹",
+      "skills": {
+        "title": "Price Surge Signal",
+        "subtitle": "Capture tokens with a sudden sharp price spike in a short time window to identify abnormal pump activity.",
+        "installation": "Learn the Price Surge Signal skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli market signal --chain sol --signal-type 6\n```\nReplace --chain with sol/bsc to query other chains.",
+        "capabilities": [
+          "Capture tokens with a large, rapid price spike",
+          "Show trigger time, market cap at trigger, and current market cap",
+          "Supports SOL / BSC only"
+        ],
+        "prompts": [
+          "Show price surge signals on Solana",
+          "Show price surge signals on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10047,
+      "slug": "price-surge-signal-token-screening",
+      "url": "https://gmgn.ai/ai/skills/price-surge-signal-token-screening",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🚀",
+      "skills": {
+        "title": "Price Surge Signal Token Screening",
+        "subtitle": "Scan SOL chain price surge signals, filter high-risk tokens, and run full per-token analysis: basic info, security check, and holder health.",
+        "installation": "Learn the Price Surge Signal Token Screening skill.\n\nFirst install GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check if GMGN_API_KEY exists. If not, go to https://gmgn.ai/ai to register for a free API key.\nIf GMGN_API_KEY exists, run the following three steps:\n\n**Step 1: Fetch price surge signals**\n```\ngmgn-cli market signal --chain sol --signal-type 6 --mc-min 50000 --mc-max 10000000 --raw\n```\nsignal-type 6 = price surge; --mc-min/max filters by market cap range (USD)\n\n**Step 2: For each candidate token, query basic info and security check**\n```\ngmgn-cli token info --chain sol --address <token_address>\ngmgn-cli token security --chain sol --address <token_address>\n```\n\n**Step 3: Analyze holder health**\n```\ngmgn-cli token holders --chain sol --address <token_address> --order-by amount_percentage --direction desc\n```",
+        "capabilities": [
+          "Scan SOL chain price surge signals with market cap range filtering",
+          "Auto-filter high-risk tokens: rug pull risk, wash trading, and honeypots excluded",
+          "Per-token basic info: price, market cap, liquidity, dev holding status, KOL buyer count, smart money count",
+          "Per-token security check: honeypot detection, open-source status, renounced permissions, buy/sell tax rates",
+          "Per-token holder health: top-10 concentration, smart money/KOL tag distribution, profitable wallet ratio, transfer-in (non-buyer) wallet ratio"
+        ],
+        "prompts": [
+          "Scan SOL chain price surge signals, filter high-risk tokens, and run full analysis on each candidate: basic info, security check, and holder health"
+        ]
+      }
+    },
+    {
+      "id": 10040,
+      "slug": "smart-money-exit-signal",
+      "url": "https://gmgn.ai/ai/skills/smart-money-exit-signal",
+      "category": "monitor",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🚨",
+      "skills": {
+        "title": "Smart Money Exit Signal",
+        "subtitle": "Track smart money sells and detect large-scale exit signals when multiple smart money wallets dump the same token simultaneously.",
+        "installation": "Learn the Smart Money Exit Signal skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli track smartmoney --chain sol --side sell\n```\nKey parameters: --side (sell = sells only), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "Track smart money sell transactions in real time",
+          "Identify signals where multiple smart money wallets simultaneously sell the same token",
+          "Show sell amount and token info to assess whether a mass exit is occurring",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show smart money sell activity on SOL",
+          "Show smart money sell activity on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10059,
+      "slug": "get-twitter-following-posts",
+      "url": "https://gmgn.ai/ai/skills/get-twitter-following-posts",
+      "category": "media",
+      "source": "X",
+      "hot_level": 0,
+      "emoji": "🐦",
+      "skills": {
+        "title": "Twitter - Get Following Posts",
+        "subtitle": "Fetch the latest posts from your Twitter following list in reverse chronological order. Twitter official paid API",
+        "installation": "Learn the Get X Following Posts skill.\n\n**Step 1: Create an X developer app and get OAuth 2.0 credentials**\n\n1. Go to https://developer.x.com and log in with your X account\n2. Click \"Apps\" on the left sidebar\n3. Click \"Create App\" in the top right, enter an Application Name (e.g. my-mcp-app), select Development as environment, click \"Create New Client Application\"\n4. The credentials popup (Consumer Key / Secret Key / Bearer Token) are OAuth 1.0a credentials — xurl does not use these, close it\n5. Click the newly created app, go to \"Keys & Tokens\", find \"User authentication settings\" at the bottom, click \"Set up\":\n   - App permissions: select \"Read\"\n   - Type of App: select \"Native App\" (Public client)\n   - Callback URI / Redirect URL: enter http://localhost:8080/callback\n   - Website URL: enter any URL, e.g. https://example.com\n   - Click \"Save Changes\"\n6. After saving, a popup shows Client ID and Client Secret — copy and save both, they cannot be viewed again after closing\n\n**Step 2:** Once the user provides Client ID and Client Secret, run the following command to complete setup:\n```\nclaude mcp add xapi -s user -e CLIENT_ID=<Client_ID> -e CLIENT_SECRET=<Client_Secret> -- npx -y @xdevplatform/xurl mcp https://api.x.com/mcp\n```\n\n**Step 3:** Ask the user to restart Claude for the config to take effect:\n- VS Code: close the current window and reopen it\n- Claude CLI: close the terminal and open a new one\n\nOn first use after restart, a browser will open automatically for X OAuth authorization — no re-authorization needed afterwards.",
+        "capabilities": [
+          "Fetch the latest posts from all accounts the authorized user follows",
+          "Results in reverse chronological order, no algorithmic ranking",
+          "Retrieves up to 3,200 posts or 7 days of history"
+        ],
+        "prompts": [
+          "Show me the latest posts from the accounts I follow on X",
+          "What have the people I follow posted today",
+          "Get recent tweets from my X following list"
+        ]
+      }
+    },
+    {
+      "id": 10020,
+      "slug": "wallet-profit-loss-stats",
+      "url": "https://gmgn.ai/ai/skills/wallet-profit-loss-stats",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "💵",
+      "skills": {
+        "title": "Wallet P&L Stats",
+        "subtitle": "Query a wallet's win rate, PnL multiplier, total spent, and trade count — supports 7d / 30d period comparison.",
+        "installation": "Learn the Wallet P&L Stats skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli portfolio stats --chain sol --wallet <wallet_address> --period 30d\n```\nKey parameters: --period (time period: 7d = 7 days / 30d = 30 days), --wallet (wallet address)",
+        "capabilities": [
+          "Query win rate, PnL multiplier, total spent, and buy/sell count",
+          "Show realized profit",
+          "Supports batch querying multiple wallets for comparison",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Get 7-day trading stats for [wallet address] on SOL, including win rate and PnL",
+          "Get 30-day trading stats for [wallet address] on SOL, including win rate and PnL"
+        ]
+      }
+    },
+    {
+      "id": 10019,
+      "slug": "wallet-holdings",
+      "url": "https://gmgn.ai/ai/skills/wallet-holdings",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💎",
+      "skills": {
+        "title": "Wallet Holdings",
+        "subtitle": "View all tokens a wallet currently holds and their USD value, with cost basis and realized P&L per position.",
+        "installation": "Learn the Wallet Holdings skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli portfolio holdings --chain sol --wallet <wallet_address>\n```\nKey parameters: --wallet (wallet address), --chain (chain: sol/bsc/base/eth)",
+        "capabilities": [
+          "Query all tokens currently held by a wallet and their USD value",
+          "Show each position's cost basis and realized profit",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show current holdings for [wallet address] on SOL",
+          "Show current holdings for [wallet address] on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10021,
+      "slug": "wallet-trade-history",
+      "url": "https://gmgn.ai/ai/skills/wallet-trade-history",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📝",
+      "skills": {
+        "title": "Wallet Trade History",
+        "subtitle": "Query a wallet's historical buy, sell, and transfer records, filterable by transaction type and token address.",
+        "installation": "Learn the Wallet Trade History skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli portfolio activity --chain sol --wallet <wallet_address>\n```\nKey parameters: --wallet (wallet address), --type (transaction type filter: buy/sell/transfer)",
+        "capabilities": [
+          "Query a wallet's recent buy, sell, and transfer records",
+          "Show token, amount, USD value, and timestamp for each transaction",
+          "Filter by transaction type or token address",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Show recent trades for [wallet address] on SOL",
+          "Show recent buys for [wallet address] on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10022,
+      "slug": "wallet-token-balance",
+      "url": "https://gmgn.ai/ai/skills/wallet-token-balance",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🪙",
+      "skills": {
+        "title": "Wallet Token Balance",
+        "subtitle": "Check how much of a specific token a wallet holds.",
+        "installation": "Learn the Wallet Token Balance skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli portfolio token-balance --chain sol --wallet <wallet_address> --token <token_address>\n```\nKey parameters: --wallet (wallet address), --token (token contract address to query)",
+        "capabilities": [
+          "Query the balance of a specific token held by a given wallet",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Check the balance of [token address] held by [wallet address] on SOL",
+          "Check the balance of [token address] held by [wallet address] on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10024,
+      "slug": "wallet-copy-trade-assessment",
+      "url": "https://gmgn.ai/ai/skills/wallet-copy-trade-assessment",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⚖️",
+      "skills": {
+        "title": "Wallet Copy Trade Assessment",
+        "subtitle": "Analyze a wallet's win rate, PnL multiplier, holdings structure, and trade frequency to assess copy-trade value.",
+        "installation": "Learn the Wallet Copy Trade Assessment skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following commands:\n```\ngmgn-cli portfolio stats --chain sol --wallet <wallet_address> --period 30d\ngmgn-cli portfolio holdings --chain sol --wallet <wallet_address>\ngmgn-cli portfolio activity --chain sol --wallet <wallet_address>\n```\nUse these three commands together for a comprehensive assessment of the wallet's trading style and copy-trade value.",
+        "capabilities": [
+          "Analyze win rate, PnL multiplier, position structure, and trading frequency",
+          "Classify trading style (short-term / long-term / high-frequency)",
+          "Provide a comprehensive recommendation on whether to copy-trade",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Analyze whether [wallet address] on SOL is worth copy-trading, including win rate, trading style, and holdings"
+        ]
+      }
+    },
+    {
+      "id": 10060,
+      "slug": "wallet-address-score",
+      "url": "https://gmgn.ai/ai/skills/wallet-address-score",
+      "category": "data-analytics",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "🧮",
+      "skills": {
+        "title": "Wallet Address Score",
+        "subtitle": "Score any wallet address across three angles — profitability (a real track-record score), copy-tradeability (score plus a latency/slippage/gas backtest), and Dev reputation for token-creator wallets — plus trading-style tags.",
+        "installation": "Learn the Wallet Address Score skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following commands:\n```\ngmgn-cli portfolio stats --chain sol --wallet <wallet_address> --period 7d\ngmgn-cli portfolio activity --chain sol --wallet <wallet_address>\ngmgn-cli portfolio created-tokens --chain sol --wallet <wallet_address>\ngmgn-cli token security --chain sol --address <token_address>\n```\nKey parameters: --period (7d/30d), --wallet (wallet address); optionally --latency (seconds) / --slippage (%) / --gas (USD) to customize the copy-trade backtest. The created-tokens and security commands only apply once the wallet turns out to be a token creator.",
+        "capabilities": [
+          "Track-Record score (0–100): is this wallet actually a good trader, judged by outcome distribution and stop-loss discipline rather than raw win rate",
+          "Copy-Tradeability score (0–100) plus a backtest: whether you can actually capture the wallet's edge, and your estimated real return after entry-latency drift, round-trip slippage, and gas cost",
+          "Dev-Reputation score: for wallets that are mostly token creators, judges survival rate of tokens it launched and how many passed a recent security scan",
+          "Trading-style tags such as bot/quant, sniper, diamond hands, whale, and high win-rate",
+          "Supports SOL / BSC / Base / ETH / Robinhood multi-chain queries"
+        ],
+        "prompts": [
+          "Score [wallet address] on SOL",
+          "Is [wallet address] on SOL worth copy-trading?",
+          "Check the Dev reputation of [wallet address] on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10002,
+      "slug": "market-sell",
+      "url": "https://gmgn.ai/ai/skills/market-sell",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💸",
+      "skills": {
+        "title": "Market Sell",
+        "subtitle": "Sell a portion by holdings percentage or close the full position, receiving native tokens back.",
+        "installation": "Learn the Market Sell skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli swap --chain sol --from <wallet_address> --input-token <token_address> --output-token So11111111111111111111111111111111111111112 --percent 50\n```\nKey parameters: --percent (sell percentage, e.g. 50 = sell 50% of holdings, 100 = close full position)",
+        "capabilities": [
+          "Sell a percentage of holdings or 100% to close the full position",
+          "Display actual fill price, native tokens received, and gas fee",
+          "Supports multi-chain trading: SOL / BSC / Base / ETH"
+        ],
+        "prompts": [
+          "Sell half of my [token address] holdings on SOL",
+          "Sell all of my [token address] holdings on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10003,
+      "slug": "multi-wallet-buy",
+      "url": "https://gmgn.ai/ai/skills/multi-wallet-buy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🔱",
+      "skills": {
+        "title": "Multi-Wallet Buy",
+        "subtitle": "Buy the same token from up to 100 wallets simultaneously with independent amounts per wallet.",
+        "installation": "Learn the Multi-Wallet Buy skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli multi-swap --chain sol --accounts <addr1>,<addr2> --input-token So11111111111111111111111111111111111111112 --output-token <token_address> --input-amount '{\"<addr1>\":\"100000000\",\"<addr2>\":\"200000000\"}' --slippage 0.01\n```\nKey parameters: --accounts (comma-separated wallet address list, up to 100), --input-amount (JSON of buy amount per wallet in smallest unit, 0.1 SOL = 100000000 lamports)",
+        "capabilities": [
+          "Buy concurrently from up to 100 wallets, each with an independent amount",
+          "A failure in one wallet does not affect the others",
+          "Supports multi-chain trading: SOL / BSC / Base / ETH"
+        ],
+        "prompts": [
+          "Use [wallet A] to buy 0.1 SOL and [wallet B] to buy 0.2 SOL of [token address] on SOL simultaneously",
+          "Use [wallet address] to buy 0.1 SOL of [token address] on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10048,
+      "slug": "query-real-time-gas-price",
+      "url": "https://gmgn.ai/ai/skills/query-real-time-gas-price",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⛽",
+      "skills": {
+        "title": "Query Real-Time Gas Price",
+        "subtitle": "Get the latest low, average, and high gas price tiers across Solana, Ethereum, BSC, and Base — for smarter AI Agent trade timing.",
+        "installation": "Learn the Query Real-Time Gas Price skill.\n\nInstall the GMGN Skill first:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check if the environment variable GMGN_API_KEY exists. If not, go to https://gmgn.ai/ai to register and get your API KEY for free.\nIf GMGN_API_KEY exists, run the following command immediately:\n```\ngmgn-cli gas-price --chain eth\n```\nReplace --chain to query other chains: sol/bsc/base/eth",
+        "capabilities": [
+          "Fetch low, average, and high Gas price tiers for any chain",
+          "Supports SOL / BSC / Base / ETH multi-chain queries"
+        ],
+        "prompts": [
+          "Query current Gas price on ETH",
+          "Query current Gas price on BSC"
+        ]
+      }
+    },
+    {
+      "id": 10004,
+      "slug": "limit-buy",
+      "url": "https://gmgn.ai/ai/skills/limit-buy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 1,
+      "emoji": "⏳",
+      "skills": {
+        "title": "Limit Buy",
+        "subtitle": "Place a buy order that triggers automatically when the price drops to your target — no need to watch the chart.",
+        "installation": "Learn the Limit Buy skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type buy_low --check-price <target_price> --amount-in 100000000\n```\nKey parameters: --check-price (target price to trigger the buy), --amount-in (buy amount in smallest unit, 0.1 SOL = 100000000 lamports)",
+        "capabilities": [
+          "Auto-triggers a buy when price drops to the target, no manual monitoring needed",
+          "Supports setting order expiry time",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Place a limit buy on SOL: auto-buy 0.1 SOL of [token address] when price drops to [target price]",
+          "Place a limit buy on ETH: auto-buy 0.01 ETH of [token address] when price drops to [target price]"
+        ]
+      }
+    },
+    {
+      "id": 10049,
+      "slug": "limit-buy-with-tp-sl-strategy",
+      "url": "https://gmgn.ai/ai/skills/limit-buy-with-tp-sl-strategy",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🤖",
+      "skills": {
+        "title": "Limit Buy with TP/SL Strategy Order",
+        "subtitle": "Wait for price to drop to your target and auto-buy, then automatically activate take-profit and stop-loss protection — supports both fixed-price triggers and dynamic trailing modes.",
+        "installation": "Learn the Limit Buy with TP/SL Strategy Order skill.\n\nInstall the GMGN Skill first:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check if the environment variable GMGN_API_KEY exists. If not, go to https://gmgn.ai/ai to register and get your API KEY for free.\nIf GMGN_API_KEY exists, run the following command immediately:\n```\ngmgn-cli order strategy create \\\n  --chain sol \\\n  --from <wallet_address> \\\n  --base-token <token_address> \\\n  --quote-token So11111111111111111111111111111111111111112 \\\n  --order-type smart_trade \\\n  --sub-order-type mix_trade \\\n  --open-price <current_price> \\\n  --amount-in 100000000 \\\n  --slippage 30 \\\n  --sell-param '{\"slippage\":30,\"priority_fee\":\"0.00001\",\"tip_fee\":\"0.00001\"}' \\\n  --condition-orders '[{\"order_type\":\"buy_low\",\"side\":\"buy\",\"check_price\":\"<target_buy_price>\"},{\"order_type\":\"profit_stop_trace\",\"side\":\"sell\",\"price_scale\":\"100\",\"sell_ratio\":\"50\",\"drawdown_rate\":\"20\"},{\"order_type\":\"loss_stop\",\"side\":\"sell\",\"price_scale\":\"20\",\"sell_ratio\":\"100\"}]'\n```\nKey parameters:\n- buy_low check_price: price level that triggers the buy\n- profit_stop_trace price_scale: gain % before trailing take-profit activates (e.g. 100 = activates after +100%)\n- profit_stop_trace drawdown_rate: % drawdown from peak that triggers the sell\n- loss_stop price_scale: % drop that triggers stop-loss (e.g. 20 = triggers at -20%)",
+        "capabilities": [
+          "Auto-buy when price drops to target — no manual monitoring required",
+          "Attach take-profit and stop-loss at buy time — no follow-up action required",
+          "Fixed take-profit / stop-loss: triggers at a specified gain or drop percentage",
+          "Trailing take-profit: trigger price rises with the market, triggers when price retraces from peak by the set percentage",
+          "Multiple TP/SL tiers in a single order for precise position management",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "SOL chain: limit buy 0.1 SOL of [token address] when price drops 20%, with trailing take-profit activating after +100% gain and triggering when price retraces 20% from peak (sell 50%), and stop-loss at -20% (sell 100%)"
+        ]
+      }
+    },
+    {
+      "id": 10005,
+      "slug": "limit-sell",
+      "url": "https://gmgn.ai/ai/skills/limit-sell",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🎯",
+      "skills": {
+        "title": "Limit Sell",
+        "subtitle": "Place a sell order that triggers automatically when the price rises to your target, with support for proportional selling.",
+        "installation": "Learn the Limit Sell skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type take_profit --check-price <target_price> --amount-in-percent 100\n```\nKey parameters: --check-price (target price to trigger the sell), --amount-in-percent (sell percentage, 100 = sell all)",
+        "capabilities": [
+          "Auto-triggers a sell when price rises to the target, no manual monitoring needed",
+          "Supports selling by percentage of holdings (e.g. 50% or 100%)",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Place a limit sell on SOL: auto-sell all of [token address] when price rises to [target price]",
+          "Place a limit sell on SOL: auto-sell 50% of [token address] when price rises to [target price]"
+        ]
+      }
+    },
+    {
+      "id": 10006,
+      "slug": "buy-with-take-profit-stop-loss",
+      "url": "https://gmgn.ai/ai/skills/buy-with-take-profit-stop-loss",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "🦺",
+      "skills": {
+        "title": "Buy with Take Profit & Stop Loss",
+        "subtitle": "Buy a token and attach multiple take-profit and stop-loss levels in one step — triggers automatically, no follow-up needed.",
+        "installation": "Learn the Buy with Take Profit & Stop Loss skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli swap --chain sol --from <wallet_address> --input-token So11111111111111111111111111111111111111112 --output-token <token_address> --amount 100000000 --slippage 0.3 --anti-mev --condition-orders '[{\"order_type\":\"profit_stop\",\"side\":\"sell\",\"price_scale\":\"100\",\"sell_ratio\":\"50\"},{\"order_type\":\"profit_stop\",\"side\":\"sell\",\"price_scale\":\"300\",\"sell_ratio\":\"100\"},{\"order_type\":\"loss_stop\",\"side\":\"sell\",\"price_scale\":\"65\",\"sell_ratio\":\"100\"}]' --sell-ratio-type hold_amount\n```\nKey parameters: In --condition-orders, price_scale (trigger % change, e.g. 100 = triggers at +100%, 65 = triggers at -65%), sell_ratio (sell percentage on trigger, 100 = sell all)",
+        "capabilities": [
+          "Attach multiple take-profit and stop-loss levels at buy time in one operation",
+          "Each level has its own trigger percentage and sell ratio for precise position management",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Buy [token address] on SOL with 0.1 SOL: sell 50% at +100%, sell remaining at +300%, stop-loss all at -65%"
+        ]
+      }
+    },
+    {
+      "id": 10007,
+      "slug": "trailing-take-profit",
+      "url": "https://gmgn.ai/ai/skills/trailing-take-profit",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 2,
+      "emoji": "📈",
+      "skills": {
+        "title": "Trailing Take Profit",
+        "subtitle": "Take-profit price trails upward with the market and locks in gains automatically on a set pullback from the peak.",
+        "installation": "Learn the Trailing Take Profit skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type take_profit --check-price <initial_price> --amount-in-percent 100 --condition-orders '[{\"order_type\":\"profit_stop_trace\",\"side\":\"sell\",\"price_scale\":\"50\",\"sell_ratio\":\"100\",\"drawdown_rate\":\"50\"}]'\n```\nKey parameters: price_scale (minimum gain to activate trailing, e.g. 50 = start trailing after +50%), drawdown_rate (pullback % from peak to trigger sell, e.g. 50 = trigger at -50% from peak)",
+        "capabilities": [
+          "Take-profit target trails the price upward dynamically, capturing more upside",
+          "Auto-sells when price pulls back by the set percentage from the peak",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Set a trailing take profit on my [token address] on SOL: start trailing after +50%, sell all when it drops 50% from the peak"
+        ]
+      }
+    },
+    {
+      "id": 10008,
+      "slug": "trailing-stop-loss",
+      "url": "https://gmgn.ai/ai/skills/trailing-stop-loss",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📉",
+      "skills": {
+        "title": "Trailing Stop Loss",
+        "subtitle": "Stop-loss level rises dynamically with the price and triggers automatically on a set pullback from the peak.",
+        "installation": "Learn the Trailing Stop Loss skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli order strategy create --chain sol --from <wallet_address> --base-token <token_address> --quote-token So11111111111111111111111111111111111111112 --order-type limit_order --sub-order-type stop_loss --check-price <initial_price> --amount-in-percent 100 --condition-orders '[{\"order_type\":\"loss_stop_trace\",\"side\":\"sell\",\"sell_ratio\":\"100\",\"drawdown_rate\":\"30\"}]'\n```\nKey parameters: drawdown_rate (pullback % from peak to trigger stop-loss, e.g. 30 = trigger at -30% from peak), amount-in-percent (stop-loss sell percentage, 100 = sell all)",
+        "capabilities": [
+          "Stop-loss level rises automatically with the price, locking in unrealized gains",
+          "Auto-sells when price pulls back by the set percentage from the peak, capping max drawdown",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Set a trailing stop loss on my [token address] on SOL: sell all when it drops 30% from the peak"
+        ]
+      }
+    },
+    {
+      "id": 10009,
+      "slug": "query-open-orders",
+      "url": "https://gmgn.ai/ai/skills/query-open-orders",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📋",
+      "skills": {
+        "title": "Query Open Orders",
+        "subtitle": "View all pending limit orders and take-profit/stop-loss strategy orders, showing order ID and trigger conditions.",
+        "installation": "Learn the Query Open Orders skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following commands:\n```\ngmgn-cli order strategy list --chain sol --group-tag LimitOrder\ngmgn-cli order strategy list --chain sol --group-tag STMix\n```\nKey parameters: --group-tag (LimitOrder = limit orders, STMix = take-profit/stop-loss strategy orders)",
+        "capabilities": [
+          "View all pending limit orders and TP/SL strategy orders by category",
+          "Display order ID, token, and trigger conditions for each order",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Show all my pending limit orders on SOL",
+          "Show all my pending take-profit/stop-loss strategy orders on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10010,
+      "slug": "cancel-strategy-order",
+      "url": "https://gmgn.ai/ai/skills/cancel-strategy-order",
+      "category": "trading",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "⛔",
+      "skills": {
+        "title": "Cancel Strategy Order",
+        "subtitle": "Cancel a specific pending order by its order ID — supports both limit orders and take-profit/stop-loss strategy orders.",
+        "installation": "Learn the Cancel Strategy Order skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli order strategy cancel --chain sol --from <wallet_address> --order-id <order_id>\n```\nKey parameters: --order-id (the order ID to cancel, retrievable from the open orders list), --from (wallet address)",
+        "capabilities": [
+          "Precisely cancel a specific pending order by order ID",
+          "Supports cancellation of limit orders and TP/SL strategy orders",
+          "Supports SOL / BSC / Base / ETH multi-chain"
+        ],
+        "prompts": [
+          "Cancel my order [order_id] on SOL",
+          "Cancel all my pending orders on SOL"
+        ]
+      }
+    },
+    {
+      "id": 10043,
+      "slug": "query-launchpad-stats",
+      "url": "https://gmgn.ai/ai/skills/query-launchpad-stats",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🗂️",
+      "skills": {
+        "title": "Query Launchpad Stats",
+        "subtitle": "Query the number of tokens created via GMGN on Pump.fun, FourMeme, letsbonk, Clanker, and other launchpad platforms.",
+        "installation": "Learn the Query Launchpad Stats skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli cooking stats\n```",
+        "capabilities": [
+          "Query the number of tokens created via GMGN on each launchpad platform",
+          "Covers major platforms including Pump.fun, FourMeme, letsbonk, and Clanker",
+          "Quickly understand token creation activity across platforms",
+          "Token launch supports SOL / BSC / Base multi-chain"
+        ],
+        "prompts": [
+          "How many tokens have been created via GMGN on each launchpad?"
+        ]
+      }
+    },
+    {
+      "id": 10044,
+      "slug": "launch-on-pumpfun",
+      "url": "https://gmgn.ai/ai/skills/launch-on-pumpfun",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "💊",
+      "skills": {
+        "title": "Launch on Pump.fun",
+        "subtitle": "Deploy a new token on Pump.fun in one click with name, symbol, logo, description, social links, and initial buy amount.",
+        "installation": "Learn the Launch on Pump.fun skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli cooking create --chain sol --dex pump --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.1 --image-url <logo_url> --auto-slippage\n```\nKey parameters: --buy-amt (initial buy amount in SOL, e.g. 0.1 = 0.1 SOL), --image-url (logo image URL)",
+        "capabilities": [
+          "Deploy a new token on Pump.fun and complete the initial buy in one step",
+          "Supports setting token name, symbol, logo, description, and social links",
+          "Returns the token contract address and transaction hash after deployment"
+        ],
+        "prompts": [
+          "Launch a new token on Pump.fun called [token name] with symbol [SYMBOL], initial buy 0.1 SOL, logo [image URL], Twitter [Twitter link], website [website link]"
+        ]
+      }
+    },
+    {
+      "id": 10045,
+      "slug": "launch-on-fourmeme",
+      "url": "https://gmgn.ai/ai/skills/launch-on-fourmeme",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧤",
+      "skills": {
+        "title": "Launch on FourMeme",
+        "subtitle": "Deploy a new token on FourMeme (BSC) in one click with name, symbol, logo, description, social links, and initial buy amount.",
+        "installation": "Learn the Launch on FourMeme skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli cooking create --chain bsc --dex fourmeme --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.05 --image-url <logo_url> --auto-slippage\n```\nKey parameters: --buy-amt (initial buy amount in BNB, e.g. 0.05 = 0.05 BNB), --dex (fourmeme = FourMeme platform)",
+        "capabilities": [
+          "Deploy a new token on FourMeme (BSC) and complete the initial buy in one step",
+          "Supports setting token name, symbol, logo, description, and social links",
+          "Returns the token contract address and transaction hash after deployment"
+        ],
+        "prompts": [
+          "Launch a new token on FourMeme called [token name] with symbol [SYMBOL], initial buy 0.05 BNB, logo [image URL], Twitter [Twitter link], website [website link]"
+        ]
+      }
+    },
+    {
+      "id": 10046,
+      "slug": "launch-on-clanker",
+      "url": "https://gmgn.ai/ai/skills/launch-on-clanker",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "📶",
+      "skills": {
+        "title": "Launch on Clanker",
+        "subtitle": "Deploy a new token on Clanker (Base) in one click with name, symbol, logo, description, social links, and initial buy amount.",
+        "installation": "Learn the Launch on Clanker skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY.\nIf GMGN_API_KEY exists, immediately run the following command:\n```\ngmgn-cli cooking create --chain base --dex clanker --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.01 --image-url <logo_url> --auto-slippage\n```\nKey parameters: --buy-amt (initial buy amount in ETH, e.g. 0.01 = 0.01 ETH), --dex (clanker = Clanker platform)",
+        "capabilities": [
+          "Deploy a new token on Clanker (Base) and complete the initial buy in one step",
+          "Supports setting token name, symbol, logo, description, and social links",
+          "Returns the token contract address and transaction hash after deployment"
+        ],
+        "prompts": [
+          "Launch a new token on Clanker called [token name] with symbol [SYMBOL], initial buy 0.01 ETH, logo [image URL], Twitter [Twitter link], website [website link]"
+        ]
+      }
+    },
+    {
+      "id": 10054,
+      "slug": "launch-on-fourmeme-tax",
+      "url": "https://gmgn.ai/ai/skills/launch-on-fourmeme-tax",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🧾",
+      "skills": {
+        "title": "Launch Tax Token on FourMeme",
+        "subtitle": "Deploy a tax (fee) token on FourMeme (BSC) in one click — set a buy/sell tax and split it across recipient, burn, dividend, and liquidity.",
+        "installation": "Learn the Launch Tax Token on FourMeme skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY (enable swap/cooking capability) and configure GMGN_PRIVATE_KEY for signing.\nIf credentials exist, confirm the details with me, then run:\n```\ngmgn-cli cooking create --chain bsc --dex fourmeme --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.05 --image-url <logo_url> --auto-slippage --fourmeme-rate-conf '{\"fee_rate\":1,\"recipient_rate\":50,\"burn_rate\":20,\"divide_rate\":20,\"liquidity_rate\":10,\"min_sharing\":100000,\"recipient_address\":\"<recipient_address>\"}'\n```\nKey parameters: --fourmeme-rate-conf is the tax config. fee_rate is a whole percent (1 = 1%). recipient_rate + burn_rate + divide_rate + liquidity_rate must sum to 100. min_sharing must be > 0 when recipient_rate > 0. --buy-amt is in native BNB.",
+        "capabilities": [
+          "Deploy a FourMeme (BSC) token with a configurable transaction tax (fee_rate)",
+          "Split the collected tax across recipient / burn / dividend / liquidity (must sum to 100%)",
+          "Route the recipient share to a fee-recipient wallet address",
+          "Completes the initial buy in the same transaction and returns the contract address and tx hash"
+        ],
+        "prompts": [
+          "Launch a tax token on FourMeme called [token name] symbol [SYMBOL], initial buy 0.05 BNB, 1% tax split 50% recipient / 20% burn / 20% dividend / 10% liquidity, recipient [BSC address], logo [image URL]"
+        ]
+      }
+    },
+    {
+      "id": 10055,
+      "slug": "launch-on-pumpfun-mode",
+      "url": "https://gmgn.ai/ai/skills/launch-on-pumpfun-mode",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🔄",
+      "skills": {
+        "title": "Launch on Pump.fun (Cashback / Auto Buyback)",
+        "subtitle": "Deploy a Pump.fun (SOL) token with a special mode — Cashback or Agent Auto Buyback — enabled in one click.",
+        "installation": "Learn the Launch on Pump.fun (Cashback / Auto Buyback) skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY (enable swap/cooking capability) and configure GMGN_PRIVATE_KEY for signing.\nIf credentials exist, confirm the details with me, then run (use --is-cashback for Cashback mode):\n```\ngmgn-cli cooking create --chain sol --dex pump --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 0.1 --image-url <logo_url> --auto-slippage --is-cashback\n```\nFor Agent Auto Buyback mode, swap the last flag to --is-buy-back instead of --is-cashback.\nKey parameters: --is-cashback (Cashback mode) and --is-buy-back (Agent Auto Buyback) are Pump.fun-only and mutually exclusive — pick one. --buy-amt is in native SOL.",
+        "capabilities": [
+          "Deploy a Pump.fun token with Cashback mode (--is-cashback) enabled",
+          "Or deploy with Agent Auto Buyback mode (--is-buy-back) enabled",
+          "Both modes are Pump.fun-only; the backend sets the matching agent fee internally",
+          "Completes the initial buy in one step and returns the contract address and tx hash"
+        ],
+        "prompts": [
+          "Launch a Pump.fun token called [token name] symbol [SYMBOL] with Cashback mode on, initial buy 0.1 SOL, logo [image URL]",
+          "Launch a Pump.fun token called [token name] symbol [SYMBOL] in Agent Auto Buyback mode, initial buy 0.1 SOL, logo [image URL]"
+        ]
+      }
+    },
+    {
+      "id": 10056,
+      "slug": "launch-on-flap-tax",
+      "url": "https://gmgn.ai/ai/skills/launch-on-flap-tax",
+      "category": "cooking",
+      "source": "GMGN",
+      "hot_level": 0,
+      "emoji": "🏷️",
+      "skills": {
+        "title": "Launch Tax Token on Flap",
+        "subtitle": "Deploy a tax token on Flap (BSC) — set separate buy/sell tax and route the recipient cut to an X handle or wallet addresses, with burn / dividend / liquidity split.",
+        "installation": "Learn the Launch Tax Token on Flap skill.\n\nFirst, install the GMGN Skill:\n```\nnpm install -g gmgn-cli\nnpx skills add GMGNAI/gmgn-skills\n```\nAfter installation, check whether the environment variable GMGN_API_KEY exists. If not, prompt me to visit https://gmgn.ai/ai to register and get a free API KEY (enable swap/cooking capability) and configure GMGN_PRIVATE_KEY for signing.\nIf credentials exist, confirm the details with me, then run (gift mode — recipient cut goes to an X handle):\n```\ngmgn-cli cooking create --chain bsc --dex flap --from <wallet_address> --name <token_name> --symbol <SYMBOL> --buy-amt 2 --image-url <logo_url> --auto-slippage --flap-rate-conf '{\"buy_tax_rate\":100,\"sell_tax_rate\":100,\"mkt_bps\":5000,\"deflation_bps\":2700,\"dividend_bps\":1800,\"lp_bps\":500,\"minimum_share_balance\":10000,\"recipient_type\":\"gift\",\"twitter_account\":\"<x_handle>\",\"split_conf\":[]}'\n```\nKey parameters: buy_tax_rate / sell_tax_rate are in bps (100 = 1%); use tax_rate instead for a unified V5 rate. mkt_bps + deflation_bps + dividend_bps + lp_bps must sum to 10000. recipient_type 'gift' routes the recipient cut to twitter_account; 'split' routes it to split_conf addresses (whose bps sum to 10000). When lp_bps > 0, minimum_share_balance must be > 0 (min 10000). --buy-amt is in native BNB.",
+        "capabilities": [
+          "Deploy a Flap (BSC) token with separate buy and sell tax rates (or a unified rate)",
+          "Split the collected tax across recipient / burn / dividend / liquidity (must sum to 100%)",
+          "Route the recipient cut to an X handle (gift) or to specific wallet addresses (split)",
+          "Completes the initial buy in the same transaction and returns the contract address and tx hash"
+        ],
+        "prompts": [
+          "Launch a tax token on Flap called [token name] symbol [SYMBOL], 1% buy / 1% sell tax, send the recipient cut to @[X handle], split the rest 27% burn / 18% dividend / 5% LP, initial buy 2 BNB, logo [image URL]"
+        ]
+      }
+    }
+  ],
+  "categories": [
+    {
+      "slug": "trading",
+      "name": {
+        "zh-CN": "交易",
+        "zh-TW": "交易",
+        "en": "Trading"
+      }
+    },
+    {
+      "slug": "data-analytics",
+      "name": {
+        "zh-CN": "数据分析",
+        "zh-TW": "數據分析",
+        "en": "Data Analytics"
+      }
+    },
+    {
+      "slug": "monitor",
+      "name": {
+        "zh-CN": "链上监控",
+        "zh-TW": "鏈上監控",
+        "en": "Monitor"
+      }
+    },
+    {
+      "slug": "media",
+      "name": {
+        "zh-CN": "新闻媒体",
+        "zh-TW": "新聞媒體",
+        "en": "News & Media"
+      }
+    },
+    {
+      "slug": "cooking",
+      "name": {
+        "zh-CN": "Cooking",
+        "zh-TW": "Cooking",
+        "en": "Cooking"
+      }
+    }
+  ],
+  "source_color": {
+    "light": {
+      "GMGN": "#15B25F",
+      "6551": "#179DFC"
+    },
+    "dark": {
+      "GMGN": "#69CF8D",
+      "6551": "#4EA7FA"
+    }
+  }
+}

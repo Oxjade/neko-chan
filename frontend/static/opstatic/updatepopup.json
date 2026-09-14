@@ -1,0 +1,81 @@
+{
+  "version": 79,
+  "zh-CN": [
+    {
+      "title": "清爽布局模式",
+      "desc": "字段太多看着累？开个清爽模式 - 少看点，多赚点!",
+      "type": "image",
+      "url": "/static/opstatic/cleanlayout.png"
+    },
+    {
+      "title": "GMGN APP V3.0 上线！",
+      "desc": "正式推出在线 Callout 功能！多链关注钱包实时追踪 + 聪明钱/KOL 买入信号智能聚合，抢先一步拿下链上 Alpha！",
+      "type": "video",
+      "url": "/static/opstatic/app3.mp4"
+    },
+    {
+      "title": "GMGN Agent 技能市场正式上线",
+      "desc": "专为 Agent 打造的顶级交易技能库 — Meme交易用得到的、想得到的、还没想到的技能，这里全都有（也欢迎提交收录其他Skills）",
+      "type": "image",
+      "url": "/static/opstatic/skillmarket.png"
+    },
+    {
+      "title": "多链钱包追踪",
+      "desc": "多链钱包追踪通知已上线：实时追踪不同链的热点行情，链上 Degen 的交易动向即刻掌握 — 不切链，不错过",
+      "type": "image",
+      "url": "/static/opstatic/fusionwallettracker.png"
+    }
+  ],
+  "zh-TW": [
+    {
+      "title": "清爽布局模式",
+      "desc": "字段太多看着累？開個清爽模式 - 少看點，多賺點!",
+      "type": "image",
+      "url": "/static/opstatic/cleanlayout.png"
+    },
+    {
+      "title": "GMGN APP V3.0 上線！",
+      "desc": "正式推出線上 Callout 功能！多鏈關注錢包實時追蹤 + 聰明錢/KOL 買入訊號智能聚合，搶先一步拿下鏈上 Alpha！",
+      "type": "video",
+      "url": "/static/opstatic/app3.mp4"
+    },
+    {
+      "title": "GMGN Agent 技能市場正式上線",
+      "desc": "專為 Agent 打造的頂級交易技能庫 — Meme交易用得到的、想得到的、還沒想到的技能，這裏全都有（也歡迎提交收錄其他Skills）",
+      "type": "image",
+      "url": "/static/opstatic/skillmarket.png"
+    },
+    {
+      "title": "多鏈錢包追蹤",
+      "desc": "多鏈錢包追蹤通知已上線：實時追蹤不同鏈的熱點行情，鏈上 Degen 的交易動向即刻掌握 — 不切鏈，不錯過",
+      "type": "image",
+      "url": "/static/opstatic/fusionwallettracker.png"
+    }
+  ],
+  "en-US": [
+    {
+      "title": "Clean Layout Mode",
+      "desc": "Too many fields? Switch on Clean Mode — less noise, more gains!",
+      "type": "image",
+      "url": "/static/opstatic/cleanlayout.png"
+    },
+    {
+      "title": "GMGN APP V3.0 is live!",
+      "desc": "Officially launching the Online Callout! Real-time multi-chain wallet tracking & aggregation of Smart Money/KOL buy signals — Grab on-chain Alpha one step ahead!",
+      "type": "video",
+      "url": "/static/opstatic/app3.mp4"
+    },
+    {
+      "title": "GMGN Agent Skills Market is officially LIVE",
+      "desc": "Best Crypto Trading Skills, Built for Agents — fam, every Meme trading skill you need, want, or haven't even thought of yet — it's all here (and submissions for other Skills are welcome too)",
+      "type": "image",
+      "url": "/static/opstatic/skillmarket.png"
+    },
+    {
+      "title": "Fusion Wallet Tracker",
+      "desc": "Multi-chain wallet tracker is live. No matter how fast the trending moves, the Degen trade is in your feed instantly — no chain switching, nothing missed",
+      "type": "image",
+      "url": "/static/opstatic/fusionwallettracker.png"
+    }
+  ]
+}

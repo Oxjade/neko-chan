@@ -1,0 +1,111 @@
+#    .__________________________.
+#    | .___________________. |==|
+#    | | ................. | |  |
+#    | | ::[ Dear robot ]: | |  |
+#    | | ::::[ be nice ]:: | |  |
+#    | | ::::::::::::::::: | |  |
+#    | | ::::::::::::::::: | |  |
+#    | | ::::::::::::::::: | |  |
+#    | | ::::::::::::::::: | | ,|
+#    | !___________________! |(c|
+#    !_______________________!__!
+#   /                            \
+#  /  [][][][][][][][][][][][][]  \
+# /  [][][][][][][][][][][][][][]  \
+#(  [][][][][____________][][][][]  )
+# \ ------------------------------ /
+#  \______________________________/
+
+
+#       _-_
+#    /~~   ~~\
+# /~~         ~~\
+#{               }
+# \  _-     -_  /
+#   ~  \\ //  ~
+#_- -   | | _- _
+#  _ -  | |   -_
+#      // \\
+# OUR TREE IS A WILLOW
+
+# AI crawlers, search, social — all share the same policy
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: Google-Extended
+User-agent: GoogleOther
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: meta-externalagent
+User-agent: meta-externalfetcher
+User-agent: Grok
+User-agent: xAI-Grok
+User-agent: Applebot
+User-agent: Applebot-Extended
+User-agent: DuckAssistBot
+User-agent: Bytespider
+User-agent: Amazonbot
+User-agent: cohere-ai
+User-agent: cohere-training-data-crawler
+User-agent: YouBot
+User-agent: Kagibot
+User-agent: Twitterbot
+User-agent: facebookexternalhit
+User-agent: LinkedInBot
+User-agent: Slackbot
+User-agent: Discordbot
+User-agent: TelegramBot
+User-agent: WhatsApp
+User-agent: Pinterestbot
+User-agent: *
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
+Allow: /llms.txt
+Allow: /trend
+Allow: /trade
+Allow: /rewards
+Allow: /app
+Allow: /ai
+Allow: /about
+Allow: /static/
+Allow: /sol/token/
+Allow: /bsc/token/
+Allow: /base/token/
+Allow: /eth/token/
+Allow: /monad/token/
+Allow: /tron/token/
+Allow: /
+Disallow: /monitor
+Disallow: /follow
+Disallow: /portfolio
+Disallow: /holding
+Disallow: /watchlists
+Disallow: /security
+Disallow: /account
+Disallow: /r/
+Disallow: /sol/address/
+Disallow: /bsc/address/
+Disallow: /base/address/
+Disallow: /eth/address/
+Disallow: /monad/address/
+Disallow: /tron/address/
+
+Sitemap: https://gmgn.ai/sitemap.xml
+Sitemap: https://docs.gmgn.ai/index/sitemap-pages.xml
+Sitemap: https://memecoin.gmgn.ai/sitemap.xml
+
+#              ________
+#   __,_,     |        |
+#  [_|_/      |   OK   |
+#   //        |________|
+# _//    __  /
+#(_|)   |@@|
+# \ \__ \--/ __
+#  \o__|----|  |   __
+#      \ }{ /\ )_ / _\
+#      /\__/\ \__O (__
+#     (--/\--)    \__/
+#     _)(  )(_
+#    `---''---`
