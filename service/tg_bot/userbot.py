@@ -1198,6 +1198,60 @@ class UserBotController:
 
     # ---------------- handlers ----------------
 
+    # ------------------------------------------------------------- degen (env-gated)
+    _degen_cache: dict = {}
+
+    def _degen_ui(self, bot: dict):
+        """Returns a per-bot DegenUI when DEGEN_ENABLED=1, else None (dark)."""
+        try:
+            from degen import runtime as _rt
+        except Exception:
+            return None
+        if not _rt.env_on():
+            return None
+        bid = int(bot["id"])
+        cached = UserBotController._degen_cache.get(bid)
+        if cached is not None:
+            return cached
+        try:
+            rt = _rt.get_runtime()
+            rt.start()
+            tg_id = int(bot["tg_id"])
+            led = _rt.get_ledger()
+            # ONE key path: main wallet via gateway.adapter_for_bot (per-bot key,
+            # never the operator fallback); bundle legs via the degen vault (slot).
+            _main = [None]
+
+            def _factory(addr):
+                from sui_adapter import SUIAdapter
+                from exec_vault import ExecVault
+                if not addr or addr == _main[0]:
+                    ad, waddr = (self.gateway.adapter_for_bot(bid, "sui", "mainnet")
+                                 if getattr(self, "gateway", None) else (None, None))
+                    if ad:
+                        _main[0] = waddr
+                    return ad, waddr
+                w = led.wallet_by_address(bid, addr)
+                if not w:
+                    return None, None
+                try:
+                    key = ExecVault().decrypt(bytes(w["key_enc"])
+                                              if isinstance(w["key_enc"], (bytes, bytearray))
+                                              else w["key_enc"])
+                    return SUIAdapter(led, key, network="mainnet"), addr
+                except Exception:
+                    return None, None
+            rt.set_wallet_adapter_factory(_factory)
+            ui = rt.ui_for(bot_of=lambda tg: bot if int(tg) == tg_id else None,
+                           ai_key_ok=lambda b: bool(self.registry.get_active_key(
+                               int(b["tg_id"]))))
+            UserBotController._degen_cache[bid] = ui
+            return ui
+        except Exception:
+            import logging
+            logging.getLogger("tg_bot").exception("degen mount failed (non-fatal)")
+            return None
+
     def _register_handlers(self, app: Application, bot: dict):
         bot_id = bot["id"]
         platform_token = bot["platform_token"]
@@ -1626,7 +1680,10 @@ class UserBotController:
             mode_cb = "sb:mode_paper" if mode == "live" else "sb:mode_live"
             key_row = [] if has_key else [[telegram.InlineKeyboardButton(
                 "🔑 Connect AI Key to Start Trading", callback_data="key:start")]]
-            kb = telegram.InlineKeyboardMarkup(key_row + [
+            degen_rows = ([[telegram.InlineKeyboardButton("🎰 DEGEN — meme sniping",
+                            callback_data="degen:open")]]
+                          if self._degen_ui(b) else [])
+            kb = telegram.InlineKeyboardMarkup(key_row + degen_rows + [
                 [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
                  telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
                 [telegram.InlineKeyboardButton(mode_label, callback_data=mode_cb)],
@@ -2701,6 +2758,15 @@ class UserBotController:
         async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Handle "start", "pause", "resume" text commands — control the
             agent (LLM + quant) without affecting the bot connection itself."""
+            # degen verbs first: Track/Snipe/<CA> paste (§6.4) — handled = stop here
+            _dgi = self._degen_ui(bot)
+            if _dgi is not None:
+                try:
+                    if await _dgi.handle_text(update, context):
+                        return
+                except Exception:
+                    import logging
+                    logging.getLogger("tg_bot").exception("degen text hook failed")
             raw = (update.message.text or "").strip().lower()
             if raw in ("start", "resume", "go", "trade"):
                 if not self.registry.get_active_key(tg_id):
@@ -3889,6 +3955,24 @@ class UserBotController:
         app.add_handler(CallbackQueryHandler(chain_switch, pattern=r"^sb:chain"))
         app.add_handler(CallbackQueryHandler(watchlist, pattern=r"^sb:watchlist$"))
         app.add_handler(CallbackQueryHandler(watch_confirm, pattern=r"^watch:(yes|no):[A-Z0-9]+$"))
+        _dgu = self._degen_ui(bot)
+        if _dgu is not None:
+            async def _dgu_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
+                q = update.callback_query
+                await q.answer()
+                cfg = _dgu.led.get_config(bot_id)
+                if cfg.get("enabled"):
+                    txt, kbm = await _dgu.hub_on(bot, cfg)
+                else:
+                    txt, kbm = _dgu.hub_off(bot, cfg)
+                await q.message.reply_text(txt, parse_mode="HTML", reply_markup=kbm)
+
+            app.add_handler(CallbackQueryHandler(_dgu_open, pattern=r"^degen:open$"))
+            for _h in _dgu.command_handlers():
+                app.add_handler(_h)
+            for _h in _dgu.callback_handlers():
+                app.add_handler(_h)
+
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_command))
         app.add_handler(CallbackQueryHandler(support, pattern=r"^sb:support$"))
         app.add_handler(CallbackQueryHandler(wallet_fund, pattern=r"^sb:fund:\w+$"))

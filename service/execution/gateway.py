@@ -345,6 +345,31 @@ class ExecGateway:
             return {"ok": False, "error": "real execution not configured"}
         return self.router.submit_and_sync(bot_id, intent, ref_price)
 
+    def adapter_for_bot(self, bot_id: int, chain: str = "sui",
+                        network: str | None = None):
+        """Per-bot adapter bound to that bot's OWN key (one keypair per bot —
+        never the operator fallback; see the 2026-09-04 incident note above).
+        Returns (adapter, address) or (None, None). degen + fee sweeps share this
+        so there is exactly one key-decrypt path. `network` overrides the perps
+        net (degen is always mainnet regardless of perp testnet setting)."""
+        w = self.ledger.wallet_by_bot_chain(bot_id, chain)
+        if not w or not w.get("key_enc") or not self._vault:
+            return None, None
+        try:
+            key_hex = self._vault.decrypt(w["key_enc"])
+        except Exception:
+            return None, None
+        if chain != "sui":
+            return None, None
+        from sui_adapter import SUIAdapter
+        net = network or ("testnet" if getattr(self.adapters.get("sui"), "testnet", True)
+                          else "mainnet")
+        try:
+            adapter = SUIAdapter(self.ledger, key_hex, network=net)
+            return adapter, str(adapter.address or w.get("address") or "")
+        except Exception:
+            return None, None
+
     def provision_wallet(self, bot_id: int, chain: str) -> int | None:
         """Ensure a wallet row exists for (bot_id, chain) in the exec ledger.
 
