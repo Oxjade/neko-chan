@@ -71,8 +71,9 @@ class DegenExecutor:
                count_open: bool = True) -> str:
         if not cfg.get("enabled"):
             return "degen disabled"
-        if not cfg.get("ai_key_ok"):
-            return "AI key required for degen"
+        # NO AI-key gate: degen fills are user-initiated (card tap, sniper on a
+        # watched deployer, bundle burst). The LLM key only ever drives swing
+        # decisions; requiring it here would block manual users for no reason.
         if self.is_killed(bot_id):
             return "kill-switch engaged"
         caps = Caps.from_config(cfg)
@@ -115,14 +116,20 @@ class DegenExecutor:
 
     # ---------------- quote / slippage guard (§5.2: never naked) ----------------
     def _min_out(self, st, sui_spend: float, slip_bps: int = 500) -> int:
-        """Tokens the buyer should receive minus slippage; 0 only if price unknown."""
-        from .metrics import compute
-        m = compute(self.ch, st) if st is not None else None
-        if not m or not m.price_sui:
-            return 0
-        whole = (sui_spend) / m.price_sui
-        atoms = whole * (10 ** m.decimals) * (1 - slip_bps / 10000)
-        return int(atoms)
+        """Exact curve output for this spend (under (x+vX)(y+vY)=k), minus
+        slippage. NOT the marginal-price approximation: a buy that moves the
+        curve gets the average, and virtual reserves change the level entirely."""
+        from .metrics import compute, expected_tokens_out, virtual_reserves
+        if st is None or getattr(st, "kind", "") != "curve":
+            from .metrics import compute as _c
+            m = _c(self.ch, st) if st is not None else None
+            if not m or not m.price_sui:
+                return 0
+            return int(sui_spend / m.price_sui * (10 ** m.decimals) * (1 - slip_bps / 10000))
+        vx, vy = virtual_reserves(self.ch, st.curve_id)
+        out = expected_tokens_out(st.sui_reserve_mist, st.token_reserve,
+                                  int(sui_spend * 1e9), vx, vy)
+        return int(out * (1 - slip_bps / 10000))
 
     def _received_tokens(self, wallet: str, token_type: str, before_mist: int) -> int:
         """Actual token atoms received = post-balance delta (real, not estimated)."""
@@ -322,8 +329,8 @@ class DegenExecutor:
         (documented honestly). burst_fee → NEKO_FEE_WALLET from the MAIN wallet's
         first leg. legs = [{wallet, amount_sui}] summing ≤ caps."""
         cfg = self.ledger.get_config(bot_id)
-        if not cfg.get("enabled") or not cfg.get("ai_key_ok"):
-            return {"ok": False, "error": "degen off / AI key required"}
+        if not cfg.get("enabled"):
+            return {"ok": False, "error": "degen off"}
         caps = Caps.from_config(cfg)
         if total_sui > caps.budget_sui:
             return {"ok": False, "error": "burst exceeds budget"}

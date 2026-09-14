@@ -310,13 +310,14 @@ def test_executor_kill_switch():
     assert not ex.is_killed(1)
 
 
-def test_executor_requires_ai_key():
+def test_executor_needs_no_ai_key():
+    # degen is USER-initiated execution — no LLM key required anywhere.
     led = DegenLedger(":memory:")
-    led.set_config(1, enabled=1, ai_key_ok=0)
+    led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
     ex, _, _ = _mk_exec(led)
     r = ex.buy(1, launchpad="suipump", curve_id=CID, token_type=TOK, curve_isv=1,
-               sui_amount=0.1, min_out=1)
-    assert not r["ok"] and "AI key" in r["error"]
+               sui_amount=0.1, min_out=0)
+    assert r["ok"], r
 
 
 def test_executor_burst_first_leg_abort():

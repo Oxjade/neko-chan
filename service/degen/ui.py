@@ -45,11 +45,15 @@ class DegenUI:
     """bot_of(tg_id) -> bots row dict (registry lookup injected by userbot)."""
 
     def __init__(self, ch, ledger: DegenLedger, executor=None, bundles=None,
-                 bot_of=None, ai_key_ok=None, wallet_addr=None):
+                 bot_of=None, ai_key_ok=None, wallet_addr=None, af_quote=None):
         self.ch, self.led, self.ex, self.bundles = ch, ledger, executor, bundles
         self._bot_of = bot_of or (lambda tg: None)
         self._ai_ok = ai_key_ok or (lambda bot: bool(bot and bot.get("has_ai_key")))
         self._wallet_addr = wallet_addr or (lambda bot: "")
+        # af_quote(token_type, sui_atoms) -> Aftermath route quote dict, or None.
+        # Injected by the mount (AftermathSpotAdapter); tests keep it None so no
+        # live HTTP happens in CI.
+        self._af_quote = af_quote
         # Degen is a VIEW on the shared main dashboard (§ user policy): the same
         # message, only the keyboard swaps. The mount injects `dash_render` =
         # the userbot's own dash() coroutine; without it we fall back to
@@ -178,9 +182,6 @@ class DegenUI:
 
     def degen_keyboard(self, bot, cfg):
         """The degen-mode button block (replaces the perps buttons in place)."""
-        if not self._ai_ok(bot):
-            return KB([[B("🔑 Connect AI Key", "key:start")],
-                       [B("📊 Main Dashboard", "dg:main")]])
         if not cfg.get("enabled"):
             return KB([[B("🟢 Enable Degen", "dg:on")],
                        [B("📊 Main Dashboard", "dg:main"), B("↻ Refresh", "dg:hub")]])
@@ -226,16 +227,25 @@ class DegenUI:
     _current_bot = None
 
     @staticmethod
-    def _usd(v: float) -> str:
+    def _num(v: float, sig: int = 4) -> str:
+        """Plain decimal, NEVER scientific: enough places for 4 significant
+        digits, so tiny meme prices read 0.00005325, not 5.3e-05."""
+        if v == 0:
+            return "0"
+        import math
+        dp = max(2, int(math.ceil(-math.log10(abs(v)))) + sig)
+        out = f"{v:,.{min(dp, 22)}f}"
+        if "." in out:
+            out = out.rstrip("0").rstrip(".")
+        return out or "0"
+
+    @classmethod
+    def _usd(cls, v: float) -> str:
         if v >= 1_000_000:
             return f"${v/1_000_000:.2f}M"
         if v >= 1_000:
             return f"${v/1_000:.1f}K"
-        if v >= 1:
-            return f"${v:,.2f}"
-        if v > 0:
-            return f"${v:.4g}"
-        return "$0"
+        return f"${cls._num(v)}"
 
     async def card(self, bot, cfg, st, ref: str | None = None):
         """Token Card / wallet card / locked card router (§6.3a-b). `ref` is the
@@ -271,15 +281,54 @@ class DegenUI:
         sel_amt = str(caps.get("_amt_" + r_curve, "0.5"))
         sel_slp = str(caps.get("_slip_" + r_curve, "10"))
         mcap = m.mcap_usd or m.fdv_usd          # pre-grad FDV stands in for tiny mcap
+        if st.kind == "pool":
+            grad_row = "🎓 Grad    <code>✅ graduated</code>"
+        else:
+            grad_row = (f"🎓 Grad    <code>{m.progress_bps/100:.0f}%</code> · "
+                        f"<code>{m.grad_left_sui:,.0f} SUI</code> to go")
+        if m.price_sui:
+            price_row = (f"💵 Price   <code>{self._num(m.price_sui)} SUI</code> "
+                         f"(<code>{self._usd(m.price_sui * m.sui_usd)}</code>)\n"
+                         f"🔁 1 SUI  <code>≈ {1 / m.price_sui:,.0f} tok</code>\n")
+        else:
+            price_row = "💵 Price   <code>—</code>\n"
         head = (f"<b>{icon} {esc(st.symbol or st.token_type[:8])}</b> · {badge}\n"
                 f"<code>{line}</code>\n"
-                f"💵 Price   <code>{m.price_sui:.3g} SUI</code>\n"
+                f"{price_row}"
                 f"📈 MCap    <code>{self._usd(mcap)}</code> · "
                 f"FDV <code>{self._usd(m.fdv_usd)}</code>\n"
-                f"🎓 Grad    <code>{m.progress_bps/100:.0f}%</code> · "
-                f"<code>{m.grad_left_sui:,.0f} SUI</code> to go\n"
+                f"{grad_row}\n"
                 f"💧 Liq     <code>{m.liq_sui:,.0f} SUI</code>"
                 + (("\n" + extra) if extra else ""))
+        if st.kind == "pool":
+            # No curve-buy controls on a dead curve. Show the LIVE Aftermath/Cetus
+            # route quote (keyless), and be honest that one-tap execution lands
+            # with the sign-wrap step (docs §3.5 P1).
+            route_line = ""
+            if self._af_quote and st.token_type:
+                try:
+                    q = self._af_quote(st.token_type, 5 * 10 ** 8)   # 0.5 SUI probe
+                    legs = []
+                    for rt in (q or {}).get("routes") or []:
+                        for pth in rt.get("paths") or []:
+                            meta = pth.get("poolMetadata") or {}
+                            co = int((pth.get("coinOut") or {}).get("amount", "0").rstrip("n") or 0)
+                            legs.append(((meta.get("tbData") or {}).get("protocol")
+                                         or "?", co))
+                    if legs:
+                        protos = " + ".join(dict.fromkeys(p for p, _ in legs))
+                        out = sum(c for _, c in legs) / 1e6
+                        route_line = (f"\n🎨 Route  <code>{esc(protos)}</code> · "
+                                      f"0.5 SUI ≈ <code>{out:,.0f} tok</code>\n"
+                                      "one-tap DEX execution lands with the sign-wrap step")
+                    else:
+                        route_line = "\n🎨 Route: Aftermath hasn't indexed this pool yet"
+                except Exception:
+                    route_line = "\n🎨 Route: Aftermath quote unavailable right now"
+            rows = ([[B("🎨 Aftermath route — live soon", "dg:hub")]]
+                    if not route_line else [])
+            rows += [[B("📊 Main Dashboard", "dg:main")], [B("← Back", "dg:hub")]]
+            return head + route_line, KB(rows)
         def _chip(x, suffix, sel, cb):
             on = str(sel).rstrip("%") == x.rstrip("%")
             return B(("✓ " if on else "") + f"{x}{suffix}", cb)
@@ -326,9 +375,7 @@ class DegenUI:
         bid = int(bot["id"])
         cfg = self.led.get_config(bid)
         if data == "dg:on":
-            if not self._ai_ok(bot):
-                await q.answer("⛔ Connect your AI key first", show_alert=True)
-                return
+            # degen needs NO AI key — trades here are user-initiated
             await q.answer("🎰 Degen ON")
             self.led.set_config(bid, enabled=1)
             self.enter(bid)
@@ -465,7 +512,14 @@ class DegenUI:
         sel = str(caps.get("_amt_" + ref, "0.5"))
         slip = int(float(caps.get("_slip_" + ref, "10")))
         amt = self._amt_value(caps, sel)
-        exp_tokens = amt / max(m.price_sui, 1e-18)
+        from .metrics import expected_tokens_out, virtual_reserves
+        if st.kind == "curve":
+            vx, vy = virtual_reserves(self.ch, st.curve_id)
+            exp_atoms = expected_tokens_out(st.sui_reserve_mist, st.token_reserve,
+                                            int(amt * 1e9), vx, vy)
+            exp_tokens = exp_atoms / (10 ** (m.decimals or 6))
+        else:
+            exp_tokens = amt / max(m.price_sui, 1e-18)
         txt = (f"🚀 BUY <b>{esc(st.symbol or st.token_type[:8])}</b>\n"
                f"spend <b>{amt:g} SUI</b> · expect ≈ <code>{exp_tokens:,.0f}</code>\n"
                f"slippage <code>{slip}%</code> · min-out "
@@ -507,7 +561,13 @@ class DegenUI:
             amt = float(parts[3]) if len(parts) > 3 else 0.5
             slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "10")))
             m = compute(self.ch, st)
-            exp_atoms = amt / max(m.price_sui, 1e-18) * 10 ** (m.decimals or 6)
+            if st.kind == "curve":
+                from .metrics import expected_tokens_out, virtual_reserves
+                vx, vy = virtual_reserves(self.ch, st.curve_id)
+                exp_atoms = expected_tokens_out(st.sui_reserve_mist, st.token_reserve,
+                                                int(amt * 1e9), vx, vy)
+            else:
+                exp_atoms = amt / max(m.price_sui, 1e-18) * 10 ** (m.decimals or 6)
             min_out = int(exp_atoms * (100 - slip) / 100)
             res = (self.ex.buy(bid, launchpad="suipump", curve_id=st.curve_id,
                                token_type=st.token_type,
@@ -542,7 +602,7 @@ class DegenUI:
             rows = self.led.armed_orders(bid)
             lines = ["<b>📋 ARMED ORDERS</b>"]
             for o in rows:
-                trig = f"@{o['target_price']:.1e}" if o["target_price"] else "now"
+                trig = f"@ {self._num(o['target_price'])} SUI" if o["target_price"] else "now"
                 lines.append(f"· #{o['id']} {o['intent']}/{o['otype']} {o['qty_sui']} SUI "
                              f"{trig} [{o['state']}]")
             return "\n".join(lines), KB([back])

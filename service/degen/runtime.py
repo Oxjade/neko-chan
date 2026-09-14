@@ -127,7 +127,17 @@ class DegenRuntime:
         return DegenUI(self.ch, self.led, executor=self.executor,
                        bundles=BundleManager(self.led),
                        bot_of=bot_of, ai_key_ok=ai_key_ok,
-                       wallet_addr=self._wallet_addr)
+                       wallet_addr=self._wallet_addr,
+                       af_quote=self._af_quote)
+
+    def _af_quote(self, token_type: str, sui_atoms: int) -> dict:
+        """Keyless Aftermath SOR quote (routes through Cetus for graduated
+        Suipump tokens — verified live 2026-09-14)."""
+        from spot.adapter import AftermathSpotAdapter
+        from .constants import SUI_COIN_TYPE
+        a = AftermathSpotAdapter("", self.network)
+        return a.quote_route(SUI_COIN_TYPE, token_type,
+                             amount_in_atoms=sui_atoms, slippage_bps=1000)
 
 
 def get_runtime() -> DegenRuntime:

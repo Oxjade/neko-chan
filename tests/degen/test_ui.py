@@ -66,13 +66,15 @@ def _update(msg=None, q=None):
 
 
 # ---------------------------------------------------------------- renderers
-def test_degen_view_requires_ai_key():
+def test_degen_view_needs_no_ai_key():
     led = DegenLedger(":memory:")
     ui = _mk(led)
     bot = {"id": 1, "tg_id": 42, "has_ai_key": 0}
     kb = ui.degen_keyboard(bot, led.get_config(1))
-    assert "Connect AI Key" in str(kb.inline_keyboard)
-    assert "Main Dashboard" in str(kb.inline_keyboard)
+    flat = str(kb.inline_keyboard)
+    assert "Connect AI Key" not in flat          # user policy: keyless degen
+    assert "dg:on" in flat                       # straight to Enable
+    assert "Main Dashboard" in flat
 
 
 def test_degen_view_strip_and_keyboard():
@@ -255,3 +257,27 @@ def test_slip_and_amt_chips_persist_and_repaint():
     calls = _run(ui, f"dg:amt:{ref}:1", led)
     assert led.get_config(1)["caps"]["_amt_" + ref] == "1"
     assert any(b.text == "✓ 1 SUI" for r in calls[-1][2].inline_keyboard for b in r)
+
+
+def test_card_graduated_pool_no_curve_controls():
+    """SUIFROG regression: a graduated token must NOT get curve buy chips,
+    threshold math (99%/90 SUI to go), or the false 'dev holds 100%' block
+    from a drained curve (token_reserve == 0)."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    from degen.launchpad import AssetState
+    from degen.validate import run_gauntlet
+    st = AssetState(kind="pool", launchpad="suipump", curve_id=CID,
+                    token_type="0x" + "ee" * 32 + "::suifrog::SUIFROG",
+                    pool_id="0x" + "11" * 32, creator=DEV, symbol="SUIFROG",
+                    sui_reserve_mist=8_910_000_000_000, token_reserve=0,
+                    grad_threshold_mist=9_000_000_000_000)
+    g = run_gauntlet(ui.ch, st)
+    assert not any("dev holds" in b for b in g.blocks), g.blocks
+    txt, kb = asyncio.get_event_loop().run_until_complete(
+        ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st))
+    assert "graduated" in txt.lower()
+    flat = str(kb.inline_keyboard)
+    assert "dg:buy" not in flat and "dg:amt" not in flat and "dg:burst" not in flat
+    assert "Aftermath" in flat

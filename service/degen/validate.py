@@ -190,16 +190,24 @@ def run_gauntlet(ch: Chain, st: AssetState, sender: str = "",
         r.blocks.append(st.kind)
         return r
     if st.launchpad == "suipump":
-        errs = curve_validator(ch, st)
-        r.blocks += errs
-        r.honeypot = honeypot_dryrun(ch, st, sender) if sender else "untested"
-        if r.honeypot == "fail":
-            r.blocks.append("honeypot check failed — sells revert")
-        ds = dev_screen(ch, st)
-        r.dev_hold_pct = ds.get("dev_hold_pct")
-        r.risks += ds.get("flags", [])
-        r.blocks += ds.get("blocks", [])
-        r.creator_cap_id = st.creator_cap_id
+        if st.kind == "pool":
+            # graduated: the curve is drained (token_reserve == 0) — the curve
+            # honeypot sim and the dev-hold ratio are MEANINGLESS here and
+            # produced a permanent false block ("dev holds 100% of supply").
+            # Post-grad validation is the Aftermath route check (§3.5, P1).
+            r.honeypot = "skipped"
+            r.risks.append("graduated — trades via Aftermath route (live soon)")
+        else:
+            errs = curve_validator(ch, st)
+            r.blocks += errs
+            r.honeypot = honeypot_dryrun(ch, st, sender) if sender else "untested"
+            if r.honeypot == "fail":
+                r.blocks.append("honeypot check failed — sells revert")
+            ds = dev_screen(ch, st)
+            r.dev_hold_pct = ds.get("dev_hold_pct")
+            r.risks += ds.get("flags", [])
+            r.blocks += ds.get("blocks", [])
+            r.creator_cap_id = st.creator_cap_id
     elif st.kind == "generic" or st.launchpad == "generic":
         g = generic_screen(ch, st, allow_mintable=allow_mintable)
         r.risks += g.get("flags", [])

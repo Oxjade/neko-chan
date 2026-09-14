@@ -107,18 +107,56 @@ class AftermathSpotAdapter:
         _COINS_CACHE[self.network] = (now, coins)
         return coins
 
-    def quote_route(self, coin_in: str, coin_out: str, amount_in: Optional[float] = None,
-                    amount_out: Optional[float] = None, slippage_bps: int = 100) -> dict:
-        """Best route quote. Exactly one of amount_in / amount_out."""
-        body: dict = {"coinInType": coin_in, "coinOutType": coin_out}
-        if amount_in is not None:
-            body["coinInAmount"] = f"{amount_in}"
-        elif amount_out is not None:
-            body["coinOutAmount"] = f"{amount_out}"
-            body["slippage"] = slippage_bps / 10000.0
+    def quote_route(self, coin_in_type: str, coin_out_type: str,
+                    amount_in_atoms: Optional[int] = None,
+                    amount_out_atoms: Optional[int] = None,
+                    slippage_bps: int = 100,
+                    protocols_whitelist: Optional[list] = None) -> dict:
+        """Best route quote. EXACTLY one of the atom amounts; coin args are FULL
+        Move type strings (64-hex padded) — symbols are rejected ("Coin not
+        found"). Wire format verified live 2026-09-14 against
+        /api/router/trade-route: amounts are plain BigInt atom strings, slippage
+        is a 0..1 fraction. routes[].paths[] expose protocolName/poolId so
+        callers can SEE the venue (Cetus included — suipump-graduated tokens
+        route through their graduation pool)."""
+        body: dict = {"coinInType": coin_in_type, "coinOutType": coin_out_type}
+        if amount_in_atoms is not None:
+            body["coinInAmount"] = str(int(amount_in_atoms))
+        elif amount_out_atoms is not None:
+            body["coinOutAmount"] = str(int(amount_out_atoms))
         else:
             raise ValueError("quote_route needs exactly one of amount_in/amount_out")
+        if slippage_bps:
+            body["slippage"] = slippage_bps / 10000.0
+        if protocols_whitelist:
+            body["protocolWhitelist"] = protocols_whitelist
         r = requests.post(f"{self.api}/router/trade-route", json=body, timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+    @staticmethod
+    def route_venues(quote: dict) -> list[tuple]:
+        """[(protocolName, poolId, coinOut atoms)] per leg of a route quote."""
+        out = []
+        for rt in (quote or {}).get("routes") or []:
+            for pth in rt.get("paths") or []:
+                meta = pth.get("poolMetadata") or {}
+                co = int((pth.get("coinOut") or {}).get("amount", "0").rstrip("n") or 0)
+                out.append(((meta.get("tbData") or {}).get("protocol")
+                            or pth.get("protocolName") or "?",
+                            pth.get("poolId") or "", co))
+        return out
+
+    def swap_tx_b64(self, complete_route: dict, wallet_address: str,
+                    slippage_bps: int = 100) -> str:
+        """POST /router/v1/transactions/trade -> base64 TransactionKind for the
+        quoted route. Server checks the wallet's input-coin balance, so this
+        only succeeds with the REAL funded signer. Sign+broadcast of the
+        returned kind is the remaining P1 wrap step (docs §3.5)."""
+        body = {"completeRoute": complete_route, "walletAddress": wallet_address,
+                "slippage": slippage_bps / 10000.0, "isSponsoredTx": False}
+        r = requests.post(f"{self.api}/router/v1/transactions/trade",
+                          json=body, timeout=30)
         r.raise_for_status()
         return r.json()
 

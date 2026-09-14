@@ -16,16 +16,53 @@ from .launchpad import AssetState
 
 DEFAULT_SUI_USD_FALLBACK = 1.0  # used only when the on-chain oracle is unusable
 
+# Live SUI/USD for DISPLAY math. The venue's own PriceConfig oracle is stale by
+# ~15% sometimes; the DEX quote is the number traders actually see. Cached.
+_suiusd_cache = {"v": 0.0, "ts": 0.0}
 
+
+def sui_usd_live() -> float:
+    """SUI/USD for display math: CoinGecko, Binance fallback; 5-min cached.
+    Zero/None → caller falls back to the (stale) on-chain oracle."""
+    import time as _t
+    now = _t.time()
+    if now - _suiusd_cache["ts"] < 300 and _suiusd_cache["v"]:
+        return _suiusd_cache["v"]
+    v = 0.0
+    try:
+        import requests
+        r = requests.get("https://api.coingecko.com/api/v3/simple/price",
+                         params={"ids": "sui", "vs_currencies": "usd"}, timeout=8)
+        v = float((r.json().get("sui") or {}).get("usd") or 0)
+    except Exception:
+        v = 0.0
+    if not v:
+        try:
+            import requests
+            r = requests.get("https://api.binance.com/api/v3/ticker/price",
+                             params={"symbol": "SUIUSDT"}, timeout=8)
+            v = float(r.json().get("price") or 0)
+        except Exception:
+            v = 0.0
+    if v:
+        _suiusd_cache.update(v=v, ts=now)
+    return v or _suiusd_cache["v"]
+
+
+_supply_cache: dict[str, int] = {}
+
+
+# ---------------------------------------------------------------- metadata
 @dataclass
 class Metrics:
     price_sui: float = 0.0           # SUI per whole token
-    price_mist_per_atom: int = 0
+    price_mist_per_atom: int = 0     # micro-mist scale kept float-safe
     decimals: int = 6
     total_supply_atoms: int = 0
     circulating_atoms: int = 0
     mcap_sui: float = 0.0
     fdv_usd: float = 0.0             # price x TOTAL supply (curve-held included)
+    virtual: tuple = (0.0, 0.0)      # fitted (vX_mist, vY_atoms); (0,0)=unknown
     sui_usd: float = 0.0
     mcap_usd: float = 0.0
     sui_reserve_mist: int = 0
@@ -39,9 +76,7 @@ class Metrics:
     liq_sui: float = 0.0             # curve reserve or pool SUI side
 
 
-# ---------------------------------------------------------------- metadata
 _dec_cache: dict[str, int] = {}
-_usd_cache: dict = {"v": 0.0, "ts": 0}
 
 
 def token_decimals(ch: Chain, coin_type: str) -> int:
@@ -57,46 +92,92 @@ def token_decimals(ch: Chain, coin_type: str) -> int:
 
 
 def sui_usd_price(ch: Chain) -> float:
-    """From the on-chain PriceConfig oracle (sui_price_scaled). Scaled as
-    cents*? — we calibrate the divisor from magnitude instead of guessing."""
+    """From the on-chain PriceConfig oracle (sui_price_scaled) — venue-stale but
+    keyless. Display math prefers sui_usd_live(); this is the fallback."""
     try:
         o = ch.object("0xaebff66fd224e4fefae2426b5cdb30c6e5c488dce5ec34a730246e8b91d44ff9")
         v = int(((o or {}).get("json") or {}).get("sui_price_scaled") or 0)
         if v <= 0:
             return 0.0
-        # calibration: the relayer sets scaled price for virtual-reserve math;
-        # accept a wide window and derive magnitude (4.2e12 mist floor ≈ $4800
-        # historical formula ⇒ scale ~ cents*1e6 for ~$4-20 SUI).
-        for div in (1_000_000, 100_000, 1_000, 100):
-            p = v / div
-            if 0.01 <= p <= 10_000:
-                return p
-        return 0.0
+        p = v / 1000.0                     # verified: 3-decimal USD fixed point
+        return p if 0.01 <= p <= 10_000 else 0.0
     except Exception:
         return 0.0
 
 
-_supply_cache: dict[str, int] = {}
-
-
 def token_total_supply(ch: Chain, coin_type: str) -> int:
-    """Real circulating+locked supply from the chain (never a guess). Tries the
-    documented TypeInput shapes; 0 = unknown (callers fall back)."""
+    """Real total supply via coinMetadata(coinType:){ supply } — the canonical
+    GraphQL field (verified live 2026-09-14; BigInt atoms). 0 = unknown."""
     if coin_type in _supply_cache:
         return _supply_cache[coin_type]
     total = 0
-    for tvar in ('{type: "%s"}' % coin_type, '"%s"' % coin_type):
-        try:
-            r = ch.query('{ coinType(type: ' + tvar + ') { totalSupply } }')
-            ct = (r or {}).get("coinType") or {}
-            v = ct.get("totalSupply")
-            if v:
-                total = int(v)
-                break
-        except Exception:
-            continue
+    try:
+        r = ch.query('{ coinMetadata(coinType: "%s") { supply } }' % coin_type)
+        v = ((r or {}).get("coinMetadata") or {}).get("supply")
+        if v:
+            total = int(v)
+    except Exception:
+        total = 0
     _supply_cache[coin_type] = total
     return total
+
+
+# ------------------------------------------------- per-curve virtual reserves
+# Verified on mainnet 2026-09-14: Suipump curves are NOT plain x*y=k. Each is
+# launched with private VIRTUAL reserves (randomized per token, e.g. 4342 SUI /
+# 266.7M tok and 4993 SUI / 412.1M tok on two live curves) and trades satisfy
+# (x+vX)(y+vY)=k. Pricing off raw x/y UNDERQUOTES early markets 2-4x.
+# We recover (vX, vY) per curve from three historical object versions and cache.
+_vfit_cache: dict[str, tuple] = {}
+
+
+def virtual_reserves(ch: Chain, curve_addr: str) -> tuple[float, float]:
+    """(vX_mist, vY_atoms); (0,0) = unknown/not-enough-history (callers then
+    fall back to raw x/y, still an honest floor, never a silent 2x error claim)."""
+    if not curve_addr:
+        return (0.0, 0.0)
+    if curve_addr in _vfit_cache:
+        return _vfit_cache[curve_addr]
+    try:
+        q = ('{ transactions(first: 30, filter: { affectedObject: "%s" }) { nodes'
+             ' { effects { objectChanges { nodes { address outputState { version'
+             ' } } } } } } }' % curve_addr)
+        r = ch.query(q)
+        vers = sorted({int(c["outputState"]["version"])
+                       for n in ((r or {}).get("transactions") or {}).get("nodes") or []
+                       for c in ((n.get("effects") or {}).get("objectChanges") or {}).get("nodes") or []
+                       if c.get("address") == curve_addr
+                       and (c.get("outputState") or {}).get("version")})
+        if len(vers) < 3:
+            _vfit_cache[curve_addr] = (0.0, 0.0)
+            return (0.0, 0.0)
+        samples = []
+        for v in (vers[0], vers[len(vers) // 2], vers[-1]):
+            rr = ch.query('{ object(address: "%s", version: %d) { asMoveObject'
+                          ' { contents { json } } } }' % (curve_addr, v))
+            j = (((rr or {}).get("object") or {}).get("asMoveObject") or {}).get("contents", {}).get("json") or {}
+            if isinstance(j, str):
+                import json as _j; j = _j.loads(j)
+            x, y = int(j.get("sui_reserve") or 0), int(j.get("token_reserve") or 0)
+            if x > 0 and y > 0:
+                samples.append((x, y))
+        fit = solve_curve_fit(samples) if len(samples) >= 3 else None
+        out = (fit["vx_mist"], fit["vy_atoms"]) if fit and fit.get("fit_err", 1) < 0.01 \
+            else (0.0, 0.0)
+    except Exception:
+        out = (0.0, 0.0)
+    _vfit_cache[curve_addr] = out
+    return out
+
+
+def expected_tokens_out(x_mist: int, y_atoms: int, spend_mist: int,
+                        vx: float = 0.0, vy: float = 0.0) -> int:
+    """Exact bonding-curve output for a buy of spend_mist under
+    (x+vX)(y+vY)=k. Use for min-out math and 'expect ≈' lines — marginal
+    price x/y is only an instantaneous quote, never a fill estimate."""
+    k = (x_mist + vx) * (y_atoms + vy)
+    y_new = k / (x_mist + spend_mist + vx) - vy
+    return max(0, int(y_atoms - y_new))
 
 
 # ---------------------------------------------------------------- curve fit (§3.0)
@@ -156,7 +237,7 @@ def compute(ch: Chain, st: AssetState, reserves_samples: list | None = None,
     m = Metrics()
     dec = token_decimals(ch, st.token_type) if st.token_type else 6
     m.decimals = dec
-    m.sui_usd = sui_usd_price(ch) or DEFAULT_SUI_USD_FALLBACK
+    m.sui_usd = sui_usd_live() or sui_usd_price(ch) or DEFAULT_SUI_USD_FALLBACK
     x = st.sui_reserve_mist
     y = st.token_reserve
     m.sui_reserve_mist, m.token_reserve_atoms = x, y
@@ -164,8 +245,14 @@ def compute(ch: Chain, st: AssetState, reserves_samples: list | None = None,
     if st.grad_threshold_mist > 0:
         m.progress_bps = min(10000, int(x * 10000 / st.grad_threshold_mist))
         m.grad_left_sui = max(0.0, (st.grad_threshold_mist - x) / 1e9)
+    if st.kind in ("pool", "graduating"):
+        # curve is dead/drained — threshold math on stale reserves is meaningless
+        m.progress_bps = 10000 if st.kind == "pool" else m.progress_bps
+        m.grad_left_sui = 0.0
     if st.kind == "curve" and x > 0 and y > 0:
-        price_mist_per_atom = x / y
+        vx, vy = virtual_reserves(ch, st.curve_id)
+        m.virtual = (vx, vy)
+        price_mist_per_atom = (x + vx) / (y + vy)
         m.price_mist_per_atom = int(price_mist_per_atom)
         # SUI per whole token = (mist/atom) × 1e-9 × atoms/whole(10^dec)
         m.price_sui = price_mist_per_atom * 1e-9 * (10 ** dec)
@@ -191,14 +278,38 @@ def compute(ch: Chain, st: AssetState, reserves_samples: list | None = None,
             pj = (p or {}).get("json") or {}
             a = int(pj.get("coin_a") or 0)
             b = int(pj.get("coin_b") or 0)
-            # Pool<T,SUI>: coin_a=token, coin_b=SUI (direction per verified read)
-            tok_atoms, sui_mist = (a, b) if a > b else (b, a)
+            # direction: prefer the type string (Pool<T, SUI> ⇒ A=token); size
+            # heuristic only as fallback. sqrt-price squares B/A in RAW units.
+            ptype = str((p or {}).get("type") or "")
+            tok_is_a = True
+            if "Pool<" in ptype:
+                try:
+                    inner = ptype[ptype.index("Pool<") + 5: ptype.rindex(">")]
+                    first = inner.split(",")[0].strip().lower()
+                    tok_is_a = not first.endswith("::sui")
+                except Exception:
+                    pass
+            # A is the non-SUI side per the type string; coin_a/coin_b are its
+            # raw amounts (SUI in mist, token in atoms).
+            sui_mist = int((b if tok_is_a else a) or 0)
+            tok_atoms = int((a if tok_is_a else b) or 0)
             m.sui_usd = m.sui_usd
             m.liq_sui = sui_mist / 1e9
             ts = (total_supply_atoms or token_total_supply(ch, st.token_type) or 0)
+            # CLMM spot price = sqrt_price(Q64.64)^2 (mist-of-B per atom-of-A when
+            # A=token). Reserve RATIO is only a fallback — under concentrated
+            # liquidity the two diverge whenever price sits off a range edge.
+            spot = 0.0
+            try:
+                sq = int(pj.get("current_sqrt_price") or 0)
+                if sq > 0 and tok_is_a:
+                    spot = (sq / 2 ** 64) ** 2            # SUI-mist per token atom
+            except Exception:
+                spot = 0.0
             if tok_atoms > 0:
-                m.price_sui = (sui_mist / 1e9) / (tok_atoms / 10 ** dec)
-                m.price_mist_per_atom = int(sui_mist / tok_atoms)
+                mist_per_atom = spot or (sui_mist / tok_atoms)   # float! tiny values
+                m.price_mist_per_atom = int(mist_per_atom * 10 ** 6)  # micro-mist
+                m.price_sui = mist_per_atom * 1e-9 * (10 ** dec)
                 m.total_supply_atoms = ts
                 m.circulating_atoms = ts
                 m.mcap_sui = m.price_sui * ts / (10 ** dec)
