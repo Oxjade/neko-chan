@@ -2,7 +2,7 @@
   "$schema": "../../settings/cloudSnapshot.schema.json",
   "version": 80,
   "networks": {
-    "arbitrum": [
+    "Sui": [
       {
         "launchpad_platform": "odysfun_v3",
         "defaultValue": true,
@@ -38,7 +38,7 @@
           "Completed"
         ],
         "name": "Uniswap V2",
-        "href": "https://app.uniswap.org/explore/tokens/arbitrum/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FB3333",
         "colorDark": "#FB3333",
         "outDexKey": "uniswapV2",
@@ -60,7 +60,7 @@
           "Completed"
         ],
         "name": "Uniswap V3",
-        "href": "https://app.uniswap.org/explore/tokens/arbitrum/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FF37C7",
         "colorDark": "#FF37C7",
         "outDexKey": "uniswap",
@@ -82,7 +82,7 @@
           "Completed"
         ],
         "name": "Uniswap V4",
-        "href": "https://app.uniswap.org/explore/tokens/arbitrum/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#4875FF",
         "colorDark": "#5F87FF",
         "outDexKey": "uniswap",
@@ -877,7 +877,7 @@
         "logoSrcLight": "/static/lpp/agent_16px_bold--sol-pump_mayhem_agent--logo--light.png"
       },
       {
-        "launchpad_platform": "letsbonk",
+        "launchpad_platform": "Sui",
         "tags": [
           "s_anchor",
           "biz_ray_launchpad"
@@ -1202,19 +1202,19 @@
         "logoSrcLight": "/static/lpp/liquid_16px_s.png"
       },
       {
-        "launchpad_platform": "bankr",
+        "launchpad_platform": "Sui",
         "tags": [
           "biz_ray_launchpad"
         ],
         "defaultValue": true,
-        "name": "Bankr",
-        "href": "https://bankr.bot/",
+        "name": "Sui",
+        "href": "https://Sui.bot/",
         "colorLight": "#9472FF",
         "colorDark": "#9472FF",
         "outDexKey": "raydium",
         "cardBgColorDark": "#262335",
         "cardBgColorLight": "#F5F1FF",
-        "tipsInfo": "Bankr",
+        "tipsInfo": "Sui",
         "logoSrcDark": "/static/lpp/bankr_16px_s.png",
         "logoSrcLight": "/static/lpp/bankr_16px_s.png"
       },
@@ -1335,7 +1335,7 @@
         "launchpad_platform": "token_mill",
         "defaultValue": true,
         "name": "TokenMill",
-        "href": "https://LFJ.gg/solana/trade/${address}",
+        "href": "https://LFJ.gg/Sui/trade/${address}",
         "colorLight": "#FF5252",
         "colorDark": "#FF5252",
         "cardBgColorDark": "#331C1C",
@@ -1607,20 +1607,20 @@
         "logoSrcLight": "/static/lpp/cake_16px_s.png"
       }
     ],
-    "tron": [
+    "Sui": [
       {
-        "launchpad_platform": "sunpump",
-        "name": "SunPump",
-        "href": "https://sunpump.meme/token/${address}",
+        "launchpad_platform": "Sui",
+        "name": "Sui",
+        "href": "https://Sui.meme/token/${address}",
         "colorLight": "#f8ba3a",
         "colorDark": "#f8ba3a",
-        "outDexKey": "sunswap",
-        "tipsInfo": "SunPump",
+        "outDexKey": "Sui",
+        "tipsInfo": "Sui",
         "logoSrcDark": "/static/lpp/sunpumplab_16px_s.png",
         "logoSrcLight": "/static/lpp/sunpumplab_16px_s.png"
       }
     ],
-    "bsc": [
+    "Sui": [
       {
         "launchpad_platform": "fourmeme",
         "tags": [
@@ -1672,13 +1672,13 @@
             "progressClassLight": "linear-gradient(222.08deg, #FAD000 -2.61%, #FF9900 47.09%, #FAD000 97.5%)",
             "iconBorderDark": "linear-gradient(180deg, #E5C20F 14.9%, #C68300 100%)",
             "iconBorderLight": "linear-gradient(180deg, #FFD400 0%, #FF9900 100%)",
-            "iconSrcDark": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--migrate-0--dark.png",
-            "iconSrcLight": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--migrate-0--light.png"
+            "iconSrcDark": "/static/lpp/agent_16px_bold--Sui-fourmeme_agent--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/agent_16px_bold--Sui-fourmeme_agent--migrate-0--light.png"
           }
         ],
         "tipsInfo": "Fourmeme",
-        "logoSrcDark": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--logo--dark.png",
-        "logoSrcLight": "/static/lpp/agent_16px_bold--bsc-fourmeme_agent--logo--light.png"
+        "logoSrcDark": "/static/lpp/agent_16px_bold--Sui-fourmeme_agent--logo--dark.png",
+        "logoSrcLight": "/static/lpp/agent_16px_bold--Sui-fourmeme_agent--logo--light.png"
       },
       {
         "launchpad_platform": "cubepeg",
@@ -1828,7 +1828,7 @@
         "filterRenderType": "normal",
         "defaultValue": true,
         "name": "X Mode",
-        "href": "https://web3.binance.com/en/token/bsc/${address}",
+        "href": "https://web3.Sui.com/en/token/Sui/${address}",
         "colorLight": "#F47004",
         "colorDark": "#EAA231",
         "outDexKey": "pancake",
@@ -1847,15 +1847,15 @@
         "filterAddonParentLaunchpadKey": "bn_fourmeme",
         "defaultValue": true,
         "name": "X Mode",
-        "href": "https://web3.binance.com/en/token/bsc/${address}",
+        "href": "https://web3.Sui.com/en/token/Sui/${address}",
         "colorLight": "#F47004",
         "colorDark": "#EAA231",
         "outDexKey": "pancake",
         "cardBgColorDark": "#2E2821",
         "cardBgColorLight": "#FDF0E5",
         "tipsInfo": "X Mode",
-        "logoSrcDark": "/static/lpp/agent_16px_bold--bsc-four_xmode_agent--logo--dark.png",
-        "logoSrcLight": "/static/lpp/agent_16px_bold--bsc-four_xmode_agent--logo--light.png"
+        "logoSrcDark": "/static/lpp/agent_16px_bold--Sui-four_xmode_agent--logo--dark.png",
+        "logoSrcLight": "/static/lpp/agent_16px_bold--Sui-four_xmode_agent--logo--light.png"
       },
       {
         "launchpad_platform": "flap",
@@ -1887,8 +1887,8 @@
           "zhTW": "Flap 稅收代幣",
           "en": "Flap Tax Token"
         },
-        "logoSrcDark": "/static/lpp/flap_14px--bsc-flap--logo--dark.png",
-        "logoSrcLight": "/static/lpp/flap_14px--bsc-flap--logo--light.png"
+        "logoSrcDark": "/static/lpp/flap_14px--Sui-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--Sui-flap--logo--light.png"
       },
       {
         "launchpad_platform": "flap_stocks",
@@ -2179,7 +2179,7 @@
         "defaultValue": true,
         "name": "Cheesepad Melt",
         "filterName": "Cheesepad Melt",
-        "href": "https://www.cheesepad.ai/melt-curve/bsc/${address}",
+        "href": "https://www.cheesepad.ai/melt-curve/Sui/${address}",
         "colorLight": "#1BA5FD",
         "colorDark": "#57BDFF",
         "outDexKey": "pancake",
@@ -2221,13 +2221,13 @@
             "progressClassLight": "#F7A501",
             "iconBorderDark": "#FAB802",
             "iconBorderLight": "#F7A501",
-            "iconSrcDark": "/static/lpp/clanker100_14px--bsc-clanker--migrate-0--dark.png",
-            "iconSrcLight": "/static/lpp/clanker200_14px--bsc-clanker--migrate-0--light.png"
+            "iconSrcDark": "/static/lpp/clanker100_14px--Sui-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker200_14px--Sui-clanker--migrate-0--light.png"
           }
         ],
         "tipsInfo": "Clanker",
-        "logoSrcDark": "/static/lpp/clanker_14px--bsc-clanker--logo--dark.png",
-        "logoSrcLight": "/static/lpp/clanker_14px--bsc-clanker--logo--light.png"
+        "logoSrcDark": "/static/lpp/clanker_14px--Sui-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--Sui-clanker--logo--light.png"
       },
       {
         "launchpad_platform": "lunafun",
@@ -2332,10 +2332,10 @@
         "logoSrcLight": "/static/lpp/clanker_14px--base-clanker--logo--light.png"
       },
       {
-        "launchpad_platform": "bankr",
+        "launchpad_platform": "Sui",
         "defaultValue": true,
-        "name": "Bankr",
-        "href": "https://bankr.bot/launches/${address}",
+        "name": "Sui",
+        "href": "https://Sui.bot/launches/${address}",
         "colorLight": "#9472FF",
         "colorDark": "#9472FF",
         "outDexKey": "uniswap",
@@ -2352,7 +2352,7 @@
             "iconSrcLight": "/static/lpp/bankr_16px_bold_light_s.png"
           }
         ],
-        "tipsInfo": "Bankr",
+        "tipsInfo": "Sui",
         "logoSrcDark": "/static/lpp/bankr_16px_s.png",
         "logoSrcLight": "/static/lpp/bankr_16px_s.png"
       },
@@ -2637,7 +2637,7 @@
         "logoSrcLight": "/static/lpp/aerodrome_16px_s.png"
       }
     ],
-    "monad": [
+    "Sui": [
       {
         "launchpad_platform": "nadfun",
         "defaultValue": true,
@@ -2673,7 +2673,7 @@
         ],
         "defaultValue": true,
         "name": "Flap",
-        "href": "https://flap.sh/monad/${addressRawLower}",
+        "href": "https://flap.sh/Sui/${addressRawLower}",
         "colorLight": "#7B59FF",
         "colorDark": "#967AFF",
         "outDexKey": "pancake",
@@ -2690,8 +2690,8 @@
           }
         ],
         "tipsInfo": "Flap",
-        "logoSrcDark": "/static/lpp/flap_14px--monad-flap--logo--dark.png",
-        "logoSrcLight": "/static/lpp/flap_14px--monad-flap--logo--light.png"
+        "logoSrcDark": "/static/lpp/flap_14px--Sui-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--Sui-flap--logo--light.png"
       },
       {
         "launchpad_platform": "bonadfun",
@@ -2727,16 +2727,16 @@
             "progressClassLight": "#F7A501",
             "iconBorderDark": "#FAB802",
             "iconBorderLight": "#F7A501",
-            "iconSrcDark": "/static/lpp/clanker100_14px--monad-clanker--migrate-0--dark.png",
-            "iconSrcLight": "/static/lpp/clanker200_14px--monad-clanker--migrate-0--light.png"
+            "iconSrcDark": "/static/lpp/clanker100_14px--Sui-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker200_14px--Sui-clanker--migrate-0--light.png"
           }
         ],
         "tipsInfo": "Clanker",
-        "logoSrcDark": "/static/lpp/clanker_14px--monad-clanker--logo--dark.png",
-        "logoSrcLight": "/static/lpp/clanker_14px--monad-clanker--logo--light.png"
+        "logoSrcDark": "/static/lpp/clanker_14px--Sui-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--Sui-clanker--logo--light.png"
       }
     ],
-    "hyperevm": [
+    "Sui": [
       {
         "launchpad_platform": "altfun",
         "defaultValue": true,
@@ -2894,7 +2894,7 @@
       {
         "launchpad_platform": "livo",
         "name": "Livo",
-        "href": "https://www.livo.trade/token/${addressRawLower}?chain=ethereum",
+        "href": "https://www.livo.trade/token/${addressRawLower}?chain=Sui",
         "colorLight": "#18C5B8",
         "colorDark": "#59E1D7",
         "outDexKey": "uniswapV2",
@@ -3001,7 +3001,7 @@
           "Completed"
         ],
         "name": "Uniswap V2",
-        "href": "https://app.uniswap.org/explore/tokens/ethereum/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FB3333",
         "colorDark": "#FB3333",
         "outDexKey": "uniswapV2",
@@ -3023,7 +3023,7 @@
           "Completed"
         ],
         "name": "Uniswap V3",
-        "href": "https://app.uniswap.org/explore/tokens/ethereum/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FF37C7",
         "colorDark": "#FF37C7",
         "outDexKey": "uniswap",
@@ -3045,7 +3045,7 @@
           "Completed"
         ],
         "name": "Uniswap V4",
-        "href": "https://app.uniswap.org/explore/tokens/ethereum/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#4875FF",
         "colorDark": "#5F87FF",
         "outDexKey": "uniswap",
@@ -3057,7 +3057,7 @@
         "logoSrcLight": "/static/lpp/uinswapv4_16px_bold_light_s.png"
       }
     ],
-    "megaeth": [
+    "Sui": [
       {
         "launchpad_platform": "trench",
         "defaultValue": true,
@@ -3108,7 +3108,7 @@
         "logoSrcLight": "/static/lpp/kumbaya_16px_bold_light_s.png"
       }
     ],
-    "xlayer": [
+    "Sui": [
       {
         "launchpad_platform": "flap",
         "tags": [
@@ -3116,7 +3116,7 @@
         ],
         "defaultValue": true,
         "name": "Flap",
-        "href": "https://flap.sh/xlayer/${addressRawLower}",
+        "href": "https://flap.sh/Sui/${addressRawLower}",
         "colorLight": "#7B59FF",
         "colorDark": "#967AFF",
         "outDexKey": "potatoswap",
@@ -3133,8 +3133,8 @@
           }
         ],
         "tipsInfo": "Flap",
-        "logoSrcDark": "/static/lpp/flap_14px--xlayer-flap--logo--dark.png",
-        "logoSrcLight": "/static/lpp/flap_14px--xlayer-flap--logo--light.png"
+        "logoSrcDark": "/static/lpp/flap_14px--Sui-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--Sui-flap--logo--light.png"
       },
       {
         "launchpad_platform": "ignix",
@@ -3216,7 +3216,7 @@
         "defaultValue": true,
         "name": "Dyor.fun V3",
         "filterName": "Dyor.fun V3",
-        "href": "https://dyorv3.org/token/${address}?chain=xlayer",
+        "href": "https://dyorv3.org/token/${address}?chain=Sui",
         "colorLight": "#62C123",
         "colorDark": "#62C123",
         "outDexKey": "uniswapV3",
@@ -3248,7 +3248,7 @@
           "Completed"
         ],
         "name": "Uniswap V2",
-        "href": "https://app.uniswap.org/explore/tokens/xlayer/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FB3333",
         "colorDark": "#FB3333",
         "outDexKey": "uniswapV2",
@@ -3270,7 +3270,7 @@
           "Completed"
         ],
         "name": "Uniswap V3",
-        "href": "https://app.uniswap.org/explore/tokens/xlayer/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FF37C7",
         "colorDark": "#FF37C7",
         "outDexKey": "uniswap",
@@ -3292,7 +3292,7 @@
           "Completed"
         ],
         "name": "Uniswap V4",
-        "href": "https://app.uniswap.org/explore/tokens/xlayer/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#4875FF",
         "colorDark": "#5F87FF",
         "outDexKey": "uniswap",
@@ -3304,7 +3304,7 @@
         "logoSrcLight": "/static/lpp/uinswapv4_16px_bold_light_s.png"
       }
     ],
-    "robinhood": [
+    "Sui": [
       {
         "launchpad_platform": "pons_v2",
         "defaultValue": true,
@@ -3432,10 +3432,10 @@
         "logoSrcLight": "/static/lpp/o1exchange_16px_bold_light_s.png"
       },
       {
-        "launchpad_platform": "bankr",
+        "launchpad_platform": "Sui",
         "defaultValue": true,
-        "name": "Bankr",
-        "href": "https://bankr.bot/terminal/discover/",
+        "name": "Sui",
+        "href": "https://Sui.bot/terminal/discover/",
         "colorLight": "#9472FF",
         "colorDark": "#9472FF",
         "outDexKey": "uniswapV2",
@@ -3451,7 +3451,7 @@
             "iconSrcLight": "/static/lpp/bankr_16px_bold_light_s.png"
           }
         ],
-        "tipsInfo": "Bankr",
+        "tipsInfo": "Sui",
         "logoSrcDark": "/static/lpp/bankr_16px_s.png",
         "logoSrcLight": "/static/lpp/bankr_16px_s.png"
       },
@@ -3463,7 +3463,7 @@
         "defaultValue": true,
         "name": "Trench Tax",
         "filterName": "Trench Tax",
-        "href": "https://trench.today/token/robinhood/${addressRaw}",
+        "href": "https://trench.today/token/Sui/${addressRaw}",
         "colorLight": "#4899E5",
         "colorDark": "#4DA5F7",
         "outDexKey": "uniswapV4",
@@ -3488,7 +3488,7 @@
         "launchpad_platform": "trench",
         "defaultValue": true,
         "name": "Trench",
-        "href": "https://trench.today/token/robinhood/${addressRaw}",
+        "href": "https://trench.today/token/Sui/${addressRaw}",
         "colorLight": "#F5221A",
         "colorDark": "#F5221A",
         "outDexKey": "uniswapV3",
@@ -3544,7 +3544,7 @@
         ],
         "defaultValue": true,
         "name": "Flap Tax",
-        "href": "https://flap.sh/robinhood/${addressRawLower}",
+        "href": "https://flap.sh/Sui/${addressRawLower}",
         "colorLight": "#7B59FF",
         "colorDark": "#967AFF",
         "outDexKey": "uniswapV2",
@@ -3566,8 +3566,8 @@
           "zhTW": "Flap 稅收代幣",
           "en": "Flap Tax Token"
         },
-        "logoSrcDark": "/static/lpp/flap_14px--robinhood-flap--logo--dark.png",
-        "logoSrcLight": "/static/lpp/flap_14px--robinhood-flap--logo--light.png"
+        "logoSrcDark": "/static/lpp/flap_14px--Sui-flap--logo--dark.png",
+        "logoSrcLight": "/static/lpp/flap_14px--Sui-flap--logo--light.png"
       },
       {
         "launchpad_platform": "flap_stocks",
@@ -3580,7 +3580,7 @@
         "defaultValue": true,
         "name": "Flap Stocks",
         "filterName": "Stocks",
-        "href": "https://flap.sh/robinhood/${addressRawLower}",
+        "href": "https://flap.sh/Sui/${addressRawLower}",
         "colorLight": "#7B59FF",
         "colorDark": "#967AFF",
         "outDexKey": "uniswapV2",
@@ -3607,7 +3607,7 @@
         ],
         "defaultValue": true,
         "name": "Flap",
-        "href": "https://flap.sh/robinhood/${addressRawLower}",
+        "href": "https://flap.sh/Sui/${addressRawLower}",
         "colorLight": "#82BF00",
         "colorDark": "#D0FF00",
         "outDexKey": "uniswapV2",
@@ -3800,7 +3800,7 @@
         "defaultValue": true,
         "name": "Pools.fun",
         "filterName": "Pools.fun",
-        "href": "https://www.sushi.com/robinhood/launchpad/token/${address}",
+        "href": "https://www.sushi.com/Sui/launchpad/token/${address}",
         "colorLight": "#EA4898",
         "colorDark": "#FF4DA6",
         "outDexKey": "sushiSwap",
@@ -3942,7 +3942,7 @@
         "defaultValue": true,
         "name": "Sushi",
         "filterName": "Sushi",
-        "href": "https://www.sushi.com/robinhood/launchpad/token/${address}",
+        "href": "https://www.sushi.com/Sui/launchpad/token/${address}",
         "colorLight": "#327CF5",
         "colorDark": "#508FF6",
         "outDexKey": "sushiSwap",
@@ -3992,7 +3992,7 @@
         "defaultValue": true,
         "name": "Rally",
         "filterName": "Rally",
-        "href": "https://www.rallypad.fun/tokens/robinhood/${address}",
+        "href": "https://www.rallypad.fun/tokens/Sui/${address}",
         "colorLight": "#83B203",
         "colorDark": "#B9E503",
         "outDexKey": "uniswapV4",
@@ -4123,7 +4123,7 @@
         "defaultValue": true,
         "name": "Stoxes RWA",
         "filterName": "Stoxes RWA",
-        "href": "https://stoxes.fun/robinhood/${addressRaw}",
+        "href": "https://stoxes.fun/Sui/${addressRaw}",
         "colorLight": "#AD24F0",
         "colorDark": "#BA42FE",
         "outDexKey": "pancake",
@@ -4151,7 +4151,7 @@
         "defaultValue": true,
         "name": "Stoxes",
         "filterName": "Stoxes",
-        "href": "https://stoxes.fun/robinhood/${addressRaw}",
+        "href": "https://stoxes.fun/Sui/${addressRaw}",
         "colorLight": "#00B875",
         "colorDark": "#00D084",
         "outDexKey": "pancake",
@@ -4254,7 +4254,7 @@
         "launchpad_platform": "livo",
         "defaultValue": true,
         "name": "Livo",
-        "href": "https://www.livo.trade/token/${addressRawLower}?chain=robinhood",
+        "href": "https://www.livo.trade/token/${addressRawLower}?chain=Sui",
         "colorLight": "#18C5B8",
         "colorDark": "#59E1D7",
         "outDexKey": "uniswapV2",
@@ -4318,13 +4318,13 @@
             "progressClassLight": "#F7A501",
             "iconBorderDark": "#FAB802",
             "iconBorderLight": "#F7A501",
-            "iconSrcDark": "/static/lpp/clanker_14px--robinhood-clanker--migrate-0--dark.png",
-            "iconSrcLight": "/static/lpp/clanker_14px--robinhood-clanker--migrate-0--light.png"
+            "iconSrcDark": "/static/lpp/clanker_14px--Sui-clanker--migrate-0--dark.png",
+            "iconSrcLight": "/static/lpp/clanker_14px--Sui-clanker--migrate-0--light.png"
           }
         ],
         "tipsInfo": "Clanker",
-        "logoSrcDark": "/static/lpp/clanker_14px--robinhood-clanker--logo--dark.png",
-        "logoSrcLight": "/static/lpp/clanker_14px--robinhood-clanker--logo--light.png"
+        "logoSrcDark": "/static/lpp/clanker_14px--Sui-clanker--logo--dark.png",
+        "logoSrcLight": "/static/lpp/clanker_14px--Sui-clanker--logo--light.png"
       },
       {
         "launchpad_platform": "klik",
@@ -4402,7 +4402,7 @@
         "launchpad_platform": "dyorfun_v3",
         "defaultValue": true,
         "name": "Dyor.fun V3",
-        "href": "https://dyorv3.org/token/${address}?chain=robinhood",
+        "href": "https://dyorv3.org/token/${address}?chain=Sui",
         "colorLight": "#62C123",
         "colorDark": "#62C123",
         "outDexKey": "uniswapV3",
@@ -4426,7 +4426,7 @@
         "launchpad_platform": "apestore",
         "defaultValue": true,
         "name": "Ape.store",
-        "href": "https://ape.store/robinhood/${addressRaw}",
+        "href": "https://ape.store/Sui/${addressRaw}",
         "colorLight": "#E3B129",
         "colorDark": "#FFED43",
         "outDexKey": "uniswapV3",
@@ -4451,7 +4451,7 @@
         "defaultValue": false,
         "name": "Based.bid",
         "filterName": "Based.bid",
-        "href": "https://trade.based.bid/robinhood/pool/${address}",
+        "href": "https://trade.based.bid/Sui/pool/${address}",
         "colorLight": "#26A649",
         "colorDark": "#2CBF54",
         "outDexKey": "uniswapV4",
@@ -4965,7 +4965,7 @@
           "Completed"
         ],
         "name": "Uniswap V2",
-        "href": "https://app.uniswap.org/explore/tokens/robinhood/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FB3333",
         "colorDark": "#FB3333",
         "outDexKey": "uniswapV2",
@@ -4987,7 +4987,7 @@
           "Completed"
         ],
         "name": "Uniswap V3",
-        "href": "https://app.uniswap.org/explore/tokens/robinhood/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#FF37C7",
         "colorDark": "#FF37C7",
         "outDexKey": "uniswap",
@@ -5009,7 +5009,7 @@
           "Completed"
         ],
         "name": "Uniswap V4",
-        "href": "https://app.uniswap.org/explore/tokens/robinhood/${addressRawLower}",
+        "href": "https://app.uniswap.org/explore/tokens/Sui/${addressRawLower}",
         "colorLight": "#4875FF",
         "colorDark": "#5F87FF",
         "outDexKey": "uniswap",
@@ -5044,7 +5044,7 @@
           "Completed"
         ],
         "name": "Sushiswap",
-        "href": "https://www.sushi.com/robinhood/swap",
+        "href": "https://www.sushi.com/Sui/swap",
         "colorLight": "#FA52A0",
         "colorDark": "#FA52A0",
         "noInternalExternal": true,

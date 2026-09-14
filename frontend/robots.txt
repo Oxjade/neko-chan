@@ -70,12 +70,12 @@ Allow: /app
 Allow: /ai
 Allow: /about
 Allow: /static/
-Allow: /sol/token/
-Allow: /bsc/token/
-Allow: /base/token/
-Allow: /eth/token/
-Allow: /monad/token/
-Allow: /tron/token/
+Allow: /sui/token/
+Allow: /Sui/token/
+Allow: /sui/token/
+Allow: /sui/token/
+Allow: /Sui/token/
+Allow: /Sui/token/
 Allow: /
 Disallow: /monitor
 Disallow: /follow
@@ -85,16 +85,16 @@ Disallow: /watchlists
 Disallow: /security
 Disallow: /account
 Disallow: /r/
-Disallow: /sol/address/
-Disallow: /bsc/address/
-Disallow: /base/address/
-Disallow: /eth/address/
-Disallow: /monad/address/
-Disallow: /tron/address/
+Disallow: /sui/address/
+Disallow: /Sui/address/
+Disallow: /sui/address/
+Disallow: /sui/address/
+Disallow: /Sui/address/
+Disallow: /Sui/address/
 
-Sitemap: https://gmgn.ai/sitemap.xml
-Sitemap: https://docs.gmgn.ai/index/sitemap-pages.xml
-Sitemap: https://memecoin.gmgn.ai/sitemap.xml
+Sitemap: https://nekotrade.fun/sitemap.xml
+Sitemap: https://docs.nekotrade.fun/index/sitemap-pages.xml
+Sitemap: https://memecoin.nekotrade.fun/sitemap.xml
 
 #              ________
 #   __,_,     |        |

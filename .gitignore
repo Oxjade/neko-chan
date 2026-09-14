@@ -164,3 +164,9 @@ wipe_and_restart.sh
 *.bak
 research/exports/wallets/
 ~/
+
+# ====================
+# Neko Sui indexer
+# ====================
+/indexer/target/
+/indexer/.env

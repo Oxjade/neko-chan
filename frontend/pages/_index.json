@@ -170,26 +170,6 @@
   "bytes": 47588
  },
  {
-  "route": "/cooking",
-  "live": "/cooking",
-  "file": "frontend/pages/cooking.html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 47258
- },
- {
-  "route": "/cooking/x/callback",
-  "live": "/cooking/x/callback",
-  "file": "frontend/pages/cooking__x__callback.html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 47280
- },
- {
   "route": "/discover",
   "live": "/discover",
   "file": "frontend/pages/discover.html",
@@ -310,26 +290,6 @@
   "bytes": 49234
  },
  {
-  "route": "/perpetual/earn",
-  "live": "/perpetual/earn",
-  "file": "frontend/pages/perpetual__earn.html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 47272
- },
- {
-  "route": "/perpetual/[pair]",
-  "live": "/perpetual/test",
-  "file": "frontend/pages/perpetual__[x].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 47276
- },
- {
   "route": "/portfolio",
   "live": "/portfolio",
   "file": "frontend/pages/portfolio.html",
@@ -348,16 +308,6 @@
   "next_data": true,
   "title": "",
   "bytes": 47281
- },
- {
-  "route": "/pump",
-  "live": "/pump",
-  "file": "frontend/pages/pump.html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48977
  },
  {
   "route": "/r/[code]",
@@ -758,95 +708,5 @@
   "next_data": true,
   "title": "",
   "bytes": 47433
- },
- {
-  "route": "/xstocks",
-  "live": "/xstocks",
-  "file": "frontend/pages/xstocks.html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 47416
- },
- {
-  "route": "/xstocks/XStocksRank",
-  "live": "/xstocks/XStocksRank",
-  "file": "frontend/pages/xstocks__XStocksRank.html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 47440
- },
- {
-  "route": "/[chain]/address/[address]",
-  "live": "/sol/address/So11111111111111111111111111111111111111112",
-  "file": "frontend/pages/[sol]__So11111111111111111111111111111111111111112__[So11111111111111111111111111111111111111112].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 49026
- },
- {
-  "route": "/[chain]/devSnipe/[order_id]",
-  "live": "/sol/devSnipe/test",
-  "file": "frontend/pages/[sol]__devSnipe__[x].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48252
- },
- {
-  "route": "/[chain]/skyTrade/[address]",
-  "live": "/sol/skyTrade/So11111111111111111111111111111111111111112",
-  "file": "frontend/pages/[sol]__skyTrade__[So11111111111111111111111111111111111111112].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48329
- },
- {
-  "route": "/[chain]/snipex/[address]",
-  "live": "/sol/snipex/So11111111111111111111111111111111111111112",
-  "file": "frontend/pages/[sol]__snipex__[So11111111111111111111111111111111111111112].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48641
- },
- {
-  "route": "/[chain]/token/[token]",
-  "live": "/sol/token/So11111111111111111111111111111111111111112",
-  "file": "frontend/pages/[sol]__So11111111111111111111111111111111111111112__[So11111111111111111111111111111111111111112].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48941
- },
- {
-  "route": "/[chain]/tokenSnipe/[order_id]",
-  "live": "/sol/tokenSnipe/test",
-  "file": "frontend/pages/[sol]__So11111111111111111111111111111111111111112Snipe__[x].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48256
- },
- {
-  "route": "/[chain]/trade/[address]",
-  "live": "/sol/trade/So11111111111111111111111111111111111111112",
-  "file": "frontend/pages/[sol]__trade__[So11111111111111111111111111111111111111112].html",
-  "status": "200",
-  "cf_challenge": false,
-  "next_data": true,
-  "title": "",
-  "bytes": 48639
  }
 ]
