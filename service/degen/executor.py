@@ -309,7 +309,7 @@ class DegenExecutor:
     def _dex_swap(self, bot_id: int, coin_in_type: str, coin_out_type: str,
                   in_atoms: int, slip_bps: int, idem: str, intent: str,
                   launchpad: str, curve_id: str, token_type: str,
-                  pos: dict | None = None) -> dict:
+                  pos: dict | None = None, cetus_only: bool = False) -> dict:
         """Quote -> build -> sign -> broadcast one Aftermath-routed swap.
         The 0.5% integrator fee rides INSIDE the route (externalFee), so fills
         are booked net of fee from real balance deltas — same integrity rules
@@ -321,9 +321,20 @@ class DegenExecutor:
         client = self._spot_client()
         fee = ({"recipient": self.fee_recipient, "feePercentage": 0.5}
                if self.fee_recipient and K.PLATFORM_FEE_BPS else None)
-        q = client.quote_route(coin_in_type, coin_out_type,
-                               amount_in_atoms=in_atoms, slippage_bps=slip_bps,
-                               external_fee=fee)
+        # suipump graduates: their Cetus graduation pool is the primary market;
+        # pinning the route guarantees the price we DISPLAY is the venue we
+        # EXECUTE on (the SOR picks Cetus for them anyway, verified live).
+        wl = ["Cetus"] if cetus_only else None
+        try:
+            q = client.quote_route(coin_in_type, coin_out_type,
+                                   amount_in_atoms=in_atoms, slippage_bps=slip_bps,
+                                   external_fee=fee, protocols_whitelist=wl)
+        except Exception:
+            if not wl:
+                raise
+            q = client.quote_route(coin_in_type, coin_out_type,
+                                   amount_in_atoms=in_atoms, slippage_bps=slip_bps,
+                                   external_fee=fee)   # Cetus absent → best route
         oid = self.ledger.add_order(bot_id, wallet=waddr, intent=intent, otype="market",
                                     launchpad=launchpad, curve_id=curve_id,
                                     token_type=token_type, qty_sui=in_atoms / 1e9,
@@ -392,15 +403,17 @@ class DegenExecutor:
                                   int(float(o.get("qty_sui") or 0) * 1e9), slip_bps,
                                   idem or f"pgbuy{st.curve_id}{time.time_ns()}",
                                   "buy", st.launchpad or "suipump", st.curve_id,
-                                  st.token_type)
+                                  st.token_type,
+                                  cetus_only=(st.launchpad or "suipump") == "suipump")
         atoms = int((pos or {}).get("tokens") or 0)
         if atoms <= 0:
             return {"ok": False, "error": "no tokens to sell"}
         return self._dex_swap(bot_id, st.token_type, K.SUI_COIN_TYPE, atoms,
-                              max(slip_bps, 1000),   # exits get more room
+                              max(slip_bps, 500),    # exits need >=5% room
                               idem or f"pgsell{st.curve_id}{time.time_ns()}",
                               "sell", st.launchpad or "suipump", st.curve_id,
-                              st.token_type, pos=pos)
+                              st.token_type, pos=pos,
+                              cetus_only=(st.launchpad or "suipump") == "suipump")
 
     # ---------------- spread-burst (§3.6) ----------------
     def spread_burst(self, bot_id: int, *, launchpad: str, curve_id: str,

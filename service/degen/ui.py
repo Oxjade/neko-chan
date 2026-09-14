@@ -279,7 +279,7 @@ class DegenUI:
         allowed, extra = await self._gauntlet(bot, st)
         r_curve = ref or self._ref(bid, "curve", st.curve_id or st.token_type)
         sel_amt = str(caps.get("_amt_" + r_curve, "0.5"))
-        sel_slp = str(caps.get("_slip_" + r_curve, "10"))
+        sel_slp = str(caps.get("_slip_" + r_curve, "5"))
         mcap = m.mcap_usd or m.fdv_usd          # pre-grad FDV stands in for tiny mcap
         if st.kind == "pool":
             grad_row = "🎓 Grad    <code>✅ graduated</code>"
@@ -502,7 +502,7 @@ class DegenUI:
         m = compute(self.ch, st)
         caps = cfg.get("caps", {}) or {}
         sel = str(caps.get("_amt_" + ref, "0.5"))
-        slip = int(float(caps.get("_slip_" + ref, "10")))
+        slip = int(float(caps.get("_slip_" + ref, "5")))
         amt = self._amt_value(caps, sel)
         from .metrics import expected_tokens_out, virtual_reserves
         if st.kind == "curve":
@@ -551,7 +551,7 @@ class DegenUI:
                    if self.ex else {"ok": False, "error": "no executor"})
         else:
             amt = float(parts[3]) if len(parts) > 3 else 0.5
-            slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "10")))
+            slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "5")))
             if st.kind == "pool":
                 res = (self.ex.buy_post_grad(bid, {"qty_sui": amt}, st, side="buy",
                                              slip_bps=slip * 100,

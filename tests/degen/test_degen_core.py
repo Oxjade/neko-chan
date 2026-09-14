@@ -403,8 +403,9 @@ def test_dex_swap_post_grad_records_fill_and_position():
 
     class FakeSpot:
         def quote_route(self, ci, co, amount_in_atoms=None, slippage_bps=100,
-                        external_fee=None):
+                        external_fee=None, protocols_whitelist=None):
             calls["quote"] = (ci, co, amount_in_atoms, external_fee)
+            calls["wl"] = protocols_whitelist
             return {"feeBreakdown": [{"recipient": external_fee["recipient"],
                                       "amount": str(int(amount_in_atoms * 0.005)) + "n"}],
                     "routes": []}
@@ -428,3 +429,4 @@ def test_dex_swap_post_grad_records_fill_and_position():
     assert pos and pos[0]["entry_sui"] == 0.5
     # integrator fee actually requested on the route
     assert calls["quote"][3] and calls["quote"][3]["feePercentage"] == 0.5
+    assert calls["wl"] == ["Cetus"]        # suipump graduates pinned to Cetus

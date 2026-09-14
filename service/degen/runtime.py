@@ -137,7 +137,7 @@ class DegenRuntime:
         from .constants import SUI_COIN_TYPE
         a = AftermathSpotAdapter("", self.network)
         return a.quote_route(SUI_COIN_TYPE, token_type,
-                             amount_in_atoms=sui_atoms, slippage_bps=1000)
+                             amount_in_atoms=sui_atoms, slippage_bps=500)
 
 
 def get_runtime() -> DegenRuntime:
