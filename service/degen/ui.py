@@ -366,7 +366,7 @@ class DegenUI:
         icon = {"curve": "🐸", "graduating": "⏳", "pool": "🎨", "generic": "🌐"}[st.kind]
         badge = {"curve": "LIVE on curve", "graduating": "GRADUATING — untradeable",
                  "pool": "GRADUATED → Aftermath",
-                 "generic": "DEX token — not on Suipump"}[st.kind]
+                 "generic": "live on DEX"}[st.kind]
         allowed, extra = await self._gauntlet(bot, st)
         r_curve = ref or self._ref(bid, "curve", st.curve_id or st.token_type)
         sel_amt = str(caps.get("_amt_" + r_curve, "0.5"))

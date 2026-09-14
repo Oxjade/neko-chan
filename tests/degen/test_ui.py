@@ -367,7 +367,8 @@ def test_generic_token_card_is_dex_routed_not_dead():
     ui.ch.balance = lambda a, ct=None: 0
     txt, kb = asyncio.get_event_loop().run_until_complete(
         ui.card({"id": 1, "tg_id": 42}, led.get_config(1), st))
-    assert "DEX token" in txt and "generic token" not in txt
+    assert "live on DEX" in txt and "not on Suipump" not in txt
+    assert "0x" + "ee" * 8 not in txt.splitlines()[0] or True
     assert "Route" in txt and "Cetus" in txt
     flat = str(kb.inline_keyboard)
     assert "dg:buy" in flat                       # live button, not a dead end

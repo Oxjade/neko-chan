@@ -74,6 +74,20 @@ class AssetState:
 _IDX_DOWN = 0.0   # unix ts of last indexer failure (60s cool-down)
 
 
+def _fill_metadata(ch: Chain, st: "AssetState") -> None:
+    """Best-effort symbol/name for a token type (coinMetadata, keyless)."""
+    if not st.token_type:
+        return
+    try:
+        r = ch.query('{ coinMetadata(coinType: "%s") { symbol name decimals } }'
+                     % st.token_type)
+        cm = (r or {}).get("coinMetadata") or {}
+        st.symbol = str(cm.get("symbol") or "")[:16]
+        st.name = str(cm.get("name") or "")[:40]
+    except Exception:
+        pass
+
+
 # ----------------------------------------------------------------- interface
 class Launchpad:
     id = ""
@@ -230,9 +244,12 @@ def resolve_input(ch: Chain, raw: str) -> AssetState:
                     return lp.build_state(ch, o)
                 return AssetState(kind="unknown", launchpad=lp.id, token_type=_pad_type(s),
                                   reasons=["token type has no live curve — was it launched here?"])
-        # unknown type → generic attempt (Aftermath probe happens at card level)
-        return AssetState(kind="generic", launchpad="generic", token_type=_pad_type(s),
-                          reasons=["not a Suipump/Blast token type"])
+        # unknown type → DEX-routed token (Aftermath probe at card level). Pull
+        # its real symbol/name so the UI can show WHAT it is, not what it isn't.
+        st = AssetState(kind="generic", launchpad="generic", token_type=_pad_type(s),
+                        reasons=["routed via DEX aggregators"])
+        _fill_metadata(ch, st)
+        return st
 
     if not HEX_ADDR_RE.match(s):
         return AssetState(kind="unknown", launchpad="", reasons=["unrecognized input"])
@@ -258,16 +275,23 @@ def resolve_input(ch: Chain, raw: str) -> AssetState:
                     st.grad_threshold_mist, st.progress_bps = cs.grad_threshold_mist, cs.progress_bps
                     st.symbol, st.name, st.icon_url = cs.symbol, cs.name, cs.icon_url
                 return st
-        # token package id pasted instead of the type
-        guess = f"{addr}::{K.SUIPUMP_MODULE.replace('bonding_curve', 'suipump')}::SUIPUMP"
-        guess2 = f"{addr}::suipump::SUIPUMP"
+        # token package id / metadata object pasted instead of the type
+        mmt = re.match(r"(?i)^0x2::coin::CoinMetadata<(.+)>$", tr)
+        if mmt:                       # pasted the metadata object → recover type
+            st = AssetState(kind="generic", launchpad="generic",
+                            token_type=_pad_type(mmt.group(1)),
+                            reasons=["routed via DEX aggregators"])
+            _fill_metadata(ch, st)
+            return st
+        guess = f"{addr}::suipump::SUIPUMP"
         for lp in active_launchpads():
             if hasattr(lp, "find_curve"):
-                curve = lp.find_curve(ch, guess2) or lp.find_curve(ch, guess)
+                curve = lp.find_curve(ch, guess)
                 if curve:
                     return lp.build_state(ch, curve)
-        return AssetState(kind="generic", launchpad="generic", token_type=addr,
-                          reasons=[f"object type {tr[:56]}… is not a known curve/pool"])
+        return AssetState(kind="unknown", launchpad="",
+                          reasons=["paste the full token type (0x…::pkg::TOK) — "
+                                   "that object isn't a curve, pool or metadata"])
 
     # ---- not an object → wallet address ----
     return AssetState(kind="wallet", launchpad="", creator=addr)

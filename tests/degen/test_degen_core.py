@@ -113,7 +113,7 @@ def test_resolve_wallet_and_unknown():
     st = resolve_input(ch, "not-an-address")
     assert st.kind == "unknown"
     st = resolve_input(ch, "0x0123::weird::TOKEN")
-    assert st.kind == "generic" and "Suipump" in st.reasons[0]
+    assert st.kind == "generic" and "DEX" in st.reasons[0]
 
 
 def test_resolve_blast_locked_shape():
