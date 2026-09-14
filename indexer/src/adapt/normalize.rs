@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 
 /// Venue of an event, derived from the *defining* package id embedded in its
 /// type string (stable across package upgrades; see DESIGN §5).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Venue {
     SuiPump,
     Cetus,
@@ -39,14 +39,14 @@ pub const SUIPUMP_BONDING_MODULE: &str = "bonding_curve";
 pub const CETUS_DEFINE: &str = "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb";
 pub const CETUS_POOL_MODULE: &str = "pool";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Side {
     Buy,
     Sell,
 }
 
 /// Canonical, fully-exact trade row (feeds `bonding_trades` / `swaps` in §10).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TokenTrade {
     pub venue: Venue,
     pub side: Option<Side>,

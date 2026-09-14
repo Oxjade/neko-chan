@@ -733,12 +733,116 @@ async fn cmd_cetus_swaps(res: &PackageResolver, samples: usize) -> Result<()> {
     cmd_db_scan(res, CETUS_CLMM_DEFINE, "Swap", 300, samples).await
 }
 
+/// G4 live path: stream a checkpoint window (optionally pruned by module),
+/// decode each adapted event via on-chain layouts, and emit canonical
+/// `TokenTrade` rows as JSONL + a decode/DLQ summary. No DB involvement.
+async fn cmd_trades(
+    client: &neko_indexer::rpc::Client,
+    start: u64,
+    end: Option<u64>,
+    mod_filter: Option<&[&str]>,
+    outfile: &str,
+) -> Result<()> {
+    let res = PackageResolver::new(client.clone());
+    let mut req = ListCheckpointsRequest::default();
+    req.read_mask = Some(prost_types::FieldMask {
+        paths: vec![
+            "sequence_number".into(),
+            "digest".into(),
+            "summary".into(),
+            "signature".into(),
+            "contents".into(),
+            "transactions".into(),
+            "objects".into(),
+        ],
+    });
+    req.start_checkpoint = Some(start);
+    req.end_checkpoint = end;
+    req.filter = mod_filter.map(module_filter);
+
+    let mut frames = 0u64;
+    let mut decoded = 0u64;
+    let mut trades = 0u64;
+    let mut by_venue: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut failures: Vec<String> = Vec::new();
+    let mut lines: String = String::new();
+
+    let mut stream = Box::pin(client.list_checkpoints(req));
+    while let Some(frame) = stream.next().await {
+        let frame = frame.context("list_checkpoints frame")?;
+        let Some(cp) = frame.checkpoint else { continue };
+        frames += 1;
+        if frames % 1000 == 0 {
+            println!("  ... {frames} checkpoints scanned");
+        }
+        let seq = cp.sequence_number.unwrap_or(0);
+        for ev in capture::events_in(&cp) {
+            let Some(ty) = ev.event_type.clone() else { continue };
+            let Some(venue) = neko_indexer::adapt::Venue::from_event_type(&ty) else { continue };
+            decoded += 1;
+            let contents = ev
+                .contents
+                .as_ref()
+                .and_then(|b| b.value.as_ref())
+                .cloned()
+                .unwrap_or_default();
+            let decoded_json = match neko_indexer::adapt::ty_from_event_type(&ty) {
+                Ok(root) => match neko_indexer::adapt::decode(root, &contents, &res).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        failures.push(format!("{ty} @cp{seq}: {e:#}"));
+                        continue;
+                    }
+                },
+                Err(e) => {
+                    failures.push(format!("{ty} @cp{seq}: {e:#}"));
+                    continue;
+                }
+            };
+            match neko_indexer::adapt::map_trade(&ty, &decoded_json) {
+                Ok(Some(t)) => {
+                    trades += 1;
+                    *by_venue.entry(format!("{venue:?}")).or_insert(0) += 1;
+                    let line = serde_json::to_string(&t)?;
+                    lines.push_str(&line);
+                    lines.push('\n');
+                }
+                Ok(None) => {}
+                Err(e) => failures.push(format!("{ty} @cp{seq}: {e:#}")),
+            }
+        }
+    }
+
+    println!();
+    println!("== summary ==");
+    println!("checkpoints scanned: {frames}");
+    println!("adapted events decoded: {decoded}");
+    println!("canonical trades emitted: {trades}");
+    for (v, n) in &by_venue {
+        println!("  {v}: {n}");
+    }
+    if !failures.is_empty() {
+        println!("{} decode/map failure(s) (DLQ):", failures.len());
+        for f in failures.iter().take(10) {
+            println!("  ! {f}");
+        }
+    }
+    if !lines.is_empty() {
+        std::fs::create_dir_all(
+            std::path::Path::new(outfile).parent().unwrap_or_else(|| std::path::Path::new(".")),
+        )?;
+        std::fs::write(outfile, lines).context("write trades jsonl")?;
+        println!("wrote {} trade line(s) -> {outfile}", trades);
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
         eprintln!(
-            "usage: neko-verify <package|event-types|datatype|decode|db-scan|cetus-swaps> [args...]"
+            "usage: neko-verify <package|event-types|datatype|decode|db-scan|backfill-scan|backfill-fixtures|trades|cetus-swaps> [args...]"
         );
         std::process::exit(2);
     }
@@ -842,6 +946,25 @@ async fn main() -> Result<()> {
                 format!("tests/fixtures/generic/{name}.json")
             });
             cmd_fixtures(&res, pkg, sub, n, samples, &out).await?;
+        }
+        "trades" => {
+            let start: u64 = args.get(1).context("trades <start-seq> [end-seq] [mod:...] [outfile]")?.parse()?;
+            let rest = args.iter().skip(2).collect::<Vec<_>>();
+            let mut end: Option<u64> = None;
+            let mut mod_filter: Vec<&str> = Vec::new();
+            let mut out = "trades.jsonl".to_string();
+            for arg in rest {
+                let numeric = !arg.is_empty() && arg.chars().all(|c| c.is_ascii_digit());
+                if let Some(m) = arg.strip_prefix("mod:") {
+                    mod_filter.push(m);
+                } else if numeric && end.is_none() {
+                    end = Some(arg.parse()?);
+                } else if !numeric {
+                    out = arg.to_string();
+                }
+            }
+            let mod_filter = (!mod_filter.is_empty()).then_some(mod_filter);
+            cmd_trades(&c, start, end, mod_filter.as_deref(), &out).await?;
         }
         "cetus-swaps" => {
             let samples = args.get(1).and_then(|v| v.parse().ok()).unwrap_or(5);
