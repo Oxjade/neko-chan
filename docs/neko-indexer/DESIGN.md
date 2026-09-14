@@ -1,6 +1,6 @@
 # Neko Sui Market-Data + Wallet-Intelligence Indexer — Design
 
-Status: **DRAFT v0.3 → review/sign-off (decisions locked 2026-09-14, see §18). Phase 1 implemented + verified.**
+Status: **DRAFT v0.3 → review/sign-off (decisions locked 2026-09-14, see §18). Phase 1 implemented + verified; Phase 3 adapter framework built + Cetus CLMM verified end-to-end (see §18).**
 Target network: Sui mainnet only (phase 1); same pipeline reusable for testnet via config.
 Parent requirement: "Sui-native GMGN data engine" for the Neko terminal. Read this doc before any production code.
 
@@ -157,7 +157,7 @@ All on `fullnode.mainnet.sui.io:443` (TLS); official pre-generated client/proto 
 | Historical checkpoint ranges | `LedgerService.ListCheckpoints` (paged); `ArchivalService.ListCheckpoints` (same surface, history store) | Backfill loop with `checkpoint` cursor paging. |
 | Checkpoint payload | `LedgerService.GetCheckpoints` with `read_mask` | Pull full checkpoint data for the range being backfilled. |
 | Transactions & effects from a checkpoint | `LedgerService.GetTransaction` / `BatchGetTransactions` (v2), via checkpoint's tx digests + FieldMask | Prefer `ListEvents` when we only need filtered event types; fall back to transaction when we need `changedObjects` for holder deltas. |
-| Events by type | `LedgerService.ListEvents` with `event_type` filter + cursor | Used to discover and backfill specific platforms (e.g. all SuiPump `bonding_curve` events) efficiently; then verified against raw checkpoint replay parity. |
+| Events by type | `LedgerService.ListEvents` with `event_type` filter + cursor | ⚠️ **Not served on the public-good endpoint (measured 2026-09-14, §18)** → deep backfill re-scans raw checkpoints with an `event_type`-prefix filter; keep cursor semantics for when a dedicated fullnode is available. |
 | Object reads (balances/holders/liquidity) | `StateService.GetObject` / `GetBalance` / `GetOwnedObjects` | For non-streamed facts: current pool reserves, wallet balances, curve state at a point in time. |
 | Move struct layouts (on-chain truth) | `MovePackageService.GetPackage` + `GetDatatype` | Retrieve module list + `MoveStruct` layout per type → cache → BCS decode events generically. This is the "don't invent event names" mechanism. |
 | Coin metadata | `CoinService` (coin metadata lookup) when available; else `0x2::coin::CoinMetadata` objects via StateService. | |
@@ -176,7 +176,7 @@ Until this passes for a target, its adapter is **not** enabled:
 1. Obtain candidate package id (docs, SDK mainnet config, explorer, Move Registry).
 2. `MovePackageService.GetPackage` → confirm modules exist on mainnet; pull module list.
 3. `GetDatatype` per candidate type → dump `MoveStruct` layout; record module:type names verbatim.
-4. `LedgerService.ListEvents(event_type=...)` → confirm the type is actually emitted on mainnet; gather ≥3 distinct real transactions as fixtures.
+4. Confirm emission on mainnet and gather ≥3 distinct real transactions as fixtures by scanning raw checkpoints for the type (`neko-verify db-scan <define-id-prefix>` then `neko-verify fixtures`; `ListEvents` is not served on the public-good endpoint — §18).
 5. Resolve the chain of identities (token coin type `<pkg>::<module>::<coin>`; pool object type; factory/registry objects like DeepBook `0xaf16...` or SuiPump `TokenRegistry` and `PlatformTreasury`; per-token curve/graduation objects).
 6. Save fixture bundle to `tests/fixtures/*` (raw BCS + decoded layout + expected canonical decodes) and freeze.
 7. Only then: write decoder + tests, then enable in config `protocols.adaptive.active`.
@@ -189,7 +189,7 @@ Until this passes for a target, its adapter is **not** enabled:
   1. Own fullnode restored from snapshot serving our internal ArchivalService (single-writer, we control it; recommended by Sui for indexers of full history). Fullnode needs a full checkpoint store (careful: not the ~30-day trimmed store).
   2. Provider ArchivalService for targeted ranges or event-filtered deep history.
   3. Bulk archive from GCS `gs://mysten-mainnet-checkpoints-use4` (requester-pays) / S3 `mysten-mainnet-checkpoints` (AWS creds) — used for the initial deep backfill import into our raw store.
-- **Storage reality (measured 2026-09):** full-mask raw checkpoints are ~860 KB each (≈15 GB/day live). Backfilling ALL of history as full raw is infeasible on a VPS (~277 TB @ 322M checkpoints). Therefore **deep history is event-filtered** (per-adapter `ListEvents(event_type)` from a start checkpoint) — complete for the events that matter (launchpad + DEX swaps + CoinMetadata), not a full ledger. Full raw is kept only for a **bounded recent window** (configurable, default 30 days) to bound size while preserving audit/parity headroom. Prune-after-normalize (§18) applies to the derived tables' raw inputs.
+- **Storage reality (measured 2026-09):** full-mask raw checkpoints are ~860 KB each (≈15 GB/day live). Backfilling ALL of history as full raw is infeasible on a VPS (~277 TB @ 322M checkpoints). Therefore **deep history is event-filtered** (per-adapter re-scan of raw checkpoints with an `event_type` filter; `ListEvents` unavailable on the public-good endpoint — §18) from a start checkpoint — complete for the events that matter (launchpad + DEX swaps + CoinMetadata), not a full ledger. Full raw is kept only for a **bounded recent window** (configurable, default 30 days) to bound size while preserving audit/parity headroom. Prune-after-normalize (§18) applies to the derived tables' raw inputs.
 - **Raw store:** SEQ + DIGEST are the only unique keys. Checkpoints appended in seq order; a gap table is maintained. We do not re-fetch checkpoints we already hold unless a gap is flagged.
 - **Ordering decoupled from live:** backfill writes into the *same* normalized tables (idempotent upserts) but does not fan out to WS and does not move the live watermark. Historical completeness is measured as: `min/max seq persisted` × `coverage %` vs checkpoint range, exposed as a metric and a status endpoint.
 - **Retention (spec: "retention should be configurable"):** raw checkpoint store and raw event rows keep full raw (needed for re-derivation and audit); derived tables (swaps/holders/candles) prune to a configurable window (default: keep all for `tokens`/`pools`/`bonding_curves`; time-series derived tables default 6 months, configurable; wallet PnL snapshots default 3 months).
@@ -212,12 +212,12 @@ NEW (coin template package published / treasury created)
 
 | Platform | Role in pipeline | Status |
 |---|---|---|
-| SuiPump | bonding-curve launchpad; graduation → Cetus CLMM | adapter design ready; **mainnet platform address TBD-VERIFY** |
-| MovePump | fair-launch memecoin platform; liquidity on Cetus | TBD-VERIFY |
-| Kumbaya | memecoin launchpad | TBD-VERIFY |
-| Cetus CLMM | AMM for graduated tokens (`0x25ebb...`) + all non-launchpad memecoins | package VERIFIED; event/pool struct dump pending |
-| DeepBook V3 | order-book DEX (spot) for liquidity depth + deep liquidity memecoins | full address set VERIFIED |
-| Turbos / Aftermath / Bluefin | spot DEX coverage | TBD-VERIFY (decide in/out in review) |
+| SuiPump | bonding-curve launchpad; graduation → Cetus CLMM | **v1 target**; adapter design ready; mainnet platform address TBD-VERIFY |
+| MovePump | fair-launch memecoin platform; liquidity on Cetus | **v1 target**; TBD-VERIFY |
+| Kumbaya | memecoin launchpad | **v1 target**; TBD-VERIFY |
+| Cetus CLMM | AMM for graduated tokens (`0x25ebb...`) + all non-launchpad memecoins | **v1 target**; package VERIFIED; event/pool struct dump pending |
+| DeepBook V3 | order-book DEX (spot) | NOT v1 (later) |
+| Turbos / Aftermath / Bluefin | spot DEX coverage | NOT v1 (later) |
 
 Basic **coin discovery** is protocol-agnostic: watch package-publish transactions whose modules mint a `TreasuryCap`/`CoinMetadata` + `metadata` creation, plus send/transfer of `0x2::coin::Coin` quantities, and (for launchpads) the factory `TokenRegistry`/curve-creation events. This is what feeds `tokens` even for completely unknown launchers.
 
@@ -239,6 +239,8 @@ Legend: ✅ = VERIFIED (safe to build adapter fixture on), ⏳ = TBD-VERIFY (use
 - ⏳ Mainnet platform package/factory/treasury ids + actual `events.move` emitted struct names → §6 procedure.
 
 ### Cetus CLMM
+- ✅ **VERIFIED 2026-09-14** (§6 procedure). Package v14: storage_id `0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3`, original_id `0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb`, 13 modules.
+- ✅ `0x…def::pool::SwapEvent` layout captured (12 fields / positions 0..11, see §18); real mainnet events live-decoded with parity `ok: true` and recorded as offline fixtures (`neko-verify cetus-fixtures`).
 - Mainnet package: ✅ `0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3` (mainnet-v0.0.14)
 - MovePump/SUI pool (reference pool): ✅ `0xa879da53319bcb59b020c4a818008879412701a3eb1cf3ac891db0fea8426ce3`
 - Pool discovery: allowed-pair config + `create_pool` events; pool objects carry immutable `PoolConfig`/tick state. ⏳ exact `pool.move`/`router.move` event type names + `Pool` struct layout → dump via §6.
@@ -390,9 +392,43 @@ Locked:
 2. **Live endpoint:** public-good `fullnode.mainnet.sui.io:443` for phase-1 dev; production keeps a dedicated fullnode/provider. (Decision was "public-good OK".)
 3. **Raw retention:** prune-after-normalize. Raw kept for a bounded window only (default 30 days; configurable) + event-filtered deep history; see §7 for the measured cost signal (~15 GB/day full-mask).
 4. **execution adapter migration:** in-scope and now — `service/execution/sui_adapter.py` moves off JSON-RPC onto the same gRPC v2 client pattern (before mainnet shutdown deadline).
-5. **Protocol priority:** **deferred** (user chose "remind me later"). Controls G4+ scope; pending decision documented in §8.
+5. **Protocol priority: locked — Launchpads + Cetus.** v1 adapters: SuiPump, MovePump, Kumbaya (bonding curves) + Cetus CLMM (graduated liquidity). DeepBook/Turbos/Aftermath/Bluefin remain TBD-VERIFY rows, not in v1.
 
 Phase-1 status (2026-09-14): live `SubscribeCheckpoints` intake verified against mainnet —
 tip ≈ seq 322,673,242, ~1.1 ckpt/s; idempotent raw persistence + same-tx cursor; restart
 resumes at cursor+1 with zero gaps/duplicates. Reference: `.unlazy/neko-indexer/GATES.md`.
 Implementation notes from phase 1 (proto/SDK gotchas) recorded in that ledger.
+
+Phase-3 status (2026-09-14): adapter framework (type-tag parser, strict BCS reader, on-chain
+layout resolver, generic decoder, checkpoint event capture, offline fixture replay) built
+and **Cetus CLMM verified end-to-end on mainnet**:
+
+1. **`ListEvents` is not served on the public-good endpoint** (measured: filterless descending
+   scan → 40K+ watermark frames / 0 events; bounded seq window 322673340..322673400 → 2073
+   frames / 0 events). Do not size the backfill design (§7, §5 row 3) around `ListEvents`.
+   Authoritative capture path is `Checkpoint.transactions[].events.events[]` — full `Event`
+   protos (BCS `contents` + the node's own JSON mirror) already persisted in `raw_checkpoints`.
+2. **Event identity vs emit package:** `Event.package_id` is the *upgraded* storage id
+   (measured `0x25ebb9…e5e3`), while the emitted type string embeds the *defining* (original)
+   id (`0x1eabed72…2fb`, = `GetPackage.original_id`). The defining id is the stable identity
+   across upgrades → adapters classify on `event_type` prefix, not `package_id`.
+3. **Cetus v14 facts (recorded 2026-09-14 via `neko-verify package`):** storage_id
+   `0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3`,
+   original_id `0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb`,
+   13 modules / pool=27 datatypes. `0x…def::pool::SwapEvent` on-chain layout (12 fields):
+   `atob:bool, pool:ID, partner:ID, amount_in:u64, amount_out:u64, ref_amount:u64,
+   fee_amount:u64, vault_a_amount:u64, vault_b_amount:u64, before_sqrt_price:u128,
+   after_sqrt_price:u128, steps:u64` (positions 0..11).
+4. **Canonical JSON shape (locked):** all money ints (`u64/u128/u256`) decode to decimal
+   **strings** (matches the node's JSON, precision-safe, no floats); single-field
+   `{bytes: address}` wrappers (`0x2::object::ID`) decode to the address string; bools and
+   small uints are JSON numbers; `numeric_equal` is a canonical equivalence for parity
+   (`neko-verify cetus-swaps` live parity `ok: true` ×12; offline fixture replay
+   `cetus_swap_fixture_replay` passes network-free — fixtures under
+   `indexer/tests/fixtures/cetus/swaps.json`, regenerate via `neko-verify cetus-fixtures`).
+5. **Adapter verification loop (frozen):** discover real event types from raw checkpoints
+   (`neko-verify db-scan`), capture fixtures (`neko-verify fixtures`), then the decoder must
+   pass the network-free fixture replay BEFORE it is wired into normalization.
+6. **G3 (adapter framework + Cetus proof) met:** `cargo test --lib` 12/12; clean bin build.
+   Next up: MovePump/SuiPump/Kumbaya event discovery + first adapter in `adapt/`, then
+   backfill harness + Redis phase 5.

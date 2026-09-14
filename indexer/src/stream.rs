@@ -34,19 +34,7 @@ fn build_request(resume_seq: Option<u64>) -> CheckpointStreamRequest {
 /// Persistent live intake: SubscribeCheckpoints (with gap repair via List),
 /// persisting every checkpoint + cursor atomically. Reconnect/rebuild loop.
 pub async fn run(settings: &Settings, pool: PgPool, metrics: SharedMetrics) -> Result<()> {
-    let mut client = sui_rpc::Client::new(&settings.endpoint)
-        .context("construct sui gRPC v2 client")?;
-
-    if let Some(chain_id) = settings.chain_id.as_ref() {
-        let mut headers = sui_rpc::client::HeadersInterceptor::new();
-        let value = tonic::metadata::MetadataValue::try_from(chain_id.clone())
-            .map_err(|e| anyhow::anyhow!("bad x-sui-chain-id header: {e}"))?;
-        headers
-            .headers_mut()
-            .insert(sui_rpc::headers::X_SUI_CHAIN_ID, value);
-        tracing::info!(?chain_id, "attaching chain-id header");
-        client = client.with_headers(headers);
-    }
+    let client = crate::rpc::connect(&settings.endpoint, settings.chain_id.as_deref())?;
 
     let mut resume_seq: Option<u64> = match settings.start {
         CheckpointStart::Tip => None,

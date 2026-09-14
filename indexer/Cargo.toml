@@ -2,7 +2,15 @@
 name = "neko-indexer"
 version = "0.1.0"
 edition = "2024"
-description = "Neko Sui market-data + wallet-intelligence indexer (phase 1: raw checkpoint intake)"
+description = "Neko Sui market-data + wallet-intelligence indexer (phase 3: on-chain verify + adapter framework)"
+
+[[bin]]
+name = "neko-indexer"
+path = "src/main.rs"
+
+[[bin]]
+name = "neko-verify"
+path = "src/verify.rs"
 
 [dependencies]
 sui-rpc = "0.4.0"
@@ -17,5 +25,6 @@ dotenvy = "0.15"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "migrate", "macros"] }
 futures = "0.3"
 prost = "0.14"
+prost-types = "0.14"
 tonic = "0.14"
 bytes = "1"

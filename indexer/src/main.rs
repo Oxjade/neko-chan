@@ -1,5 +1,6 @@
 mod config;
 mod metrics;
+mod rpc;
 mod store;
 mod stream;
 

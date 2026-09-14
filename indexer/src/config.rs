@@ -35,7 +35,7 @@ pub fn load() -> Result<Settings> {
 
     Ok(Settings {
         endpoint: env::var("SUI_ENDPOINT")
-            .unwrap_or_else(|_| "https://grpc.mainnet.sui.io:443".into()),
+            .unwrap_or_else(|_| "https://fullnode.mainnet.sui.io:443".into()),
         chain_id: env::var("SUI_CHAIN_ID").ok(),
         database_url: env::var("DATABASE_URL")
             .context("DATABASE_URL must be set (see .env.example)")?,
