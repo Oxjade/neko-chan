@@ -29,9 +29,9 @@ log = logging.getLogger(__name__)
 class Caps:
     """§5.1 — enforced globally per bot, summed across launchpads + bundle legs."""
 
-    def __init__(self, per_order_sui: float = 2.0, daily_loss_sui: float = 6.0,
-                 max_open: int = 8, budget_sui: float = 12.0,
-                 per_symbol_sui: float = 3.0):
+    def __init__(self, per_order_sui: float = 20.0, daily_loss_sui: float = 30.0,
+                 max_open: int = 8, budget_sui: float = 40.0,
+                 per_symbol_sui: float = 25.0):
         self.per_order_sui = per_order_sui
         self.daily_loss_sui = daily_loss_sui
         self.max_open = max_open
@@ -41,9 +41,9 @@ class Caps:
     @classmethod
     def from_config(cls, cfg: dict) -> "Caps":
         c = cfg.get("caps", {}) or {}
-        return cls(float(c.get("per_order", 2.0)), float(c.get("daily_loss", 6.0)),
-                   int(c.get("max_open", 8)), float(cfg.get("budget_sui", 12.0)),
-                   float(c.get("per_symbol", 3.0)))
+        return cls(float(c.get("per_order", 20.0)), float(c.get("daily_loss", 30.0)),
+                   int(c.get("max_open", 8)), float(cfg.get("budget_sui") or 40.0),
+                   float(c.get("per_symbol", 25.0)))
 
 
 def _h(*p) -> str:

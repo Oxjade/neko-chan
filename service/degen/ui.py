@@ -459,7 +459,7 @@ class DegenUI:
                  "generic": "live on DEX"}[st.kind]
         allowed, extra = await self._gauntlet(bot, st)
         r_curve = ref or self._ref(bid, "curve", st.curve_id or st.token_type)
-        sel_amt = str(caps.get("_amt_" + r_curve, "0.5"))
+        sel_amt = str(caps.get("_amt_" + r_curve, "5"))
         sel_slp = str(caps.get("_slip_" + r_curve, "5"))
         mcap = m.mcap_usd or m.fdv_usd          # pre-grad FDV stands in for tiny mcap
         if st.kind == "pool":
@@ -512,10 +512,10 @@ class DegenUI:
                 head += "\n<code>" + line + "</code>\n" + blk
         rows = [[B(f"🚀 BUY {sel_amt} SUI", f"dg:buy:{r_curve}")] if allowed
                 else [B("⛔ blocked", "dg:hub")],
-                [_chip("0.2", " SUI", sel_amt, f"dg:amt:{r_curve}:0.2"),
-                 _chip("0.5", " SUI", sel_amt, f"dg:amt:{r_curve}:0.5")],
-                [_chip("1", " SUI", sel_amt, f"dg:amt:{r_curve}:1"),
-                 _chip("Max", "", sel_amt, f"dg:amt:{r_curve}:Max")],
+                [_chip("5", " SUI", sel_amt, f"dg:amt:{r_curve}:5"),
+                 _chip("10", " SUI", sel_amt, f"dg:amt:{r_curve}:10")],
+                [_chip("15", " SUI", sel_amt, f"dg:amt:{r_curve}:15"),
+                 _chip("20", " SUI", sel_amt, f"dg:amt:{r_curve}:20")],
                 [B("✏️ X SUI", f"dg:cust:{r_curve}")],
                 [_chip("5%", "", sel_slp, f"dg:slp:{r_curve}:5"),
                  _chip("10%", "", sel_slp, f"dg:slp:{r_curve}:10")],
@@ -574,6 +574,8 @@ class DegenUI:
         if data == "dg:on":
             # degen needs NO AI key — trades here are user-initiated
             await q.answer("🎰 Degen ON")
+            if float(cfg.get("budget_sui") or 0) <= 0:
+                self.led.set_config(bid, budget_sui=40.0)   # ladder default
             self.led.set_config(bid, enabled=1)
             self.enter(bid)
             await self._render(update, context, bot)
@@ -743,11 +745,11 @@ class DegenUI:
     def _amt_value(self, caps: dict, sel: str) -> float:
         """Chip label → SUI amount. 'Max' means the per-order cap."""
         if sel == "Max":
-            return float(caps.get("per_order") or 0.5)
+            return float(caps.get("per_order") or 5)
         try:
             return float(sel)
         except ValueError:
-            return 0.5
+            return 5.0
 
     async def _confirm_buy(self, q, bot, cfg, bid, ref):
         rv = self.led.resolve_ref(ref, bid)
@@ -759,7 +761,7 @@ class DegenUI:
         if not m.price_sui and st.kind in ("pool", "generic"):
             m.price_sui = self._dex_price(st) or 0.0
         caps = cfg.get("caps", {}) or {}
-        sel = str(caps.get("_amt_" + ref, "0.5"))
+        sel = str(caps.get("_amt_" + ref, "5"))
         slip = int(float(caps.get("_slip_" + ref, "5")))
         amt = self._amt_value(caps, sel)
         from .metrics import expected_tokens_out, virtual_reserves
@@ -808,7 +810,7 @@ class DegenUI:
                                         total_sui=3.0, min_out_each=0, legs=legs)
                    if self.ex else {"ok": False, "error": "no executor"})
         else:
-            amt = float(parts[3]) if len(parts) > 3 else 0.5
+            amt = float(parts[3]) if len(parts) > 3 else 5
             slip = int(float((cfg.get("caps") or {}).get("_slip_" + ref, "5")))
             if st.kind in ("pool", "generic"):
                 res = (self.ex.buy_post_grad(bid, {"qty_sui": amt}, st, side="buy",
@@ -915,8 +917,8 @@ class DegenUI:
         if name == "risk":
             caps = cfg.get("caps", {}) or {}
             return (f"<b>🛡 RISK &amp; CAPS</b>\nbudget {cfg['budget_sui']} SUI · "
-                    f"per-order {caps.get('per_order', 2)} · daily loss "
-                    f"{caps.get('daily_loss', 6)} · max open {caps.get('max_open', 8)}\n"
+                    f"per-order {caps.get('per_order', 20)} · daily loss "
+                    f"{caps.get('daily_loss', 30)} · max open {caps.get('max_open', 8)}\n"
                     f"[+] [−] steppers wired in P5b"), KB([back])
         return "—", KB([back])
 

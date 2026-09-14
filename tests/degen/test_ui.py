@@ -120,7 +120,7 @@ def test_card_pre_grad_and_expiry_scheduled():
     assert "untested" not in txt.lower()          # user policy: no honeypot noise
     kb = msg.rec.calls[0][2]
     assert all(len(row) <= 2 for row in kb.inline_keyboard)   # dash rhythm
-    assert any(b.text == "🚀 BUY 0.5 SUI" for r in kb.inline_keyboard for b in r)
+    assert any(b.text == "🚀 BUY 5 SUI" for r in kb.inline_keyboard for b in r)
     # input deleted + card scheduled for 3-min expiry
     assert ("delete",) in msg.rec.calls
     assert led.due_deletes((led._conn.execute("SELECT datetime('now','+250 seconds')").fetchone()[0]))
@@ -254,9 +254,9 @@ def test_slip_and_amt_chips_persist_and_repaint():
     assert caps["_slip_" + ref] == "25"
     assert calls and calls[-1][0] == "edit" and "MCap" in calls[-1][1]
     assert any(b.text == "✓ 25%" for r in calls[-1][2].inline_keyboard for b in r)
-    calls = _run(ui, f"dg:amt:{ref}:1", led)
-    assert led.get_config(1)["caps"]["_amt_" + ref] == "1"
-    assert any(b.text == "✓ 1 SUI" for r in calls[-1][2].inline_keyboard for b in r)
+    calls = _run(ui, f"dg:amt:{ref}:15", led)
+    assert led.get_config(1)["caps"]["_amt_" + ref] == "15"
+    assert any(b.text == "✓ 15 SUI" for r in calls[-1][2].inline_keyboard for b in r)
 
 
 def test_card_graduated_pool_gets_full_buy_dashboard():
