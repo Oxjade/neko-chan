@@ -17,6 +17,7 @@ import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from telegram import Update
 from telegram.ext import Application, ContextTypes, TypeHandler, ApplicationHandlerStop
