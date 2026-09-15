@@ -1,6 +1,6 @@
 # Neko Sui Market-Data + Wallet-Intelligence Indexer — Design
 
-Status: **DRAFT v0.3 → review/sign-off (decisions locked 2026-09-14, see §18). Phase 1 implemented + verified; Phase 3 adapter framework built + Cetus CLMM verified end-to-end (see §18).**
+Status: **DRAFT v0.4 (decisions locked 2026-09-14, see §18). Phase 1 ✓ · Phase 3 adapters (Cetus + SuiPump) ✓ · Phase 6 normalized writer ✓ · Phase 7 API/WS v0 (`api/`) + token board on localhost ✓ — see §18.10/§18.11.**
 Target network: Sui mainnet only (phase 1); same pipeline reusable for testnet via config.
 Parent requirement: "Sui-native GMGN data engine" for the Neko terminal. Read this doc before any production code.
 
@@ -450,6 +450,23 @@ and **Cetus CLMM verified end-to-end on mainnet**:
 9. **Node JSON conventions now decoder-truth:** empty Move `vector` → `null`, `Option<T>` →
    `null`/bare value, `0x1::string::String` → UTF-8 text (all matched the node's `Event.json`
    during SuiPump parity).
+11. **Phase 7 API/WS layer v0 shipped 2026-09-15 (`api/`, TypeScript on Node 22 — §18.1):**
+    serves the Neko terminal's token display from the normalized tables + a
+    `suipump_catalog` label cache (467 launchpad tokens via the suipump indexer
+    API, refresh hourly, stale-while-revalidate; display-only — never pricing,
+    same policy as `service/degen`). Endpoints: `/api/tokens` (active-first full
+    outer merge of catalog × indexed activity, window filters),
+    `/api/tokens/:curve(+/trades)`, `/api/search?q=` (name/symbol/coin-type/0x
+    across catalog + indexed curves + live label lookup), `/api/status`,
+    `/api/tape`, WS `/ws` (trade tape + status). Money stays exact decimal
+    strings; display ratios computed with BigInt, never float. Board at `/`
+    (trenches list + live tape + search). Stream-stall watchdog added
+    (90s-silence rebuild) after the public endpoint was observed to freeze a
+    subscription silently mid-run; the stalled range's SuiPump normalized rows
+    were recovered via `backfill-write`, and `live` was fast-forwarded to
+    tip−2k. **Open:** raw-checkpoint gap 322724832..322873800 (full-raw replay
+    + Cetus swaps in that range pending a gap-repair worker, §12); Redis hot
+    path (§11) still phase 5; DeepBook/CoinMetadata adapters per §9.
 10. **Phase 6 normalize writer shipped 2026-09-15:** migration `0002_normalized_trades.sql`
     (`bonding_trades` / `swaps` / `dlq`, natural key `(tx_digest, event_index)`, money as
     `numeric` from exact decimal strings, no floats). Writer core in lib `neko_indexer::norm`

@@ -1,0 +1,22 @@
+{
+  "name": "neko-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Neko terminal API/WS layer — serves the indexer's normalized Sui data (DESIGN phase 7)",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx --watch src/server.ts"
+  },
+  "dependencies": {
+    "pg": "^8.13.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

@@ -64,7 +64,19 @@ pub async fn run(settings: &Settings, pool: PgPool, metrics: SharedMetrics) -> R
         let mut stream = Box::pin(client.stream_checkpoints(build_request(resume_seq)));
 
         let mut expected_next: Option<u64> = None;
-        while let Some(item) = stream.next().await {
+        // A silent, error-less stall (frozen HTTP/2 stream, half-open after a
+        // GOAWAY) must also rebuild: checkpoints arrive ~every second, so 90s
+        // of silence means the connection is dead even though it never errored.
+        const STALL_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(90);
+        loop {
+            let item = match tokio::time::timeout(STALL_TIMEOUT, stream.next()).await {
+                Ok(inner) => inner,
+                Err(_) => {
+                    tracing::warn!("stream stalled (no frame for 90s); rebuilding");
+                    break;
+                }
+            };
+            let Some(item) = item else { break };
             match item {
                 Ok(frame) => {
                     if let Some(expected) = expected_next {
