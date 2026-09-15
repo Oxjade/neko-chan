@@ -5,9 +5,12 @@ use sui_rpc::client::{CheckpointStreamFrame, CheckpointStreamRequest, Checkpoint
 use sui_rpc::field::{FieldMask, FieldMaskUtil};
 use sui_rpc::proto::sui::rpc::v2::Checkpoint;
 
+use neko_indexer::adapt::PackageResolver;
+use neko_indexer::adapt::capture as adapt_capture;
 use crate::config::{CheckpointStart, Settings};
 use crate::metrics::SharedMetrics;
 use crate::store::{self, RawCheckpoint};
+use crate::write;
 
 const PROGRESS_NAME: &str = "live";
 
@@ -35,6 +38,7 @@ fn build_request(resume_seq: Option<u64>) -> CheckpointStreamRequest {
 /// persisting every checkpoint + cursor atomically. Reconnect/rebuild loop.
 pub async fn run(settings: &Settings, pool: PgPool, metrics: SharedMetrics) -> Result<()> {
     let client = crate::rpc::connect(&settings.endpoint, settings.chain_id.as_deref())?;
+    let resolver = PackageResolver::new(client.clone());
 
     let mut resume_seq: Option<u64> = match settings.start {
         CheckpointStart::Tip => None,
@@ -75,7 +79,7 @@ pub async fn run(settings: &Settings, pool: PgPool, metrics: SharedMetrics) -> R
                     }
                     expected_next = Some(frame.cursor + 1);
 
-                    if let Err(e) = process_frame(&pool, &metrics, &frame).await {
+                    if let Err(e) = process_frame(&pool, &metrics, &resolver, &frame).await {
                         tracing::error!(error = %e, "frame processing failed");
                         break;
                     }
@@ -103,12 +107,14 @@ pub async fn run(settings: &Settings, pool: PgPool, metrics: SharedMetrics) -> R
 async fn process_frame(
     pool: &PgPool,
     metrics: &SharedMetrics,
+    resolver: &PackageResolver,
     frame: &CheckpointStreamFrame,
 ) -> Result<()> {
     metrics.bump_frames();
 
     let mut tx = pool.begin().await.context("begin tx")?;
 
+    let mut events = Vec::new();
     if let Some(cp) = frame.checkpoint.as_ref() {
         let row = checkpoint_row(cp, frame)?;
         if row.insert(&mut tx).await? {
@@ -116,6 +122,7 @@ async fn process_frame(
         } else {
             metrics.bump_duplicate();
         }
+        events = adapt_capture::adapted_events_in(cp);
         metrics.record(frame.cursor, row.ts_ms);
     } else {
         metrics.record(frame.cursor, 0);
@@ -124,6 +131,38 @@ async fn process_frame(
     // Persist the cursor in the same transaction as the row (crash safety).
     store::save_progress_in(&mut tx, PROGRESS_NAME, frame.cursor as i64).await?;
     tx.commit().await.context("commit checkpoint tx")?;
+
+    // Normalized writes run in their own transaction (network layout fetches
+    // happen here, never between raw insert and live-cursor commit) and move
+    // the `normalized` cursor so gap repair can collapse any lag.
+    if let Some(cp) = frame.checkpoint.as_ref() {
+        let seq = frame.cursor as i64;
+        let ts_ms = cp
+            .summary
+            .as_ref()
+            .and_then(|s| s.timestamp.as_ref())
+            .map(|t| t.seconds.saturating_mul(1000) + t.nanos as i64 / 1_000_000)
+            .unwrap_or(0);
+        // Always runs (even with zero adapted events) so the `normalized`
+        // cursor advances monotonicly and gap repair knows how far to catch up.
+        let mut tx = pool.begin().await.context("begin normalize tx")?;
+        match write::publish_checkpoint_in(&mut tx, resolver, seq, ts_ms, &events).await {
+            Ok(w) => {
+                store::save_progress_in(&mut tx, "normalized", seq).await?;
+                tx.commit().await.context("commit normalize tx")?;
+                for _ in 0..w.trades {
+                    metrics.bump_trade();
+                }
+                for _ in 0..w.dlq {
+                    metrics.bump_dlq();
+                }
+            }
+            Err(e) => {
+                tx.rollback().await.ok();
+                tracing::warn!(seq, error = %e, "normalized write failed; raw row is safe, gap repair will retry");
+            }
+        }
+    }
     Ok(())
 }
 

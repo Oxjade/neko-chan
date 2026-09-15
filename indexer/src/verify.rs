@@ -31,6 +31,7 @@ use sui_rpc::proto::sui::rpc::v2::{
 
 use neko_indexer::adapt::*;
 
+mod write;
 const CETUS_CLMM: &str = "0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3";
 // Events are tagged with the *defining* (original) package id, not the
 // current upgrade storage_id — confirmed live 2026-09-14.
@@ -147,12 +148,19 @@ async fn cmd_backfill_scan(
 
     let mut stream = Box::pin(client.list_checkpoints(req));
     let mut frames = 0u64;
+    let mut scanned = 0u64;
+    let mut tip_seen = start;
     let mut hits: Vec<(u64, String, String)> = Vec::new();
     let mut by_type: std::collections::BTreeMap<String, usize> = Default::default();
     while let Some(frame) = stream.next().await {
         let frame = frame.context("list_checkpoints frame")?;
         let Some(cp) = frame.checkpoint else { continue };
         frames += 1;
+        scanned += 1;
+        tip_seen = cp.sequence_number.unwrap_or(tip_seen);
+        if scanned % 5000 == 0 {
+            println!("  ... {scanned} scanned (tip_seen {tip_seen}, {frames} matching)");
+        }
         if frames % 500 == 0 {
             println!("  ... {frames} checkpoints scanned");
         }
@@ -171,7 +179,7 @@ async fn cmd_backfill_scan(
             }
         }
     }
-    println!("{frames} checkpoints scanned; {} event hits", hits.len());
+    println!("{frames} checkpoints scanned; {} event hits; tip observed: {tip_seen}", hits.len());
     if !by_type.is_empty() {
         println!("distinct event types:");
         for (ty, n) in &by_type {
@@ -722,6 +730,65 @@ async fn cmd_backfill_fixtures(
     )
 }
 
+/// Phase 6 backward-fill + verification: stream a window through the exact
+/// live writer path (`write::publish_checkpoint`) into Postgres. Idempotent —
+/// re-running converges with zero duplicates.
+async fn cmd_backfill_write(
+    pool: &sqlx::PgPool,
+    client: &neko_indexer::rpc::Client,
+    start: u64,
+    end: Option<u64>,
+    mod_filter: Option<&[&str]>,
+) -> Result<()> {
+    let res = PackageResolver::new(client.clone());
+
+    let mut req = ListCheckpointsRequest::default();
+    req.read_mask = Some(prost_types::FieldMask {
+        paths: vec![
+            "sequence_number".into(),
+            "digest".into(),
+            "summary".into(),
+            "signature".into(),
+            "contents".into(),
+            "transactions".into(),
+            "objects".into(),
+        ],
+    });
+    req.start_checkpoint = Some(start);
+    req.end_checkpoint = end;
+    req.filter = mod_filter.map(module_filter);
+
+    let mut stream = Box::pin(client.list_checkpoints(req));
+    let mut frames = 0u64;
+    let mut trades = 0u64;
+    while let Some(frame) = stream.next().await {
+        let frame = frame.context("list_checkpoints frame")?;
+        let Some(cp) = frame.checkpoint else { continue };
+        frames += 1;
+        if frames % 500 == 0 {
+            println!("  ... {frames} checkpoints scanned");
+        }
+        let seq = cp.sequence_number.unwrap_or(0) as i64;
+        let ts_ms = cp
+            .summary
+            .as_ref()
+            .and_then(|s| s.timestamp.as_ref())
+            .map(|t| t.seconds.saturating_mul(1000) + t.nanos as i64 / 1_000_000)
+            .unwrap_or(0);
+        let events = neko_indexer::adapt::capture::events_in(&cp);
+        let mut tx = pool.begin().await.context("begin tx")?;
+        let written = write::publish_checkpoint_in(&mut tx, &res, seq, ts_ms, &events).await?;
+        tx.commit().await.context("commit")?;
+        trades += written.trades;
+    }
+
+    println!();
+    println!("== summary ==");
+    println!("checkpoints scanned: {frames}");
+    println!("trades written: {trades}");
+    Ok(())
+}
+
 async fn cmd_cetus_swaps(res: &PackageResolver, samples: usize) -> Result<()> {
     println!();
     println!("###### §6 PROCEDURE — Cetus CLMM ({}) ######", short_id(CETUS_CLMM));
@@ -965,6 +1032,28 @@ async fn main() -> Result<()> {
             }
             let mod_filter = (!mod_filter.is_empty()).then_some(mod_filter);
             cmd_trades(&c, start, end, mod_filter.as_deref(), &out).await?;
+        }
+        "backfill-write" => {
+            let start: u64 = args.get(1).context("backfill-write <start-seq> [end-seq] [mod:...]")?.parse()?;
+            let rest = args.iter().skip(2).collect::<Vec<_>>();
+            let mut end: Option<u64> = None;
+            let mut mod_filter: Vec<&str> = Vec::new();
+            for arg in rest {
+                let numeric = !arg.is_empty() && arg.chars().all(|c| c.is_ascii_digit());
+                if let Some(m) = arg.strip_prefix("mod:") {
+                    mod_filter.push(m);
+                } else if numeric && end.is_none() {
+                    end = Some(arg.parse()?);
+                }
+            }
+            let mod_filter = (!mod_filter.is_empty()).then_some(mod_filter);
+            let url = env::var("DATABASE_URL").context("DATABASE_URL must be set (see .env.example)")?;
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(3)
+                .connect(&url)
+                .await
+                .context("connect postgres")?;
+            cmd_backfill_write(&pool, &c, start, end, mod_filter.as_deref()).await?;
         }
         "cetus-swaps" => {
             let samples = args.get(1).and_then(|v| v.parse().ok()).unwrap_or(5);

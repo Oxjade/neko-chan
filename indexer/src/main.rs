@@ -3,6 +3,7 @@ mod metrics;
 mod rpc;
 mod store;
 mod stream;
+mod write;
 
 use std::sync::Arc;
 

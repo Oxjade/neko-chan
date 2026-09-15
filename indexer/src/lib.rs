@@ -3,4 +3,5 @@
 //! intake binary (`neko-indexer`) and the §6 verify CLI (`neko-verify`).
 
 pub mod adapt;
+pub mod norm;
 pub mod rpc;

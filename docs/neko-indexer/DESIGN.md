@@ -365,7 +365,7 @@ Budget hint: single AMD/Intel 4-vCPU + 8 GB + 100 GB is comfortably within $20�
 3. **Adapter framework + generic Move decoder** — `GetDatatype` layout cache, BCS decode lib, fixture runner; DLQ; parity tests on real mainnet txs. Gate: decode any unknown event under known package without crash; parity on N=100 real txs.
 4. **Normalization core** — canonical token/swap/curve/holder models, fixed-point math, price/candle engine. Gate: property tests (no float), roundtrip decode = effect.
 5. **Redis livestate** — price/trend/curve keys + watermark; gate: redis state equals PG after crash-replay do.
-6. **PostgreSQL pipeline** — batched idempotent writers, unique constraints, pruning; gate: replay 2× produces identical DB.
+6. **PostgreSQL pipeline** — batched idempotent writers, unique constraints, pruning; gate: replay 2× produces identical DB. *v0 shipped 2026-09-15 (per-checkpoint tx writers + `live`/`normalized` cursors + DLQ, §18.10; replay-2× gate proven via `backfill-write`; batching, candles/curves rows and pruning pending).*
 7. **REST + WebSocket API** — expose tokens/pairs/swaps/candles/curves/wallets (+ `nx:*` streams UNSS). Align with Neko terminal routes (`frontend/`).
 8. **Wallet intelligence v0** — wallet ledger, balances, holders via `StateService` reads + event deltas; index `(wallet, ts)`.
 9. **Launchpad / pre-bond / bonding adapters** — SuiPump (✓ procedure), MovePump, Kumbaya; lifecycle + graduation linkage history; gate: indexed a real newly-launched token end-to-end from publish → curve → graduation with on-chain backing txs.
@@ -450,3 +450,18 @@ and **Cetus CLMM verified end-to-end on mainnet**:
 9. **Node JSON conventions now decoder-truth:** empty Move `vector` → `null`, `Option<T>` →
    `null`/bare value, `0x1::string::String` → UTF-8 text (all matched the node's `Event.json`
    during SuiPump parity).
+10. **Phase 6 normalize writer shipped 2026-09-15:** migration `0002_normalized_trades.sql`
+    (`bonding_trades` / `swaps` / `dlq`, natural key `(tx_digest, event_index)`, money as
+    `numeric` from exact decimal strings, no floats). Writer core in lib `neko_indexer::norm`
+    (shared by live intake and `neko-verify backfill-write`), bin wrapper `src/write.rs`
+    normalizes in its own tx *after* the raw row + `live` cursor commit, then advances a
+    second cursor `normalized` (gap-repair lag = `live − normalized`). Parity guard applies
+    only to rows that will be persisted (passthrough noise stays in raw, never a DLQ item).
+    **EventID gotcha:** the public checkpoint stream omits `event_index`; defaulting it to 0
+    silently collided multi-event txns on the natural key (3 SuiPump trades lost in a 2M-cp
+    probe). `capture::events_in` now backfills the event's position within its transaction —
+    Sui's canonical EventID `(tx_digest, event_seq)` — making the writer lossless. Proven:
+    `backfill-write 320772155..322710000 mod:0x7b41…cda2::bonding_curve` → 155 matching
+    frames, 111 bond rows (65 buys / 46 sells) + 40 Cetus swaps, DLQ 0, re-run converges
+    (zero new rows); live `neko-indexer` from a bumped `live` cursor streams both cursors
+    forward and lands rows (see §16 Phase 6).

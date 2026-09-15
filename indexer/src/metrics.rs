@@ -11,6 +11,8 @@ pub struct Metrics {
     pub duplicates: AtomicU64,
     pub last_seq: AtomicU64,
     pub last_ts_ms: AtomicU64,
+    pub trades: AtomicU64,
+    pub dlq: AtomicU64,
 }
 
 impl Metrics {
@@ -35,7 +37,20 @@ impl Metrics {
         self.last_ts_ms.store(ts_ms as u64, Ordering::Relaxed);
     }
 
+    pub fn bump_trade(&self) {
+        self.trades.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn bump_dlq(&self) {
+        self.dlq.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn snapshot(&self) -> (u64, u64, u64, u64, u64, u64) {
+        let (frames, cps, gaps, dups, seq, ts) = self.snapshot6();
+        (frames, cps, gaps, dups, seq, ts)
+    }
+
+    pub fn snapshot6(&self) -> (u64, u64, u64, u64, u64, u64) {
         (
             self.frames.load(Ordering::Relaxed),
             self.checkpoints.load(Ordering::Relaxed),
@@ -52,30 +67,23 @@ pub type SharedMetrics = Arc<Metrics>;
 pub async fn periodic_log(metrics: SharedMetrics, interval: tokio::time::Duration) {
     let mut ticker = tokio::time::interval(interval);
     let mut last_frames = 0u64;
-    let mut last_seq = 0u64;
+    let mut _last_seq = 0u64;
     loop {
         ticker.tick().await;
         let (frames, cps, gaps, dups, seq, _ts) = metrics.snapshot();
         let rate = frames.saturating_sub(last_frames) as f64 / interval.as_secs_f64();
-        let lag = if seq >= last_seq {
-            let now_ms = tokio::time::Instant::now();
-            // Wall-clock lag is computed by the caller with chain time; this
-            // counter simply reports processed-checkpoint rate + position.
-            now_ms.elapsed().as_millis() as f64
-        } else {
-            0.0
-        };
-        let _ = lag;
         tracing::info!(
             frames,
             checkpoints = cps,
             rate_fps = format!("{rate:.2}"),
             gaps,
             duplicates = dups,
+            trades = metrics.trades.load(Ordering::Relaxed),
+            dlq = metrics.dlq.load(Ordering::Relaxed),
             seq,
             "live-intake"
         );
         last_frames = frames;
-        last_seq = seq;
+        _last_seq = seq;
     }
 }
