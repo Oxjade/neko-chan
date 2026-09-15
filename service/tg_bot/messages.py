@@ -5,21 +5,14 @@
 # -> wallet onboarding, which runs all the way to the dashboard.
 TOUR = {
     1: ("🐾 <b>Welcome to Neko — your AI trading cat.</b>\n\n"
-        "I read real markets, decide with AI, and trade with live prices.\n"
-        "You steer; I do the grunt work.\n\n"
-        "A few taps and you'll have your own bot on a $1,000 paper portfolio."),
-    2: ("⚙️ <b>What your bot does</b>\n\n"
-        "🔍 <b>Scan</b> — builds long + short setups with real probabilities.\n"
-        "🧠 <b>Decide</b> — takes the strongest setup, or stays flat. No FOMO.\n"
-        "⚡ <b>Execute</b> — trades with your stop-loss + take-profit attached.\n"
-        "🛡️ <b>Control</b> — kill-switch, withdrawal and balances always one tap away."),
-    3: ("🧪 <b>Paper first, real later — your call</b>\n\n"
-        "Every new bot starts on a <b>$1,000 paper</b> portfolio: real prices, "
-        "no money risk. Flip to live whenever you're ready, from the dashboard."),
-    4: ("⚠️ <b>Before you start</b>\n\n"
-        "Trading is risky and models make mistakes. This is not financial "
+        "🔍 I read real markets · 🧠 decide with AI · ⚡ execute with live "
+        "prices, stop-loss + take-profit attached.\n"
+        "🛡 Kill-switch, caps and balances always one tap away.\n\n"
+        "🧪 Every new bot starts on a <b>$1,000 paper portfolio</b> — real "
+        "prices, no money risk. Flip to live from the dashboard when ready.\n\n"
+        "⚠ Trading is risky and models make mistakes — this is not financial "
         "advice. You can pause or delete your bot anytime.\n\n"
-        "Ready? Let's make your cat."),
+        "One tap to make your cat 👇"),
 }
 
 WELCOME_RETURNING = (
@@ -28,20 +21,13 @@ WELCOME_RETURNING = (
 )
 
 HOW_IT_WORKS = {
-    1: ("📖 How it works - 1/3 🐾\n\n"
+    1: ("📖 <b>How it works</b>\n\n"
         "Real market prices (BTC, ETH, US stocks, Forex) · live execution.\n"
-        "I read the markets, decide with AI, and trade the platform. "
-        "Purr-fectly, most of the time."),
-    2: ("📖 How it works - 2/3 🐾\n\n"
-        "What YOUR bot does:\n"
-        "• Decides every 1–10 minutes (you pick)\n"
-        "• Always has a stop-loss, position caps, daily trade limit\n"
-        "• Every trade is recorded and scored on the leaderboard\n\n"
-        "I never chase my tail - or your losses."),
-    3: ("📖 How it works - 3/3 🐾\n\n"
-        "⚠️ Trading is risky. Models make mistakes - even cats.\n"
-        "Your AI key pays for your own model calls.\n"
-        "You can delete your bot anytime.\n\n"
+        "Your bot decides every 1–10 minutes (you pick), always with a "
+        "stop-loss, position caps and a daily trade limit.\n"
+        "Every trade is recorded and scored on the leaderboard.\n\n"
+        "⚠ Trading is risky — models make mistakes, even cats. Your AI key "
+        "pays for your own model calls; delete your bot anytime.\n"
         "Nine lives of risk management. That's the deal."),
 }
 

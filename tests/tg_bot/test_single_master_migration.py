@@ -479,22 +479,20 @@ def test_notifier_routes_master():
 
 
 # ---------------------------------------------------------------------------- tour / onboarding
-def test_tour_guides_to_start():
-    """Guided /start tour: page 2 leads to 'Continue'->tour:3, and the LAST tour
-    page's button hands the user into the name step (nav:add) - which creates a
-    token-less bot and then enters the ob:intro onboarding chain."""
+def test_tour_is_single_page_now():
+    """Reduced from 4 clicks to 1: the whole TOUR fits one screen, and any
+    legacy tour:N callback resolves straight to nav:add (create bot ->
+    onboarding). No Continue chains remain."""
     from handlers.master import tour_nav
     import messages
 
-    assert len(messages.TOUR) >= 4
-    text, label, cb = tour_nav(2)
-    assert cb == "tour:3" and text == messages.TOUR[2]
-    # intermediate pages say Continue
-    for p in range(2, len(messages.TOUR)):
-        assert tour_nav(p)[2] == f"tour:{p+1}"
-    # final page hands into nav:add (create bot -> name -> ob:intro)
-    _, _, last_cb = tour_nav(len(messages.TOUR))
-    assert last_cb == "nav:add"
+    assert len(messages.TOUR) == 1
+    text, label, cb = tour_nav(1)
+    assert cb == "nav:add" and text == messages.TOUR[1]
+    for legacy in (2, 3, 4, 99):
+        assert tour_nav(legacy)[2] == "nav:add"
+    # help screen is likewise one page
+    assert len(messages.HOW_IT_WORKS) == 1
 
 
 def test_new_user_setup_hands_into_onboarding():

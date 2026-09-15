@@ -11,15 +11,10 @@ from handlers.common import HOME, menu_keyboard, home_keyboard
 
 
 def tour_nav(page: int):
-    """Pure: which callback the current tour page's button leads to.
-    Returns (page_text, button_label, button_callback). Every page uses the same
-    "Continue" affordance; the last page's Continue hands the user into the name
-    step (nav:add) which creates a token-less bot and enters the ob:intro
-    onboarding - so it reads as one Continue-through to the dashboard."""
-    page = max(2, min(len(TOUR), page))
-    if page < len(TOUR):
-        return TOUR[page], "🐾 Continue", f"tour:{page+1}"
-    return TOUR[page], "🐾 Continue", "nav:add"
+    """The tour is ONE page now (was 4): any legacy tour:N callback lands on the
+    single screen with the straight-to-onboarding button."""
+    page = min(len(TOUR), max(1, page))
+    return TOUR[page], "🐾 Create my bot", "nav:add"
 
 
 def register_master_handlers(app, registry, platform, userbot_controller):
@@ -45,10 +40,10 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         if promoted:
             text = (f"👑 Welcome, {user.first_name or user.username or 'owner'}! You're the owner of Neko. 🐾")
         else:
-            # Guided tour for new users: a short read->Continue sequence that ends
-            # by handing them into the per-bot onboarding (name -> chain -> wallet)
-            # which itself runs all the way to the dashboard.
-            kb = telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("🐾 Continue", callback_data="tour:2")]])
+            # One-page tour (reduced from 4 clicks): everything a first-timer
+            # must know, then straight into onboarding via a single button.
+            kb = telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton(
+                "🐾 Create my bot", callback_data="nav:add")]])
             await update.message.reply_text(TOUR[1], parse_mode="HTML", reply_markup=kb)
             return
         kb = [[telegram.InlineKeyboardButton("➕ Add My Bot", callback_data="nav:add"),
@@ -68,8 +63,9 @@ def register_master_handlers(app, registry, platform, userbot_controller):
         q = update.callback_query
         await q.answer()
         await q.message.edit_text(
-            HOW_IT_WORKS[1],
-            reply_markup=telegram.InlineKeyboardMarkup([[telegram.InlineKeyboardButton("1/3 → Next", callback_data="how:2")], [telegram.InlineKeyboardButton(HOME, callback_data="nav:home")]]),
+            HOW_IT_WORKS[1], parse_mode="HTML",
+            reply_markup=telegram.InlineKeyboardMarkup(
+                [[telegram.InlineKeyboardButton("✅ Got it", callback_data="nav:home")]]),
         )
 
     async def how_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
