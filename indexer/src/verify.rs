@@ -789,6 +789,60 @@ async fn cmd_backfill_write(
     Ok(())
 }
 
+/// Print the ingestion cursors, normalized-table counts, and the freshest
+/// rows — the operator's "is it working?" view against a running indexer.
+async fn cmd_db_tail(pool: &sqlx::PgPool, limit: i64) -> Result<()> {
+    let cursors: Vec<(String, i64)> =
+        sqlx::query_as("select name, last_seq from checkpoint_progress order by name")
+            .fetch_all(pool)
+            .await?;
+    let bond: i64 = sqlx::query_as("select count(*) from bonding_trades")
+        .fetch_one(pool)
+        .await
+        .map(|r: (i64,)| r.0)?;
+    let swaps: i64 = sqlx::query_as("select count(*) from swaps")
+        .fetch_one(pool)
+        .await
+        .map(|r: (i64,)| r.0)?;
+    let dlq: i64 = sqlx::query_as("select count(*) from dlq")
+        .fetch_one(pool)
+        .await
+        .map(|r: (i64,)| r.0)?;
+    println!("cursors: {cursors:?}  rows: bonding={bond} swaps={swaps} dlq={dlq}");
+
+    let rows: Vec<(String, i64, String, Option<String>, String, String, String, i64, String)> = sqlx::query_as(
+        "select tx_digest, checkpoint, side, wallet, amount_sui::text, amount_token::text, curve_id, ts_ms, event_type from bonding_trades order by checkpoint desc, event_index desc limit $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    for (tx, cp, side, wallet, sui, tok, curve, ts, _) in rows {
+        println!(
+            "BOND cp{cp} {side:>4} sui={sui} tok={tok} curve={} wallet={} tx={} ts={}",
+            &curve[..10],
+            wallet.as_deref().map(|w| &w[..10]).unwrap_or("-"),
+            &tx[..8],
+            ts
+        );
+    }
+    let rows: Vec<(String, i64, String, Option<bool>, String, String, String, i64)> = sqlx::query_as(
+        "select tx_digest, checkpoint, pool, atob, amount_in::text, amount_out::text, dex, ts_ms from swaps order by checkpoint desc, event_index desc limit $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    for (tx, cp, pool_id, atob, ain, aout, dex, ts) in rows {
+        println!(
+            "SWAP cp{cp} {dex} atob={} in={ain} out={aout} pool={} tx={} ts={}",
+            atob.map(|b| if b { "true" } else { "false" }).unwrap_or("-"),
+            &pool_id[..10],
+            &tx[..8],
+            ts
+        );
+    }
+    Ok(())
+}
+
 async fn cmd_cetus_swaps(res: &PackageResolver, samples: usize) -> Result<()> {
     println!();
     println!("###### §6 PROCEDURE — Cetus CLMM ({}) ######", short_id(CETUS_CLMM));
@@ -1054,6 +1108,16 @@ async fn main() -> Result<()> {
                 .await
                 .context("connect postgres")?;
             cmd_backfill_write(&pool, &c, start, end, mod_filter.as_deref()).await?;
+        }
+        "db-tail" => {
+            let limit: i64 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(10);
+            let url = env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .connect(&url)
+                .await
+                .context("connect postgres")?;
+            cmd_db_tail(&pool, limit).await?;
         }
         "cetus-swaps" => {
             let samples = args.get(1).and_then(|v| v.parse().ok()).unwrap_or(5);
