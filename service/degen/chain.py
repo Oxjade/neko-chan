@@ -16,6 +16,22 @@ import requests
 from . import constants as K
 
 
+_B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+_B58_DIGITS = {char: index for index, char in enumerate(_B58_ALPHABET)}
+
+
+def _base58_decode(value: str) -> bytes:
+    """Decode a base58 string without relying on an optional package."""
+    number = 0
+    for char in value:
+        try:
+            number = number * 58 + _B58_DIGITS[char]
+        except KeyError as exc:
+            raise ValueError("invalid base58 character") from exc
+    payload = number.to_bytes((number.bit_length() + 7) // 8, "big")
+    return b"\0" * (len(value) - len(value.lstrip("1"))) + payload
+
+
 def _digest_to_hex(digest: str) -> str:
     """Sui object/transaction digests are base58 in JSON-RPC (Blockvision) and
     base64 in some GraphQL responses. The signer's BCS object-ref needs the raw
@@ -29,13 +45,12 @@ def _digest_to_hex(digest: str) -> str:
     except ValueError:
         pass
     try:
-        import base58 as _b58
-        raw = _b58.b58decode(d)
+        raw = _base58_decode(d)
         if len(raw) == 32:
             return raw.hex()
-    except Exception:
+    except ValueError:
         pass
-    return base64.b64decode(digest).hex()
+    return base64.b64decode(digest, validate=True).hex()
 
 
 class GqlError(Exception):

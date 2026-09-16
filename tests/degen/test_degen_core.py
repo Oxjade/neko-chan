@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(_HERE, "..", "..", "service", "degen"))
 import pytest  # noqa: E402
 
 from degen import constants as K  # noqa: E402
-from degen.chain import Chain  # noqa: E402
+from degen.chain import Chain, _digest_to_hex  # noqa: E402
 from degen.db import DegenLedger, MAX_BUNDLE_WALLETS  # noqa: E402
 from degen import metrics as MX  # noqa: E402
 from degen.launchpad import resolve_input, SuipumpLaunchpad  # noqa: E402
@@ -96,6 +96,11 @@ def test_mainnet_sui_coins_prefer_rpc_over_partial_graphql_page():
     ch._rpc_coins = lambda _owner, _type: rpc_coins
 
     assert ch.coins("0xowner") == rpc_coins
+
+
+def test_digest_decoder_handles_base58_without_optional_dependency():
+    # 31 zero bytes plus 0xff encode as 31 leading "1"s followed by "5Q".
+    assert _digest_to_hex("1" * 31 + "5Q") == "00" * 31 + "ff"
 
 
 # ---------------------------------------------------------------- constants
