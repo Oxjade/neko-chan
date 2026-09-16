@@ -1209,6 +1209,7 @@ class UserBotController:
 
     # ------------------------------------------------------------- degen (env-gated)
     _degen_cache: dict = {}
+    _degen_wallet_factories: dict = {}
 
     def _degen_ui(self, bot: dict):
         """Returns a per-bot DegenUI when DEGEN_ENABLED=1, else None (dark)."""
@@ -1221,6 +1222,13 @@ class UserBotController:
         bid = int(bot["id"])
         cached = UserBotController._degen_cache.get(bid)
         if cached is not None:
+            # The degen runtime is process-wide, while wallet custody is
+            # per-bot. Rebind before returning a cached UI: otherwise the last
+            # bot registered at startup supplies its wallet to every cached
+            # chat-buy handler.
+            factory = UserBotController._degen_wallet_factories.get(bid)
+            if factory is not None:
+                _rt.get_runtime().set_wallet_adapter_factory(factory)
             return cached
         try:
             rt = _rt.get_runtime()
@@ -1251,6 +1259,7 @@ class UserBotController:
                 except Exception:
                     return None, None
             rt.set_wallet_adapter_factory(_factory)
+            UserBotController._degen_wallet_factories[bid] = _factory
             ui = rt.ui_for(bot_of=lambda tg: bot if int(tg) == tg_id else None,
                            ai_key_ok=lambda b: bool(self.registry.get_active_key(
                                int(b["tg_id"]))))
