@@ -84,6 +84,20 @@ class MockAdapter:
         return {"digest": "0xdead", "status": "SUCCESS"}
 
 
+def test_mainnet_sui_coins_prefer_rpc_over_partial_graphql_page():
+    """A non-empty GraphQL page can still omit the spendable SUI coin."""
+    gql_coin = {"address": "0xgql", "version": 1, "digest": "aa" * 32,
+                "contents": {"json": {"balance": "1000"}}}
+    rpc_coins = [{"objectId": "0xrpc", "version": 2, "digest": "bb" * 32,
+                  "balance_mist": 2_000_000_000}]
+    ch = Chain(post=lambda _url, _body: {
+        "data": {"address": {"objects": {"nodes": [gql_coin]}}}
+    })
+    ch._rpc_coins = lambda _owner, _type: rpc_coins
+
+    assert ch.coins("0xowner") == rpc_coins
+
+
 # ---------------------------------------------------------------- constants
 def test_constants_are_verified():
     assert K.SUIPUMP_PKG == "0xb205fea41ccedac051bc66498e6ca68cb802c4a6ea06da12e524bed09c80d9b0"
@@ -438,6 +452,7 @@ def test_insufficient_balance_says_so_plainly():
     led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
     ex, ad, ch = _mk_exec(led)
     ch.balance = lambda a, ct=None: 0                # broke wallet
+    ch.coins = lambda a, ct=K.SUI_COIN_TYPE: []      # ... every source agrees
     r = ex.buy(1, launchpad="suipump", curve_id=CID, token_type=TOK, curve_isv=1,
                sui_amount=0.5, min_out=0)
     assert r["ok"] is False and r["error"] == "insufficient SUI balance", r

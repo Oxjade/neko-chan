@@ -17,7 +17,9 @@ from . import constants as K
 
 
 def _digest_to_hex(digest: str) -> str:
-    """GraphQL digests are base64; the signer wants hex (same as sui_adapter)."""
+    """Sui object/transaction digests are base58 in JSON-RPC (Blockvision) and
+    base64 in some GraphQL responses. The signer's BCS object-ref needs the raw
+    32 bytes as hex, so detect the encoding instead of assuming one."""
     if not digest:
         return ""
     d = digest[2:] if digest.startswith("0x") else digest
@@ -25,7 +27,15 @@ def _digest_to_hex(digest: str) -> str:
         int(d, 16)
         return d
     except ValueError:
-        return base64.b64decode(digest).hex()
+        pass
+    try:
+        import base58 as _b58
+        raw = _b58.b58decode(d)
+        if len(raw) == 32:
+            return raw.hex()
+    except Exception:
+        pass
+    return base64.b64decode(digest).hex()
 
 
 class GqlError(Exception):
@@ -136,6 +146,17 @@ class Chain:
         is 0 on current GraphQL); digests normalized to hex."""
         if not coin_type.startswith("0x2::coin::Coin<"):
             coin_type = f"0x2::coin::Coin<{coin_type}>"
+        is_mainnet_sui = (
+            self.network == "mainnet"
+            and coin_type == f"0x2::coin::Coin<{K.SUI_COIN_TYPE}>"
+        )
+        # A non-empty GraphQL SUI page can still be partial and omit the only
+        # coin large enough for a buy. Prefer the full JSON-RPC inventory for
+        # native SUI; GraphQL below remains the outage fallback.
+        if is_mainnet_sui:
+            rpc = self._rpc_coins(owner, K.SUI_COIN_TYPE)
+            if rpc:
+                return rpc
         q = (
             '{ address(address: "' + owner + '") { objects(first: 50, filter: {type: "'
             + coin_type + '"}) { nodes { address version digest contents { json } } } } }'
@@ -152,28 +173,35 @@ class Chain:
                 bal = 0
             out.append({"objectId": n.get("address", ""), "version": int(n.get("version", 0)),
                         "digest": _digest_to_hex(n.get("digest", "")), "balance_mist": bal})
-        if out:
+        if out and any(c["balance_mist"] > 0 for c in out):
             return out
-        # mainnet GraphQL objects-coin query returns EMPTY even with funds
-        # (same guard as sui_adapter._gql_coins) → suix_getCoins via Blockvision.
-        if self.network == "mainnet" and coin_type == f"0x2::coin::Coin<{K.SUI_COIN_TYPE}>":
-            raw = K.SUI_COIN_TYPE
-        else:
-            raw = coin_type.split("<", 1)[1].rsplit(">", 1)[0] if "<" in coin_type else coin_type
-        return self._rpc_coins(owner, raw)
+        # Non-native coin inventory still uses GraphQL first. Native SUI has
+        # already attempted RPC above and only gets here when that source is
+        # unavailable.
+        raw = coin_type.split("<", 1)[1].rsplit(">", 1)[0] if "<" in coin_type else coin_type
+        rpc = self._rpc_coins(owner, raw)
+        return rpc if rpc else out
 
     def _rpc_coins(self, owner: str, raw_coin: str) -> list[dict]:
-        try:
-            r = requests.post("https://sui-mainnet-endpoint.blockvision.org:443", json={
-                "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
-                "params": [owner, raw_coin, None, 50]}, timeout=8)
-            data = (r.json().get("result") or {}).get("data") or []
-            return [{"objectId": c.get("coinObjectId") or c.get("objectId"),
-                     "version": int(c.get("version", 0)),
-                     "digest": _digest_to_hex(str(c.get("digest") or "")),
-                     "balance_mist": int(c.get("balance") or 0)} for c in data]
-        except Exception:
-            return []
+        # Blockvision intermittently returns HTTP 200 + empty data[] even when
+        # coins exist (observed on mainnet 2026-09-16). Retry so a flake never
+        # surfaces as a false "insufficient balance" in the buy path.
+        for attempt in range(3):
+            try:
+                r = requests.post("https://sui-mainnet-endpoint.blockvision.org:443", json={
+                    "jsonrpc": "2.0", "id": 1, "method": "suix_getCoins",
+                    "params": [owner, raw_coin, None, 50]}, timeout=8)
+                data = (r.json().get("result") or {}).get("data") or []
+                if data:
+                    return [{"objectId": c.get("coinObjectId") or c.get("objectId"),
+                             "version": int(c.get("version", 0)),
+                             "digest": _digest_to_hex(str(c.get("digest") or "")),
+                             "balance_mist": int(c.get("balance") or 0)} for c in data]
+            except Exception:
+                pass
+            import time as _t
+            _t.sleep(0.4 * (attempt + 1))
+        return []
 
     def balance(self, owner: str, coin_type: str = K.SUI_COIN_TYPE) -> int:
         q = '{ address(address: "' + owner + '") { balance(coinType: "' + coin_type + '") { totalBalance } } }'
