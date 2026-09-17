@@ -157,7 +157,9 @@ class OrderEvaluator:
         pos = self.led.position_by_curve(bot_id, o["curve_id"], o["wallet"])
         if not pos:
             return {"ok": False, "error": "no position to sell"}
-        return self.executor.sell(bot_id, o, st, pos)
+        # flat 0.5% company fee on exit (the only fee model). Without this the
+        # executor defaults fee_bps=0 and the sell leg collects nothing.
+        return self.executor.sell(bot_id, o, st, pos, fee_bps=K.PLATFORM_FEE_BPS)
 
     def _reprice_remaining_lanes(self, fired):
         pos = self.led.position_by_curve(fired["bot_id"], fired["curve_id"], fired["wallet"])

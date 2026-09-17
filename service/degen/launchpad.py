@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import requests
 
 from . import constants as K
-from .chain import Chain
+from .chain import Chain, safe_type
 
 log = logging.getLogger(__name__)
 
@@ -76,11 +76,12 @@ _IDX_DOWN = 0.0   # unix ts of last indexer failure (60s cool-down)
 
 def _fill_metadata(ch: Chain, st: "AssetState") -> None:
     """Best-effort symbol/name for a token type (coinMetadata, keyless)."""
-    if not st.token_type:
+    tt = safe_type(st.token_type)
+    if tt is None:
         return
     try:
         r = ch.query('{ coinMetadata(coinType: "%s") { symbol name decimals } }'
-                     % st.token_type)
+                     % tt)
         cm = (r or {}).get("coinMetadata") or {}
         st.symbol = str(cm.get("symbol") or "")[:16]
         st.name = str(cm.get("name") or "")[:40]

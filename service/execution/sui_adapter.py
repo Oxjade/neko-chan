@@ -1012,7 +1012,7 @@ class SUIAdapter:
         # when the user has a small SUI balance (e.g. 0.06 SUI) and the dry-run
         # returns a budget near or above it. For small gas coins (<20M), cap to 10M.
         try:
-            bal = int(coin.get("balance", 0))
+            bal = int(coin.get("balance_mist", coin.get("balance", 0)))
             if budget >= bal:
                 budget = max(5_000_000, bal - 1_000_000)
             # Hard cap for small gas coins to ensure 17M coin can handle 10M budget
@@ -1045,6 +1045,49 @@ class SUIAdapter:
         )
         tx_bytes = b"\x00" + kind + _bcs_addr(self.address) + gas_data + b"\x00"
         return self._broadcast_tx(tx_bytes)
+
+    def _dry_run_ptb(self, inputs: list[bytes], commands: list[bytes],
+                     gas_price: int, budget: int, gas_coin: dict | None = None) -> dict:
+        """Simulate a PTB via sui_dryRunTransactionBlock (JSON-RPC) and return the
+        raw result (effects + events). Unlike GraphQL simulateTransaction this is
+        widely exposed and returns emitted events, so callers can read exact
+        outputs (e.g. TokensPurchased.tokens_out) before committing to a slippage
+        floor. Uses a public JSON-RPC endpoint because the default fullnode
+        disables JSON-RPC on mainnet."""
+        coin = gas_coin or self._pick_gas_coin()
+        try:
+            bal = int(coin.get("balance_mist", coin.get("balance", 0)))
+            if budget >= bal:
+                budget = max(5_000_000, bal - 1_000_000)
+        except Exception:
+            pass
+        tx_bytes = _serialize_tx_ptb_v1(
+            inputs, commands, self.address, coin,
+            gas_price, budget, self._shared_versions())
+        tx_b64 = base64.b64encode(tx_bytes).decode()
+        url = {"mainnet": "https://sui-rpc.publicnode.com",
+               "testnet": "https://sui-rpc.publicnode.com"}.get(self.network, self.rpc_url)
+        body = {"jsonrpc": "2.0", "id": 1, "method": "sui_dryRunTransactionBlock",
+                "params": [tx_b64]}
+        r = requests.post(url, json=body, timeout=20)
+        data = r.json()
+        if data.get("error"):
+            raise SuiRpcError("dryRun", str(data["error"])[:300])
+        return data.get("result") or {}
+
+    def simulate_event_u64(self, inputs: list[bytes], commands: list[bytes],
+                           gas_price: int, budget: int, gas_coin: dict | None,
+                           event_suffix: str, field: str) -> int:
+        """Run a dry-run and return `field` (a u64 string) from the first event
+        whose type ends with `event_suffix`, or 0 when absent."""
+        res = self._dry_run_ptb(inputs, commands, gas_price, budget, gas_coin)
+        for ev in res.get("events") or []:
+            if str(ev.get("type", "")).endswith(event_suffix):
+                try:
+                    return int((ev.get("parsedJson") or {}).get(field) or 0)
+                except (TypeError, ValueError):
+                    return 0
+        return 0
 
     def _dry_run(self, tx_json: dict) -> dict:
         """Estimate gas for a transaction.

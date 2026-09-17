@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS degen_config (
     caps_json TEXT NOT NULL DEFAULT '{}',         -- per_order|daily_loss|max_open (SUI)
     allow_generic INTEGER NOT NULL DEFAULT 1,
     view INTEGER NOT NULL DEFAULT 0,                -- degen VIEW toggled on the dashboard
+    chat_receipt TEXT NOT NULL DEFAULT 'public',    -- in-chat @neko receipts: public|private
     updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS degen_position (
@@ -218,6 +219,9 @@ class DegenLedger:
         if "view" not in cols:
             self._conn.execute(
                 "ALTER TABLE degen_config ADD COLUMN view INTEGER NOT NULL DEFAULT 0")
+        if "chat_receipt" not in cols:
+            self._conn.execute(
+                "ALTER TABLE degen_config ADD COLUMN chat_receipt TEXT NOT NULL DEFAULT 'public'")
         self._conn.commit()
 
     # ---------------- config ----------------
@@ -232,12 +236,12 @@ class DegenLedger:
             return d
         return {"bot_id": bot_id, "enabled": 0, "ai_key_ok": 0,
                 "launchpads": "suipump", "budget_sui": 0.0, "caps": {},
-                "allow_generic": 1, "view": 0}
+                "allow_generic": 1, "view": 0, "chat_receipt": "public"}
 
     def set_config(self, bot_id: int, **fields) -> None:
         caps = fields.pop("caps", None)
         allowed = {"enabled", "ai_key_ok", "launchpads", "budget_sui",
-                   "allow_generic", "view"}
+                   "allow_generic", "view", "chat_receipt"}
         sets, vals = [], []
         for k in allowed:
             if k in fields:
@@ -254,11 +258,12 @@ class DegenLedger:
             if cur.rowcount == 0:
                 self._conn.execute(
                     """INSERT INTO degen_config (bot_id, enabled, ai_key_ok, launchpads,
-                       budget_sui, caps_json, allow_generic, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                       budget_sui, caps_json, allow_generic, chat_receipt, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (bot_id, int(fields.get("enabled", 0)), int(fields.get("ai_key_ok", 0)),
                      fields.get("launchpads", "suipump"), fields.get("budget_sui", 0.0),
-                     json.dumps(caps or {}), int(fields.get("allow_generic", 1)), utcnow()))
+                     json.dumps(caps or {}), int(fields.get("allow_generic", 1)),
+                     fields.get("chat_receipt", "public"), utcnow()))
             self._conn.commit()
 
     def enabled_bots(self) -> list[dict]:
@@ -427,17 +432,21 @@ class DegenLedger:
                   token_type: str = "", pool_id: str = "", target_price: float | None = None,
                   trigger_mode: str = "price", qty_sui: float = 0.0,
                   qty_tokens: float = 0.0, lane_index: int = -1,
-                  plan_id: int | None = None) -> int:
+                  plan_id: int | None = None, state: str = "armed") -> int:
+        """Insert an order row. Returns the row id, or -1 if the idempotency key
+        already exists. `state` lets the write choke-point RESERVE the key with a
+        non-fired, non-armed state (e.g. 'pending') before broadcasting, so a
+        redelivered message can never double-spend (TBP-03)."""
         with self._lock:
             try:
                 cur = self._conn.execute(
                     """INSERT INTO degen_order (bot_id, plan_id, wallet, intent, otype,
                        launchpad, curve_id, token_type, pool_id, target_price, trigger_mode,
-                       qty_sui, qty_tokens, lane_index, idempotency_key, created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       qty_sui, qty_tokens, lane_index, idempotency_key, created_at, state)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (bot_id, plan_id, wallet, intent, otype, launchpad, curve_id,
                      token_type, pool_id, target_price, trigger_mode, qty_sui,
-                     qty_tokens, lane_index, idempotency_key, utcnow()))
+                     qty_tokens, lane_index, idempotency_key, utcnow(), state))
                 self._conn.commit()
                 return cur.lastrowid
             except sqlite3.IntegrityError:

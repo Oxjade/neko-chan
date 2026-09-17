@@ -62,9 +62,38 @@ class DegenExecutor:
         executor never sees plaintext keys, only an adapter bound to one wallet."""
         self.ch = ch
         self.ledger = ledger
-        self._adapter_for = adapter_for_wallet
+        self._adapter_for = adapter_for_wallet     # legacy single-arg fallback
+        # Per-bot wallet resolvers. Wallet custody is per-bot while the runtime is
+        # process-wide: keying resolvers on bot_id (instead of a mutable global)
+        # removes the cross-bot wallet race (TBP-02). Set via
+        # set_bot_wallet_factory(); falls back to _adapter_for for tests/legacy.
+        self._bot_factories: dict[int, object] = {}
         self._spot = None            # set via set_spot_adapter (post-grad, §3.5)
         self.fee_recipient = fee_recipient or os.environ.get("NEKO_FEE_ADDR", "")
+
+    def set_bot_wallet_factory(self, bot_id: int, factory) -> None:
+        """Register a per-bot resolver: factory(wallet_addr) -> (SUIAdapter|None, addr)."""
+        self._bot_factories[int(bot_id)] = factory
+
+    def _adapter(self, bot_id: int, wallet: str):
+        """Resolve (adapter, address) for THIS bot. Never uses another bot's
+        resolver, so concurrent/cached chat-buys cannot sign from the wrong wallet."""
+        factory = self._bot_factories.get(int(bot_id)) if bot_id is not None else None
+        if factory is not None:
+            return factory(wallet)
+        return self._adapter_for(wallet)
+
+    def _reserve_order(self, bot_id: int, *, wallet: str, intent: str, otype: str,
+                       launchpad: str, idempotency_key: str, curve_id: str = "",
+                       token_type: str = "", qty_sui: float = 0.0,
+                       lane_index: int = -1) -> int:
+        """Claim the idempotency key with state='pending' BEFORE signing/broadcast.
+        Returns the order id, or -1 when a prior submission already holds the key
+        (caller must abort). set_order() later flips it to fired/failed."""
+        return self.ledger.add_order(
+            bot_id, wallet=wallet or "", intent=intent, otype=otype, launchpad=launchpad,
+            idempotency_key=idempotency_key, curve_id=curve_id, token_type=token_type or "",
+            qty_sui=qty_sui, lane_index=lane_index, state="pending")
 
     # ---------------- caps / kill-switch ----------------
     def _check(self, bot_id: int, cfg: dict, sui_amount: float, curve_id: str,
@@ -105,14 +134,47 @@ class DegenExecutor:
 
     # ---------------- gas / coin pick ----------------
     def _pick_sui_coin(self, adapter: SUIAdapter, need_mist: int):
-        coins = self.ch.coins(adapter.address)
-        coins = [c for c in coins if c["objectId"] != getattr(adapter, "_gas_excl", None)]
-        big = [c for c in coins if c["balance_mist"] >= need_mist]
-        if not big:
-            return None, coins
-        # don't use the same coin for gas and value: pick two distinct when possible
-        big.sort(key=lambda c: c["balance_mist"])
-        return big[-1], big[:-1] or coins
+        coins = []
+        for attempt in range(3):
+            try:
+                coins = self.ch.coins(adapter.address)
+            except Exception:
+                coins = []
+            coins = [c for c in coins if c["objectId"] != getattr(adapter, "_gas_excl", None)]
+            big = [c for c in coins if c["balance_mist"] >= need_mist]
+            if big:
+                # don't use the same coin for gas and value: pick two distinct
+                # when possible
+                big.sort(key=lambda c: c["balance_mist"])
+                return big[-1], big[:-1] or coins
+            time.sleep(0.4 * (attempt + 1))
+        return None, coins
+
+    def _sui_sufficient(self, adapter: SUIAdapter, need_mist: int) -> bool:
+        """SUI sufficiency for need + ~0.01 SUI gas margin.
+
+        GraphQL is eventually consistent and its objects-coin query can serve a
+        partial page (both observed live on mainnet), so a single balance read
+        sometimes reads 0/stale right after a fill. Refuse ONLY when every
+        source agrees we're short:
+          - retry the address balance briefly,
+          - then cross-check coins() (which carries an RPC fallback).
+        """
+        margin = need_mist + K.MIST // 100
+        have = 0
+        for _ in range(3):
+            try:
+                have = self.ch.balance(adapter.address)
+            except Exception:
+                have = 0
+            if have >= margin:
+                return True
+            time.sleep(0.5)
+        try:
+            have = max(have, sum(c["balance_mist"] for c in self.ch.coins(adapter.address)))
+        except Exception:
+            pass
+        return have >= margin
 
     # ---------------- quote / slippage guard (§5.2: never naked) ----------------
     def _min_out(self, st, sui_spend: float, slip_bps: int = 500) -> int:
@@ -132,27 +194,33 @@ class DegenExecutor:
         return int(out * (1 - slip_bps / 10000))
 
     def _received_tokens(self, wallet: str, token_type: str, before_mist: int) -> int:
-        """Actual token atoms received = post-balance delta (real, not estimated)."""
-        try:
-            after = self.ch.balance(wallet, token_type)
-        except Exception:
-            return before_mist
-        return max(0, after - before_mist)
+        """Actual token atoms received = post-balance delta (real, not estimated).
+        GraphQL balance is eventually consistent, so poll briefly for the delta."""
+        for _ in range(4):
+            try:
+                after = self.ch.balance(wallet, token_type)
+            except Exception:
+                after = before_mist
+            if after > before_mist:
+                return after - before_mist
+            import time as _t
+            _t.sleep(0.5)
+        return 0
 
     # ---------------- buy ----------------
     def buy(self, bot_id: int, *, launchpad: str, curve_id: str, token_type: str,
             curve_isv: int, sui_amount: float, min_out: int, wallet: str = "",
             idem: str = "", otype: str = "market", target_price: float | None = None,
             lane_index: int = -1, fee_bps: int = 0, source: str = "manual",
-            dry_run: bool = False, sender_check: bool = True) -> dict:
+            dry_run: bool = False, sender_check: bool = True, slip_bps: int = 500) -> dict:
         cfg = self.ledger.get_config(bot_id)
         err = self._check(bot_id, cfg, sui_amount, curve_id)
         if err:
             return {"ok": False, "error": "caps: " + err}
         wallet = wallet or ""
-        adapter, _ = self._adapter_for(wallet) if wallet else (None, None)
+        adapter, _ = self._adapter(bot_id, wallet) if wallet else (None, None)
         if wallet == "":
-            adapter, waddr = self._adapter_for(cfg.get("main_wallet") or "")
+            adapter, waddr = self._adapter(bot_id, cfg.get("main_wallet") or "")
         if adapter is None:
             return {"ok": False, "error": "no wallet/adapter for bot"}
         # venue check: ONLY a live curve is buyable (graduating/pool/wallet/unknown
@@ -162,19 +230,16 @@ class DegenExecutor:
             return {"ok": False, "error": f"not a live curve ({getattr(st,'kind','none')})"}
         if st.kind == "pool":
             return {"ok": False, "error": "post-grad: use Aftermath path (§3.5 P1)"}
-        # slippage floor if caller didn't supply one (§5.2)
-        if not min_out or min_out <= 0:
-            min_out = self._min_out(st, sui_amount)
-            if min_out <= 0:
-                return {"ok": False, "error": "no price to set slippage floor"}
+        # slippage floor if caller didn't supply one (§5.2). The curve model is
+        # launchpad-specific (suipump uses a PriceConfig/reputation curve, not
+        # constant-product), so we PROBE the chain: dry-run the buy with min_out=0
+        # and read TokensPurchased.tokens_out, then apply slippage. Falls back to
+        # the analytic estimate when simulation is unavailable.
+        auto_min = (not min_out or min_out <= 0)
         need = int(sui_amount * K.MIST)
         # entry fee is charged on the SELL leg (deterministic SUI); buys pay none —
         # do NOT pretend an uncollectable entry fee on the confirm sheet.
-        try:
-            have = self.ch.balance(adapter.address)
-        except Exception:
-            have = 0
-        if have < need + K.MIST // 100:          # amount + ~0.01 SUI gas margin
+        if not self._sui_sufficient(adapter, need):
             return {"ok": False, "error": "insufficient SUI balance"}
         coin, _ = self._pick_sui_coin(adapter, need)
         if not coin:
@@ -182,29 +247,70 @@ class DegenExecutor:
         gas_coin = next((c for c in self.ch.coins(adapter.address)
                          if c["objectId"] != coin["objectId"] and c["balance_mist"] >= 2_000_000), None)
         before = self.ch.balance(adapter.address, st.token_type or token_type)
-        inputs, commands = ptb.build_buy(
-            curve_id, curve_isv, token_type,
-            (coin["objectId"], coin["version"], coin["digest"]), min_out,
-            user_addr=adapter.address, fee_atoms=0, fee_recipient="", referrer="")
+        from .launchpad import curve_pkg
+        curve_pkg_id = curve_pkg((getattr(st, "curve_obj", {}) or {}).get("type", ""))
+
+        def _build(mo):
+            if gas_coin is None:
+                # Single SUI coin: it must be both value and gas. Referencing the
+                # same ObjectRef as an owned input AND gas is rejected by the node
+                # (invalid withdraw reservation, 2x balance). Derive the buy coin
+                # from GasCoin via SplitCoins and cap the gas budget.
+                budget = min(K.SNIPE_GAS_BUDGET_MIST,
+                             max(5_000_000, coin["balance_mist"] - need - 1_000_000))
+                _in, _cmds = ptb.build_buy(
+                    curve_id, curve_isv, token_type, None, mo,
+                    user_addr=adapter.address, fee_atoms=0, fee_recipient="", referrer="",
+                    buy_from_gas=True, buy_atoms=need, pkg=curve_pkg_id)
+                return _in, _cmds, budget, coin
+            budget = K.SNIPE_GAS_BUDGET_MIST
+            _in, _cmds = ptb.build_buy(
+                curve_id, curve_isv, token_type,
+                (coin["objectId"], coin["version"], coin["digest"]), mo,
+                user_addr=adapter.address, fee_atoms=0, fee_recipient="", referrer="",
+                pkg=curve_pkg_id)
+            return _in, _cmds, budget, gas_coin
+
+        inputs, commands, budget, gas_sel = _build(0 if auto_min else min_out)
+        if auto_min:
+            exp = 0
+            try:
+                exp = adapter.simulate_event_u64(
+                    inputs, commands, self.ch.gas_price(), budget, gas_sel,
+                    "::bonding_curve::TokensPurchased", "tokens_out")
+            except Exception:
+                log.warning("buy simulation failed; using analytic estimate", exc_info=True)
+            min_out = (int(exp * (1 - slip_bps / 10000)) if exp > 0
+                       else (self._min_out(st, sui_amount) or 0))
+            if min_out <= 0:
+                return {"ok": False, "error": "no price to set slippage floor"}
+            inputs, commands, budget, gas_sel = _build(min_out)
         if dry_run:
             return {"ok": True, "dry_run": True, "gas_price": self.ch.gas_price(),
                     "budget_cap_mist": K.SNIPE_GAS_BUDGET_MIST, "min_out": min_out}
+        # Reserve the idempotency key BEFORE signing: a redelivered/replayed
+        # message must not re-broadcast (TBP-03). 'pending' is inert — the order
+        # evaluator only fires 'armed' orders — until set_order below.
+        oid = self._reserve_order(bot_id, wallet=wallet, intent="buy", otype=otype,
+                                  launchpad=launchpad,
+                                  idempotency_key=idem or _h(bot_id, curve_id, "buy",
+                                                             time.time_ns()),
+                                  curve_id=curve_id, token_type=token_type,
+                                  qty_sui=sui_amount, lane_index=lane_index)
+        if oid <= 0:
+            return {"ok": False, "error": "duplicate order (already submitted)"}
         try:
             out = adapter._broadcast_ptb(inputs, commands, self.ch.gas_price(),
-                                         K.SNIPE_GAS_BUDGET_MIST,
-                                         gas_coin=gas_coin and {"objectId": gas_coin["objectId"],
-                                                                "version": gas_coin["version"],
-                                                                "digest": gas_coin["digest"]})
+                                         budget,
+                                         gas_coin=gas_sel and {"objectId": gas_sel["objectId"],
+                                                               "version": gas_sel["version"],
+                                                               "digest": gas_sel["digest"]})
         except Exception as exc:
             log.exception("buy broadcast failed")
+            self.ledger.set_order(oid, "failed", error=f"broadcast: {exc}"[:160])
             return {"ok": False, "error": f"broadcast: {exc}"}
         status = str(out.get("status", "")).upper()
         filled = status == "SUCCESS"            # §5.5: never assume a fill on unknown
-        oid = self.ledger.add_order(bot_id, wallet=wallet, intent="buy", otype=otype,
-                                    launchpad=launchpad, curve_id=curve_id,
-                                    token_type=token_type, qty_sui=sui_amount,
-                                    target_price=target_price, lane_index=lane_index,
-                                    idempotency_key=idem or _h(bot_id, curve_id, "buy", time.time_ns()))
         self.ledger.set_order(oid, "fired" if filled else "failed",
                               tx_digest=out.get("digest", ""),
                               error="" if filled else (status or "unknown"))
@@ -213,6 +319,7 @@ class DegenExecutor:
             self.ledger.record_fill(oid, out.get("digest", ""), sui=sui_amount,
                                     tokens=got, price=(sui_amount / (got / 10 ** 6) if got else 0.0))
             self.ledger.upsert_position(bot_id, launchpad, curve_id, token_type, wallet,
+                                        symbol=getattr(st, "symbol", "") or "",
                                         add_sui=sui_amount, add_tokens=got)
         return {"ok": filled, "digest": out.get("digest", ""), "order_id": oid,
                 "status": status, "tokens": got, "min_out": min_out}
@@ -229,57 +336,101 @@ class DegenExecutor:
 
     # ---------------- sell (§3.2a fee on SUI side — deterministic) ----------------
     def sell(self, bot_id: int, o: dict, st, pos: dict, fee_bps: int = 0,
-             idem: str = "") -> dict:
+             idem: str = "", sell_atoms: int | None = None) -> dict:
         cfg = self.ledger.get_config(bot_id)
         if self.is_killed(bot_id):
             return {"ok": False, "error": "kill-switch engaged"}
+        if sell_atoms is not None:
+            if type(sell_atoms) is not int or not 0 < sell_atoms < 2 ** 64:
+                return {"ok": False, "error": "sell_atoms must be a positive u64 integer"}
+            if st.kind != "curve":
+                return {"ok": False, "error": "amount-based sells are not supported for this venue"}
         wallet = o.get("wallet") or ""
-        adapter, _ = self._adapter_for(wallet) if wallet else (None, None)
+        if wallet:
+            adapter, _ = self._adapter(bot_id, wallet)
+        else:
+            adapter, _ = self._adapter(bot_id, cfg.get("main_wallet") or "")
         if adapter is None:
             return {"ok": False, "error": "no wallet/adapter for bot"}
-        est_sui = (pos.get("tokens", 0) or 0) * (st.sui_reserve_mist / max(1, st.token_reserve)) / K.MIST \
-            if st.kind == "curve" and st.token_reserve else 0.0
-        fee_mist = int(est_sui * 1e9 * fee_bps / 10000) if (fee_bps and self.fee_recipient) else 0
         if st.kind == "curve":
-            tok_coins = self.ch.coins(adapter.address, st.token_type)
+            # Sell from the ENTIRE token balance: merge every token coin into the
+            # largest in one PTB. Selling only the largest coin (the old behaviour)
+            # stranded the rest on-chain while the ledger booked a full exit —
+            # the 2026-09-17 "missing position" bug. `sell_atoms=None` exits 100%;
+            # a smaller value splits off that slice and returns the remainder.
+            tok_coins = [c for c in self.ch.coins(adapter.address, st.token_type)
+                         if int(c.get("balance_mist") or 0) > 0]
             if not tok_coins:
                 return {"ok": False, "error": "no token coins to sell"}
-            coin = max(tok_coins, key=lambda c: c["balance_mist"])
+            tok_coins.sort(key=lambda c: c["balance_mist"], reverse=True)
+            coin = tok_coins[0]
+            token_ids = {c["objectId"] for c in tok_coins}
+            tokens_before = sum(int(c["balance_mist"]) for c in tok_coins)
+            extra = [(c["objectId"], c["version"], c["digest"]) for c in tok_coins[1:]]
+            if sell_atoms is not None and sell_atoms > tokens_before:
+                return {"ok": False, "error": "sell amount exceeds available token balance"}
+            partial = sell_atoms is not None and sell_atoms < tokens_before
+            sold_atoms = sell_atoms if sell_atoms is not None else tokens_before
+            est_sui = (sold_atoms * (st.sui_reserve_mist / max(1, st.token_reserve)) / K.MIST
+                       if st.token_reserve else 0.0)
+            fee_mist = int(est_sui * 1e9 * fee_bps / 10000) if (fee_bps and self.fee_recipient) else 0
             min_sui = int(est_sui * 1e9 * 0.9)  # 10% slippage guard
+            from .launchpad import curve_pkg as _curve_pkg
             inputs, commands = ptb.build_sell(
                 o["curve_id"], st.curve_obj.get("shared_version", 0), st.token_type,
                 (coin["objectId"], coin["version"], coin["digest"]), min_sui,
                 user_addr=adapter.address, fee_sui_mist=fee_mist,
-                fee_recipient=self.fee_recipient)
+                fee_recipient=self.fee_recipient,
+                pkg=_curve_pkg((getattr(st, "curve_obj", {}) or {}).get("type", "")),
+                extra_coins=extra, sell_atoms=sold_atoms if partial else None)
+            # Reserve before signing (TBP-03) so a replayed sell cannot double-exit.
+            oid = self._reserve_order(bot_id, wallet=wallet, intent="sell",
+                                      otype=o.get("otype", "market"),
+                                      launchpad=o["launchpad"], curve_id=o["curve_id"],
+                                      token_type=st.token_type, qty_sui=round(est_sui, 6),
+                                      idempotency_key=idem or _h(bot_id, o["curve_id"], "sell",
+                                                                 time.time_ns()))
+            if oid <= 0:
+                return {"ok": False, "error": "duplicate order (already submitted)"}
             try:
                 gas = next((c for c in self.ch.coins(adapter.address)
-                            if c["objectId"] != coin["objectId"] and c["balance_mist"] >= 2_000_000), None)
+                            if c["objectId"] not in token_ids
+                            and c["balance_mist"] >= 2_000_000), None)
                 out = adapter._broadcast_ptb(inputs, commands, self.ch.gas_price(),
                                              K.SNIPE_GAS_BUDGET_MIST,
                                              gas_coin=gas and {"objectId": gas["objectId"],
                                                                "version": gas["version"],
                                                                "digest": gas["digest"]})
             except Exception as exc:
+                self.ledger.set_order(oid, "failed", error=f"broadcast: {exc}"[:160])
                 return {"ok": False, "error": f"broadcast: {exc}"}
             filled = str(out.get("status", "")).upper() == "SUCCESS"
-            oid = self.ledger.add_order(bot_id, wallet=wallet, intent="sell",
-                                        otype=o.get("otype", "market"), launchpad=o["launchpad"],
-                                        curve_id=o["curve_id"], token_type=st.token_type,
-                                        qty_sui=round(est_sui, 6),
-                                        idempotency_key=idem or _h(bot_id, o["curve_id"], "sell",
-                                                                   time.time_ns()))
             self.ledger.set_order(oid, "fired" if filled else "failed",
                                   tx_digest=out.get("digest", ""),
                                   error="" if filled else str(out.get("status", "unknown")))
+            remaining = tokens_before - sold_atoms
             if filled:
                 self.ledger.record_fill(oid, out.get("digest", ""), sui=est_sui,
-                                        tokens=coin["balance_mist"], price=est_sui / max(1e-9, coin["balance_mist"] / 1e6),
+                                        tokens=sold_atoms,
+                                        price=est_sui / max(1e-9, sold_atoms / 1e6),
                                         fee_sui=fee_mist / K.MIST)
-                self.ledger.upsert_position(bot_id, o["launchpad"], o["curve_id"],
-                                            st.token_type, wallet,
-                                            add_sui=-min(est_sui, pos.get("entry_sui", est_sui)),
-                                            add_tokens=-coin["balance_mist"])
-            return {"ok": filled, "digest": out.get("digest", ""), "status": out.get("status", "")}
+                entry = float(pos.get("entry_sui") or 0.0)
+                pid = self.ledger.upsert_position(bot_id, o["launchpad"], o["curve_id"],
+                                                  st.token_type, wallet,
+                                                  add_sui=-min(est_sui, entry),
+                                                  add_tokens=-sold_atoms)
+                # Position status follows the ACTUAL amount sold, so a partial exit
+                # stays open with the unsold remainder and only a 100% exit closes.
+                if remaining <= 0:
+                    self.ledger.set_position(pid, status="closed", tokens=0.0, entry_sui=0.0)
+                else:
+                    self.ledger.set_position(
+                        pid, status="open", tokens=float(remaining),
+                        entry_sui=entry * remaining / tokens_before,
+                        avg_entry_sui=entry / tokens_before)
+            return {"ok": filled, "digest": out.get("digest", ""), "order_id": oid,
+                    "status": out.get("status", ""), "tokens_sold": sold_atoms if filled else 0,
+                    "tokens_left": remaining if filled else tokens_before}
         # pool venue → Aftermath legs (resting limit w/ native SL works today;
         # market-swap composition is the spot adapter's own open TODO)
         return self.buy_post_grad(bot_id, o, st, side="sell", pos=pos)
@@ -315,14 +466,15 @@ class DegenExecutor:
     def _dex_swap(self, bot_id: int, coin_in_type: str, coin_out_type: str,
                   in_atoms: int, slip_bps: int, idem: str, intent: str,
                   launchpad: str, curve_id: str, token_type: str,
-                  pos: dict | None = None, cetus_only: bool = False) -> dict:
+                  pos: dict | None = None, cetus_only: bool = False,
+                  symbol: str = "") -> dict:
         """Quote -> build -> sign -> broadcast one Aftermath-routed swap.
         The 0.5% integrator fee rides INSIDE the route (externalFee), so fills
         are booked net of fee from real balance deltas — same integrity rules
         as curve buys."""
         import base64
         key = curve_id or token_type      # generics have no curve: type is the key
-        adapter, waddr = self._adapter_for("")
+        adapter, waddr = self._adapter(bot_id, "")
         if adapter is None:
             return {"ok": False, "error": "no wallet for DEX swap"}
         try:
@@ -349,10 +501,13 @@ class DegenExecutor:
             q = client.quote_route(coin_in_type, coin_out_type,
                                    amount_in_atoms=in_atoms, slippage_bps=slip_bps,
                                    external_fee=fee)   # Cetus absent → best route
-        oid = self.ledger.add_order(bot_id, wallet=waddr, intent=intent, otype="market",
-                                    launchpad=launchpad, curve_id=key,
-                                    token_type=token_type, qty_sui=in_atoms / 1e9,
-                                    idempotency_key=idem)
+        # Reserve before signing (TBP-03): 'pending' is inert until set_order.
+        oid = self._reserve_order(bot_id, wallet=waddr, intent=intent, otype="market",
+                                  launchpad=launchpad, curve_id=key,
+                                  token_type=token_type, qty_sui=in_atoms / 1e9,
+                                  idempotency_key=idem)
+        if oid <= 0:
+            return {"ok": False, "error": "duplicate order (already submitted)"}
         try:
             before = self.ch.balance(adapter.address, coin_out_type)
         except Exception:
@@ -394,7 +549,8 @@ class DegenExecutor:
                                         price=sui_spent / max(1e-9, got / 1e6),
                                         fee_sui=fee_sui)
                 self.ledger.upsert_position(bot_id, launchpad, key, token_type,
-                                            adapter.address, add_sui=sui_spent,
+                                            adapter.address, symbol=symbol,
+                                            add_sui=sui_spent,
                                             add_tokens=got)
             else:
                 sui_got = got / 1e9
@@ -421,7 +577,8 @@ class DegenExecutor:
                                   idem or f"pgbuy{st.curve_id}{time.time_ns()}",
                                   "buy", st.launchpad or "suipump", st.curve_id,
                                   st.token_type,
-                                  cetus_only=(st.launchpad or "suipump") == "suipump")
+                                  cetus_only=(st.launchpad or "suipump") == "suipump",
+                                  symbol=getattr(st, "symbol", "") or "")
         atoms = int((pos or {}).get("tokens") or 0)
         if atoms <= 0:
             return {"ok": False, "error": "no tokens to sell"}
@@ -452,7 +609,7 @@ class DegenExecutor:
         # BEFORE any leg (real transfer, not a display promise). §3.2a ----
         fee_res = {"ok": True, "skipped": True}
         if burst_fee_mist and self.fee_recipient:
-            adapter, _ = self._adapter_for("")        # main wallet
+            adapter, _ = self._adapter(bot_id, "")        # this bot's main wallet
             if adapter is None:
                 return {"ok": False, "error": "no main wallet to pay bundle fee"}
             fee_sui = burst_fee_mist / K.MIST

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from typing import Any
 
 import requests
@@ -18,6 +19,24 @@ from . import constants as K
 
 _B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 _B58_DIGITS = {char: index for index, char in enumerate(_B58_ALPHABET)}
+
+# GraphQL args below are built by string interpolation, so anything reaching a
+# query must be charset-validated first (TBP-04). A Move type can never contain a
+# quote, backslash, brace or whitespace; blocking those makes the quoted literal
+# unbreakable.
+_ADDR_RE = re.compile(r"(?i)^0x[0-9a-f]{1,64}$")
+_TYPE_RE = re.compile(r"^[0-9a-zA-Z_:<>,\.]{1,512}$")
+_CURSOR_RE = re.compile(r"^[0-9A-Za-z+/=_\-]{0,256}$")
+
+
+def safe_addr(a: str) -> str | None:
+    a = (a or "").strip()
+    return a if _ADDR_RE.match(a) else None
+
+
+def safe_type(t: str) -> str | None:
+    t = (t or "").strip()
+    return t if _TYPE_RE.match(t) else None
 
 
 def _base58_decode(value: str) -> bytes:
@@ -79,6 +98,9 @@ class Chain:
 
     def object(self, address: str) -> dict | None:
         """{address, version, digest, type, owner{...}, json} or None if absent."""
+        address = safe_addr(address)
+        if address is None:
+            return None
         q = (
             '{ object(address: "' + address + '") { '
             'address version digest '
@@ -109,6 +131,10 @@ class Chain:
 
     def objects_by_type(self, type_repr: str, first: int = 20) -> list[dict]:
         """Live objects whose Move type matches (ObjectFilter.type confirmed)."""
+        type_repr = safe_type(type_repr)
+        if type_repr is None:
+            return []
+        first = max(1, min(int(first), 100))
         q = (
             '{ objects(filter: { type: "' + type_repr + '" }, first: ' + str(first) + ') '
             '{ nodes { address version } pageInfo { hasNextPage endCursor } } }'
@@ -127,6 +153,10 @@ class Chain:
 
         Ordering: Sui GraphQL events connection is oldest-first; callers keep a
         persisted endCursor to resume. Dedup by (checkpoint, eventSeq) anyway."""
+        type_repr = safe_type(type_repr)
+        if type_repr is None or not _CURSOR_RE.match(after or ""):
+            return [], "", False
+        first = max(1, min(int(first), 100))
         tail = (', after: "' + after + '"') if after else ""
         q = (
             '{ events(filter: { type: "' + type_repr + '" }, first: ' + str(first) + tail + ') { '
@@ -159,8 +189,14 @@ class Chain:
         Mirrors sui_adapter._gql_coins: query under `address { objects }`, the
         true balance lives in contents.json.balance (per-object balance field
         is 0 on current GraphQL); digests normalized to hex."""
+        owner = safe_addr(owner)
+        if owner is None:
+            return []
         if not coin_type.startswith("0x2::coin::Coin<"):
             coin_type = f"0x2::coin::Coin<{coin_type}>"
+        coin_type = safe_type(coin_type)
+        if coin_type is None:
+            return []
         is_mainnet_sui = (
             self.network == "mainnet"
             and coin_type == f"0x2::coin::Coin<{K.SUI_COIN_TYPE}>"
@@ -219,6 +255,10 @@ class Chain:
         return []
 
     def balance(self, owner: str, coin_type: str = K.SUI_COIN_TYPE) -> int:
+        owner = safe_addr(owner)
+        coin_type = safe_type(coin_type)
+        if owner is None or coin_type is None:
+            return 0
         q = '{ address(address: "' + owner + '") { balance(coinType: "' + coin_type + '") { totalBalance } } }'
         try:
             a = (self.query(q) or {}).get("address") or {}

@@ -65,9 +65,19 @@ class DegenRuntime:
         self.sniper = Sniper(self.ch, self.led, self.executor)
         self.streamer = SuipumpStreamer(self.ch, self.led, self.bus)
         self._started = False
+        self._wallet_factories: dict[int, object] = {}
 
-    def set_wallet_adapter_factory(self, factory) -> None:
-        """userbot injects: wallet_addr -> (SUIAdapter|None, key_ref)."""
+    def set_wallet_adapter_factory(self, factory, bot_id: int | None = None) -> None:
+        """userbot injects: wallet_addr -> (SUIAdapter|None, key_ref).
+
+        With bot_id, the resolver is registered PER BOT on the executor, so a
+        cached UI for bot A can never sign from bot B's wallet (TBP-02). Without
+        bot_id (legacy/tests) it installs the process-wide fallback."""
+        if bot_id is not None:
+            bid = int(bot_id)
+            self._wallet_factories[bid] = factory
+            self.executor.set_bot_wallet_factory(bid, factory)
+            return
         self.executor._adapter_for = factory
         self._wallet_factory = factory
 
@@ -75,9 +85,15 @@ class DegenRuntime:
         self.executor.set_spot_adapter(factory)
 
     def _wallet_addr(self, bot) -> str:
-        """Main wallet address for honeypot sender (§5.3a needs funds to test)."""
+        """Main wallet address for honeypot sender (§5.3a needs funds to test).
+
+        Resolves through THIS bot's registered resolver so a multi-bot process
+        never reports another bot's funding address."""
         try:
-            factory = getattr(self, "_wallet_factory", None)
+            bid = int((bot or {}).get("id")) if isinstance(bot, dict) else None
+            factory = self._wallet_factories.get(bid) if bid is not None else None
+            if factory is None:
+                factory = getattr(self, "_wallet_factory", None)
             if factory:
                 _ad, addr = factory("")
                 return addr or ""

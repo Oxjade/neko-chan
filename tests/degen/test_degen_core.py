@@ -95,7 +95,7 @@ def test_mainnet_sui_coins_prefer_rpc_over_partial_graphql_page():
     })
     ch._rpc_coins = lambda _owner, _type: rpc_coins
 
-    assert ch.coins("0xowner") == rpc_coins
+    assert ch.coins("0x" + "ab" * 32) == rpc_coins
 
 
 def test_digest_decoder_handles_base58_without_optional_dependency():
@@ -219,6 +219,35 @@ def test_sell_ptb_fee_leg():
     assert cmds[1][:1] == b"\x02" and cmds[1][1:4] == b"\x02\x00\x00"  # split Result(0)
 
 
+def test_sell_ptb_merges_extra_coins_before_sell():
+    inp, cmds = ptb.build_sell("0x" + "cc" * 32, 100, "0x" + "dd" * 32 + "::suipump::SUIPUMP",
+                               ("0x" + "aa" * 32, 5, "bb" * 32), 123, user_addr="0x" + "ee" * 32,
+                               extra_coins=[("0x" + "12" * 32, 6, "cc" * 32),
+                                            ("0x" + "13" * 32, 7, "dd" * 32)])
+    assert len(inp) == 7                       # 3 token coins + curve + min + referrer + user
+    assert len(cmds) == 3
+    assert cmds[0][0] == 3                     # Command::MergeCoins
+    assert cmds[0][1:4] == b"\x01\x00\x00"     # destination = Input(0)
+    assert cmds[0][4] == 2                     # two sources
+    assert cmds[1][0] == 0                     # MoveCall(sell) still uses Input(0)
+    assert cmds[2][0] == 1                     # TransferObjects
+    assert cmds[2][1:5] == b"\x01\x02\x01\x00"  # one coin: Result(sell_cmd=1)
+    assert _arg(cmds[2][5:8]) == 6             # sold SUI -> user input 6
+
+
+def test_sell_ptb_partial_splits_and_returns_remainder():
+    inp, cmds = ptb.build_sell("0x" + "cc" * 32, 100, "0x" + "dd" * 32 + "::suipump::SUIPUMP",
+                               ("0x" + "aa" * 32, 5, "bb" * 32), 123, user_addr="0x" + "ee" * 32,
+                               sell_atoms=4_000_000)
+    assert len(inp) == 6                       # coin + split amount + curve/min/referrer + user
+    assert len(cmds) == 4
+    assert cmds[0][0] == 2                     # Command::SplitCoins (partial slice)
+    assert cmds[0][1:4] == b"\x01\x00\x00"     # split from Input(0)
+    assert cmds[1][0] == 0                     # MoveCall(sell) sells the slice
+    assert cmds[3][0] == 1                     # TransferObjects
+    assert cmds[3] == b"\x01\x01\x01\x00\x00\x01\x05\x00"
+
+
 def test_short_address_padded():
     # Clock 0x6 must encode as 32 bytes
     inp, cmds = ptb.build_buy("0x" + "cc" * 32, 200, "0x" + "dd" * 32 + "::suipump::SUIPUMP",
@@ -316,6 +345,175 @@ def test_executor_buy_records_real_fill_and_position():
     assert fills and fills[0]["sui"] == 0.5
 
 
+def test_executor_resolves_wallet_per_bot():
+    """TBP-02: two bots in one process sign from their OWN wallet, never the
+    last-registered one. The shared fallback adapter must go untouched."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, budget_sui=20)
+    led.set_config(2, enabled=1, budget_sui=20)
+    ex, shared, ch = _mk_exec(led)
+    a1, a2 = MockAdapter("0x" + "01" * 32), MockAdapter("0x" + "02" * 32)
+    coin = [{"objectId": "0x" + "11" * 32, "version": 1, "digest": "22" * 32,
+             "balance_mist": 10 ** 10}]
+    ch._coins[a1.address] = list(coin)
+    ch._coins[a2.address] = list(coin)
+    ex.set_bot_wallet_factory(1, lambda w: (a1, a1.address))
+    ex.set_bot_wallet_factory(2, lambda w: (a2, a2.address))
+
+    kw = dict(launchpad="suipump", curve_id=CID, token_type=TOK, curve_isv=1,
+              sui_amount=0.5, min_out=1)
+    assert ex.buy(1, idem="pb1", **kw)["ok"]
+    assert ex.buy(2, idem="pb2", **kw)["ok"]
+    assert len(a1.broadcasts) == 1 and len(a2.broadcasts) == 1
+    assert shared.broadcasts == []          # the global fallback was never used
+
+
+def test_executor_sell_falls_back_to_main_wallet_for_empty_position_wallet():
+    """2026-09-17: an open position row with no wallet (bought before the wallet
+    was recorded — e.g. chat card buy) could not be sold; sell() skipped the
+    main-wallet fallback that buy() has and returned 'no wallet/adapter for bot'."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    st = resolve_input(ch, CID)
+    pid = led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.3,
+                              add_tokens=int(4e13), symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    assert pos["wallet"] == ""
+    r = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, st, pos)
+    assert r.get("error") != "no wallet/adapter for bot", r
+    assert r["ok"] and len(ad.broadcasts) == 1
+
+
+def test_executor_sell_marks_position_closed_when_fully_exited():
+    """A full market exit must leave the dashboard: the position row flips to
+    'closed' instead of lingering as a zero-token 'open' row."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    st = resolve_input(ch, CID)
+    tokens = 10 ** 10                         # == the only token coin the mock returns
+    pid = led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.05,
+                              add_tokens=tokens, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    r = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, st, pos)
+    assert r["ok"]
+    assert led.positions(1) == []                     # gone from "open"
+    closed = led.positions(1, status="closed")
+    assert closed and closed[0]["id"] == pid
+
+
+def test_executor_partial_sell_keeps_remainder_open():
+    """A percentage/atom exit must NOT close the row: the unsold remainder stays
+    on-chain (returned to the wallet) and must stay open in the ledger."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    st = resolve_input(ch, CID)
+    ch._coins[ad.address] = [
+        {"objectId": "0x" + "a1" * 32, "version": 1, "digest": "b1" * 32,
+         "balance_mist": 10 * 10**9}]
+    pid = led.upsert_position(1, "suipump", CID, TOK, ad.address, add_sui=0.4,
+                              add_tokens=10 * 10**9, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    r = ex.sell(1, {"wallet": ad.address, "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, st, pos, sell_atoms=4 * 10**9)
+    assert r["ok"], r
+    assert r["tokens_sold"] == 4 * 10**9 and r["tokens_left"] == 6 * 10**9
+    assert ad.broadcasts[-1]["commands"][0][0] == 2   # partial → SplitCoins first
+    row = next(p for p in led.positions(1) if p["id"] == pid)
+    assert row["status"] == "open" and row["tokens"] == 6 * 10**9
+    fills = led.fills_for(r["order_id"])
+    assert fills and fills[0]["tokens"] == 4 * 10**9
+
+
+@pytest.mark.parametrize("amount", [0, -1, True, 1.5, "4", 2 ** 64, 10 ** 10 + 1])
+def test_executor_rejects_invalid_sell_amount_without_broadcast(amount):
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1)
+    ex, ad, ch = _mk_exec(led)
+    pid = led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.4,
+                              add_tokens=10 ** 10)
+    pos = led.positions(1)[0]
+    result = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID},
+                     resolve_input(ch, CID), pos, sell_atoms=amount)
+    assert not result["ok"]
+    assert ad.broadcasts == []
+    assert led.positions(1)[0] == pos
+    assert led.positions(1)[0]["id"] == pid
+
+
+@pytest.mark.parametrize("amount", [None, 4 * 10 ** 9])
+def test_executor_failed_sell_preserves_position(amount):
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1)
+    ex, ad, ch = _mk_exec(led)
+    led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.4,
+                         add_tokens=10 ** 10)
+    pos = led.positions(1)[0]
+    ad._broadcast_ptb = lambda *args, **kwargs: {"status": "FAILURE", "digest": "failed"}
+    result = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID},
+                     resolve_input(ch, CID), pos, sell_atoms=amount)
+    assert not result["ok"]
+    assert result["tokens_sold"] == 0
+    assert result["tokens_left"] == 10 ** 10
+    assert led.positions(1)[0] == pos
+    assert led.fills_for(result["order_id"]) == []
+
+
+def test_executor_partial_sell_rejects_unsupported_venue():
+    led = DegenLedger(":memory:")
+    ex, ad, ch = _mk_exec(led)
+    result = ex.sell(1, {}, _pool_state(), {}, sell_atoms=1)
+    assert not result["ok"]
+    assert ad.broadcasts == []
+
+
+def test_sell_ptb_merged_partial_with_fee_returns_primary_coin():
+    inputs, commands = ptb.build_sell(
+        CID, 100, TOK, ("0x" + "aa" * 32, 5, "bb" * 32), 123,
+        user_addr="0x" + "ee" * 32, sell_atoms=4_000_000,
+        extra_coins=[("0x" + "12" * 32, 6, "cc" * 32)],
+        fee_sui_mist=10, fee_recipient="0x" + "ff" * 32)
+    assert len(inputs) == 9
+    assert [command[0] for command in commands] == [3, 2, 0, 2, 1, 1, 1]
+    assert commands[3][1:4] == ptb.arg_result(2)
+    assert commands[4][2:7] == ptb.arg_nested(3, 0)
+    assert commands[-1] == b"\x01\x01" + ptb.arg_input(0) + ptb.arg_input(8)
+
+
+def test_executor_rejects_replayed_idempotency_without_broadcast():
+    """TBP-03: the key is reserved BEFORE signing, so a replay is refused and the
+    chain is never hit a second time."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    kw = dict(launchpad="suipump", curve_id=CID, token_type=TOK, curve_isv=1,
+              sui_amount=0.5, min_out=1, idem="dup")
+    r1 = ex.buy(1, **kw)
+    r2 = ex.buy(1, **kw)                    # identical redelivery
+    assert r1["ok"]
+    assert not r2["ok"] and "duplicate" in r2["error"]
+    assert len(ad.broadcasts) == 1          # only ONE on-chain broadcast
+
+
+def test_chain_rejects_graphql_injection():
+    """TBP-04: user-supplied address/type cannot reach the query builder."""
+    seen = []
+    ch = Chain(post=lambda url, body: seen.append(body) or {"data": {}})
+    evil_type = "0x" + "dd" * 32 + '::x") { evil }'
+    good_addr = "0x" + "ab" * 32
+
+    assert ch.object(evil_type) is None
+    assert ch.objects_by_type(evil_type) == []
+    assert ch.balance(good_addr, evil_type) == 0
+    assert ch.coins(good_addr, evil_type) == []
+    assert ch.events(evil_type) == ([], "", False)
+    assert seen == []                       # nothing was sent to the network
+
+
 def test_executor_kill_switch():
     led = DegenLedger(":memory:")
     led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
@@ -405,6 +603,24 @@ def test_get_runtime_no_deadlock(tmp_path, monkeypatch):
     t.join(timeout=15)
     assert "rt" in box, "get_runtime() deadlocked"
     assert box["rt"].network == "mainnet"
+
+
+def test_runtime_registers_wallet_factory_per_bot(tmp_path, monkeypatch):
+    """TBP-02: the process-wide runtime keeps a resolver per bot; a bot without
+    one never borrows another bot's wallet."""
+    from degen import runtime as rt
+    monkeypatch.setenv("DEGEN_LEDGER_PATH", str(tmp_path / "d2.db"))
+    rt._SINGLETON.clear()
+    r = rt.get_runtime()
+    a1, a2 = MockAdapter("0x" + "03" * 32), MockAdapter("0x" + "04" * 32)
+    r.set_wallet_adapter_factory(lambda w: (a1, a1.address), bot_id=11)
+    r.set_wallet_adapter_factory(lambda w: (a2, a2.address), bot_id=22)
+
+    assert r.executor._adapter(11, "")[0] is a1
+    assert r.executor._adapter(22, "")[0] is a2
+    assert r.executor._adapter(33, "")[0] is None      # no cross-bot fallback
+    assert r._wallet_addr({"id": 11}) == a1.address     # funding view is per-bot
+    assert r._wallet_addr({"id": 99}) == ""
 
 
 def _pool_state():

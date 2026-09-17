@@ -28,7 +28,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 
 from sui_adapter import (  # reuse exact primitives; no crypto duplication
-    _bcs_addr, _bcs_addr_padded, _bcs_u64,
+    _bcs_addr, _bcs_addr_padded, _bcs_u64, _bcs_vec,
     _bcs_call_arg_shared, _bcs_call_arg_imm_or_owned, _bcs_call_arg_pure,
     _bcs_command_move_call, _bcs_command_split_coins,
     _bcs_command_transfer_objects,
@@ -70,7 +70,7 @@ def pure_addr(addr: str) -> bytes:
 
 
 def pure_option_none() -> bytes:
-    return _bcs_call_arg_pure(b"")
+    return _bcs_call_arg_pure(b"\x00")  # BCS Option::None = single tag byte 0x00
 
 
 def pure_option_addr(addr: str) -> bytes:
@@ -107,8 +107,47 @@ def _pkg_for(token_type: str) -> str:
 def build_buy(curve_id: str, curve_isv: int, token_type: str,
               buy_coin: tuple, min_out: int, *, user_addr: str,
               fee_atoms: int = 0, fee_recipient: str = "",
-              referrer: str = "") -> tuple:
-    pkg = _pkg_for(token_type)
+              referrer: str = "", buy_from_gas: bool = False,
+              buy_atoms: int = 0, pkg: str = "") -> tuple:
+    # `bonding_curve::buy` lives in the LAUNCHPAD package, not the token's own
+    # package (a Suipump token package only has `suipump::init`). Callers pass
+    # the curve's package via launchpad.curve_pkg(curve_type); fall back to the
+    # token package for launchpads where the two coincide.
+    pkg = pkg or _pkg_for(token_type)
+    if buy_from_gas:
+        # Single SUI coin (gas == value): derive the buy Coin<SUI> from the gas
+        # coin via SplitCoins(GasCoin, [buy_atoms]) — the canonical gas-smashing
+        # pattern. Referencing the same ObjectRef as both an owned input and the
+        # gas payment is rejected by the node ("Invalid withdraw reservation",
+        # 2x balance reservation), so the coin must NOT be an owned input here.
+        inputs = [
+            shared(curve_id, curve_isv, True),                             # 0
+            pure_u64(min_out),                                             # 1
+            pure_option_addr(referrer) if referrer else pure_option_none(),  # 2
+            shared(K.SUIPUMP_PRICE_CONFIG, K.PRICE_CONFIG_ISV, False),     # 3
+            shared(K.SUI_CLOCK, 1, False),                                 # 4
+            pure_u64(int(buy_atoms)),                                      # 5
+        ]
+        cmds = [_bcs_command_split_coins(b"\x00", [arg_input(5)])]         # 0 -> Result(0)
+        cmds.append(_movecall(pkg, K.SUIPUMP_MODULE, "buy", [token_type],
+                              [arg_input(0), arg_nested(0, 0), arg_input(1),
+                               arg_input(2), arg_input(3), arg_input(4)]))  # 1
+        buy_res = 1
+        if fee_atoms > 0 and fee_recipient:
+            inputs += [pure_u64(fee_atoms), pure_addr(fee_recipient), pure_addr(user_addr)]
+            cmds += [
+                _bcs_command_split_coins(arg_nested(buy_res, 0), [arg_input(6)]),  # 2
+                _bcs_command_transfer_objects([arg_nested(2, 0)], arg_input(7)),
+                # remainder tokens stay in Nested(buy_res,0); SUI change is
+                # Nested(buy_res,1). Nested(2,1) does not exist (1-element split).
+                _bcs_command_transfer_objects([arg_nested(buy_res, 0), arg_nested(buy_res, 1)],
+                                              arg_input(8)),
+            ]
+        else:
+            inputs += [pure_addr(user_addr)]
+            cmds += [_bcs_command_transfer_objects(
+                [arg_nested(buy_res, 0), arg_nested(buy_res, 1)], arg_input(6))]
+        return inputs, cmds
     inputs = [
         owned(*buy_coin),
         shared(curve_id, curve_isv, True),
@@ -118,14 +157,15 @@ def build_buy(curve_id: str, curve_isv: int, token_type: str,
         shared(K.SUI_CLOCK, 1, False),
     ]
     cmds = [_movecall(pkg, K.SUIPUMP_MODULE, "buy", [token_type],
-                      [arg_input(0), arg_input(1), arg_input(2),
+                      [arg_input(1), arg_input(0), arg_input(2),
                        arg_input(3), arg_input(4), arg_input(5)])]
     if fee_atoms > 0 and fee_recipient:
         inputs += [pure_u64(fee_atoms), pure_addr(fee_recipient), pure_addr(user_addr)]
         cmds += [
             _bcs_command_split_coins(arg_nested(0, 0), [arg_input(6)]),
             _bcs_command_transfer_objects([arg_nested(1, 0)], arg_input(7)),
-            _bcs_command_transfer_objects([arg_nested(1, 1), arg_nested(0, 1)],
+            # remainder tokens stay in Nested(0,0); SUI change is Nested(0,1).
+            _bcs_command_transfer_objects([arg_nested(0, 0), arg_nested(0, 1)],
                                           arg_input(8)),
         ]
     else:
@@ -136,35 +176,57 @@ def build_buy(curve_id: str, curve_isv: int, token_type: str,
 
 
 # ----------------------------------------------------------------- SELL
-# inputs: 0 token coin, 1 curve, 2 min_sui, 3 referrer, 4 fee_mist,
-#         5 fee_recipient, 6 user_addr
-# cmds:   0 sell -> Coin<SUI>
-#         1 SplitCoins(Result(0), [fee])  (fee>0)
-#         2 Transfer(Nested(1,0)) -> fee_recipient
-#         3 Transfer(Nested(1,1)) -> user      (fee>0)  else Transfer(Result(0))->user
 def build_sell(curve_id: str, curve_isv: int, token_type: str,
                sell_coin: tuple, min_sui_out: int, *, user_addr: str,
                fee_sui_mist: int = 0, fee_recipient: str = "",
-               referrer: str = "") -> tuple:
-    pkg = _pkg_for(token_type)
-    inputs = [
-        owned(*sell_coin),
+               referrer: str = "", pkg: str = "",
+               extra_coins: list | None = None,
+               sell_atoms: int | None = None) -> tuple:
+    pkg = pkg or _pkg_for(token_type)
+    inputs = [owned(*sell_coin)]
+    cmds = []
+    extra = list(extra_coins or [])
+    for c in extra:
+        inputs.append(owned(*c))
+    if extra:
+        cmds.append(b"\x03" + arg_input(0)
+                    + _bcs_vec([arg_input(i) for i in range(1, len(inputs))]))
+    token_arg = arg_input(0)
+    remainder_arg = None
+    if sell_atoms is not None:
+        if type(sell_atoms) is not int or not 0 < sell_atoms < 2 ** 64:
+            raise ValueError("sell_atoms must be a positive u64 integer")
+        inputs.append(pure_u64(sell_atoms))
+        cmds.append(_bcs_command_split_coins(arg_input(0), [arg_input(len(inputs) - 1)]))
+        token_arg = arg_nested(len(cmds) - 1, 0)
+        remainder_arg = arg_input(0)
+    curve_idx = len(inputs)
+    inputs += [
         shared(curve_id, curve_isv, True),
         pure_u64(min_sui_out),
         pure_option_addr(referrer) if referrer else pure_option_none(),
     ]
-    cmds = [_movecall(pkg, K.SUIPUMP_MODULE, "sell", [token_type],
-                      [arg_input(1), arg_input(0), arg_input(2), arg_input(3)])]
+    cmds.append(_movecall(pkg, K.SUIPUMP_MODULE, "sell", [token_type],
+                          [arg_input(curve_idx), token_arg,
+                           arg_input(curve_idx + 1), arg_input(curve_idx + 2)]))
+    sell_cmd = len(cmds) - 1
     if fee_sui_mist > 0 and fee_recipient:
         inputs += [pure_u64(fee_sui_mist), pure_addr(fee_recipient), pure_addr(user_addr)]
+        user_idx = curve_idx + 5
         cmds += [
-            _bcs_command_split_coins(arg_result(0), [arg_input(4)]),
-            _bcs_command_transfer_objects([arg_nested(1, 0)], arg_input(5)),
-            _bcs_command_transfer_objects([arg_nested(1, 1)], arg_input(6)),
+            _bcs_command_split_coins(arg_result(sell_cmd), [arg_input(curve_idx + 3)]),
+            _bcs_command_transfer_objects([arg_nested(sell_cmd + 1, 0)],
+                                          arg_input(curve_idx + 4)),
+            # the sell coin's remainder stays in Result(sell_cmd) after the split.
+            _bcs_command_transfer_objects([arg_result(sell_cmd)], arg_input(user_idx)),
         ]
     else:
         inputs += [pure_addr(user_addr)]
-        cmds += [_bcs_command_transfer_objects([arg_result(0)], arg_input(4))]
+        user_idx = curve_idx + 3
+        cmds += [_bcs_command_transfer_objects([arg_result(sell_cmd)],
+                                               arg_input(user_idx))]
+    if remainder_arg is not None:      # hand the unsold tokens back to the wallet
+        cmds.append(_bcs_command_transfer_objects([remainder_arg], arg_input(user_idx)))
     return inputs, cmds
 
 
