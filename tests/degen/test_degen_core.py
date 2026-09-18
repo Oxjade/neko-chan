@@ -429,6 +429,71 @@ def test_executor_partial_sell_keeps_remainder_open():
     assert fills and fills[0]["tokens"] == 4 * 10**9
 
 
+def test_executor_sell_pct_resolves_against_onchain_balance():
+    """Percentage exits resolve against the REAL token balance, not the ledger,
+    so a drifted ledger self-heals on the next sell."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    st = resolve_input(ch, CID)
+    ch._coins[ad.address] = [
+        {"objectId": "0x" + "a1" * 32, "version": 1, "digest": "b1" * 32,
+         "balance_mist": 10 * 10**9}]
+    # ledger claims DOUBLE the on-chain balance on purpose
+    pid = led.upsert_position(1, "suipump", CID, TOK, ad.address, add_sui=0.4,
+                              add_tokens=20 * 10**9, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    r = ex.sell(1, {"wallet": ad.address, "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, st, pos, sell_pct=25)
+    assert r["ok"], r
+    assert r["tokens_sold"] == 25 * 10**8 and r["tokens_left"] == 75 * 10**8
+    row = next(p for p in led.positions(1) if p["id"] == pid)
+    assert row["status"] == "open" and row["tokens"] == 75 * 10**8
+
+
+def test_executor_sell_pct_100_is_a_full_exit():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    st = resolve_input(ch, CID)
+    ch._coins[ad.address] = [
+        {"objectId": "0x" + "a1" * 32, "version": 1, "digest": "b1" * 32,
+         "balance_mist": 10 * 10**9}]
+    pid = led.upsert_position(1, "suipump", CID, TOK, ad.address, add_sui=0.4,
+                              add_tokens=10 * 10**9, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    r = ex.sell(1, {"wallet": ad.address, "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, st, pos, sell_pct=100)
+    assert r["ok"] and r["tokens_left"] == 0
+    assert ad.broadcasts[-1]["commands"][0][0] == 0   # full → MoveCall first, no split
+    assert led.positions(1) == []
+
+
+@pytest.mark.parametrize("pct", [0, -5, 101, "x", 2 ** 64])
+def test_executor_rejects_invalid_sell_pct_without_broadcast(pct):
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1)
+    ex, ad, ch = _mk_exec(led)
+    led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.4, add_tokens=10 ** 10)
+    pos = led.positions(1)[0]
+    result = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID},
+                     resolve_input(ch, CID), pos, sell_pct=pct)
+    assert not result["ok"]
+    assert ad.broadcasts == []
+
+
+def test_executor_rejects_sell_atoms_and_pct_together():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1)
+    ex, ad, ch = _mk_exec(led)
+    led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.4, add_tokens=10 ** 10)
+    pos = led.positions(1)[0]
+    result = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID},
+                     resolve_input(ch, CID), pos, sell_atoms=1, sell_pct=50)
+    assert not result["ok"]
+    assert ad.broadcasts == []
+
+
 @pytest.mark.parametrize("amount", [0, -1, True, 1.5, "4", 2 ** 64, 10 ** 10 + 1])
 def test_executor_rejects_invalid_sell_amount_without_broadcast(amount):
     led = DegenLedger(":memory:")

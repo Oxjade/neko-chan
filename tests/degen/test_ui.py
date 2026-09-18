@@ -347,6 +347,32 @@ def test_strip_shows_balance_and_pnl_and_keyboard_has_pnl():
     assert "DEGEN P&L" in calls[-1][1] and "marked" in calls[-1][1]
 
 
+def test_positions_marked_adds_symbol_mark_and_pnl():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                        "0xw", add_sui=1.0, add_tokens=int(1e9))
+    rows = ui.positions_marked(1)
+    assert len(rows) == 1
+    d = rows[0]
+    assert d["symbol"] == "SUICAT"          # resolved from chain, not the raw id
+    assert d["mark_sui"] > 0 and d["pnl_sui"] == d["mark_sui"] - d["entry_sui"]
+    assert "curve_id" in d and "venue" in d     # still a full position row
+
+
+def test_positions_marked_caches_and_refreshes():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                        "0xw", add_sui=1.0, add_tokens=int(1e9))
+    first = ui.positions_marked(1)
+    second = ui.positions_marked(1, ttl=0)      # forces recompute
+    assert first == second
+    assert len(ui.positions_marked(1)) == 1
+
+
 def test_generic_token_card_is_dex_routed_not_dead():
     """A non-Suipump type must: badge as DEX token (not 'generic token'), fill
     price/mcap from the Aftermath probe, and carry working buy controls."""
@@ -376,6 +402,121 @@ def test_generic_token_card_is_dex_routed_not_dead():
     assert "0.00005 SUI" in price_line           # 0.5 SUI / 10,000 tok from probe
 
 
+def test_degen_keyboard_has_sell_row_per_open_position():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    pid = led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                              "0xw", add_sui=1.0, add_tokens=int(1e9), symbol="SUICAT")
+    flat = str(ui.degen_keyboard({"id": 1, "tg_id": 42}, led.get_config(1)).inline_keyboard)
+    assert f"dg:sell:{pid}" in flat and "Sell SUICAT" in flat
+    # a closed position leaves no sell row behind
+    led.set_position(pid, status="closed")
+    flat = str(ui.degen_keyboard({"id": 1, "tg_id": 42}, led.get_config(1)).inline_keyboard)
+    assert "dg:sell:" not in flat
+
+
+def test_pos_section_and_sell_flow_charges_fee():
+    from degen import constants as K
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    pid = led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                              "0xw", add_sui=1.0, add_tokens=int(1e9), symbol="SUICAT")
+    calls = _run(ui, "dg:pos", led)
+    assert f"dg:sell:{pid}" in str(calls[-1][2].inline_keyboard)
+    # tap sell -> percentage sheet (no executor needed yet)
+    calls = _run(ui, f"dg:sell:{pid}", led)
+    flat = str(calls[-1][2].inline_keyboard)
+    assert f"dg:sellp:{pid}:25" in flat and f"dg:sellp:{pid}:100" in flat
+    assert f"dg:sellc:{pid}" in flat
+    assert "Confirm sell" not in flat
+    # pick 100% -> confirm gate
+    calls = _run(ui, f"dg:sellp:{pid}:100", led)
+    assert "Confirm sell 100%" in str(calls[-1][2].inline_keyboard)
+    # confirm -> executor.sell called with pct + the 0.5% exit fee + THIS wallet
+    seen = {}
+
+    class E:
+        def sell(self, bot_id, o, st, pos, fee_bps=0, idem="", sell_pct=None):
+            seen["fee_bps"] = fee_bps
+            seen["wallet"] = o.get("wallet")
+            seen["pos_id"] = pos["id"]
+            seen["sell_pct"] = sell_pct
+            return {"ok": True, "digest": "0x" + "ab" * 32, "tokens_sold": 1}
+
+    ui.ex = E()
+    calls = _run(ui, f"dg:sellok:{pid}:100", led)
+    assert seen["fee_bps"] == K.PLATFORM_FEE_BPS == 50
+    assert seen["wallet"] == "0xw" and seen["pos_id"] == pid
+    assert seen["sell_pct"] == 100.0
+    assert "SOLD" in calls[-1][1]
+    # an unknown id never calls the executor
+    seen.clear()
+    _run(ui, "dg:sellok:99999", led)
+    assert not seen
+
+
+def test_sell_sheet_offsets_and_custom_percent():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    pid = led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                              "0xw", add_sui=1.0, add_tokens=int(1e9), symbol="SUICAT")
+    # quick chips -> confirm gate carries the chosen slice
+    calls = _run(ui, f"dg:sellp:{pid}:25", led)
+    assert "Sell 25% of SUICAT" in calls[-1][1]
+    assert f"dg:sellok:{pid}:25" in str(calls[-1][2].inline_keyboard)
+    # custom % -> ask prompt, then typed value repaints the confirm gate
+    calls = _run(ui, f"dg:sellc:{pid}", led)
+    assert "X %" in calls[-1][1]
+    assert led.get_config(1)["caps"]["_ask_sellpct"] == str(pid)
+
+    class CtxBot:
+        def __init__(self):
+            self.calls = []
+
+        async def edit_message_text(self, **kw):
+            self.calls.append(("edit", kw.get("text"), kw.get("reply_markup")))
+
+        async def send_message(self, chat_id, text, **kw):
+            self.calls.append(("send", text, kw.get("reply_markup")))
+            return SimpleNamespace(chat_id=chat_id, message_id=99)
+
+    ctx = SimpleNamespace(bot=CtxBot())
+    msg = _msg("40%")
+    ok = asyncio.get_event_loop().run_until_complete(
+        ui.handle_text(_update(msg=msg), ctx))
+    assert ok is True and "Sell 40% of SUICAT" in ctx.bot.calls[-1][1]
+    # out-of-range custom % falls back to the sheet
+    _run(ui, f"dg:sellc:{pid}", led)
+    msg = _msg("0")
+    asyncio.get_event_loop().run_until_complete(
+        ui.handle_text(_update(msg=msg), ctx))
+    assert "Holding" in ctx.bot.calls[-1][1]
+
+
+def test_armed_sell_passes_platform_fee():
+    from degen import constants as K
+    from degen.orders import OrderEvaluator
+    led = DegenLedger(":memory:")
+    ch = MockChain({CID: curve_json(CID, DEV, 2 * 10 ** 9, 4 * 10 ** 14,
+                                    int(9000e9), sym="SUICAT", name="Suicat")})
+    led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                        "0xw", add_sui=1.0, add_tokens=int(1e9))
+    seen = {}
+
+    class E:
+        def sell(self, bot_id, o, st, pos, fee_bps=0, idem=""):
+            seen["fee_bps"] = fee_bps
+            return {"ok": True, "digest": "d"}
+
+    ev = OrderEvaluator(ch, led, E())
+    o = {"id": 1, "bot_id": 1, "intent": "sell", "curve_id": CID, "wallet": "0xw"}
+    res = ev._sell(o, 1, led.get_config(1))
+    assert res["ok"] and seen["fee_bps"] == K.PLATFORM_FEE_BPS
+
+
 def test_basic_advanced_mode_toggle():
     led = DegenLedger(":memory:")
     led.set_config(1, enabled=1, ai_key_ok=1)
@@ -401,3 +542,55 @@ def test_basic_advanced_mode_toggle():
     # mode persists per card ref
     _run(ui, f"dg:vmode:base:{ref}", led)
     assert led.get_config(1)["caps"]["_ui_mode"] == "basic"
+
+
+def test_sell_sheet_pool_position_offers_full_exit_only():
+    """A graduated position is stored with the default venue='curve'; the sheet
+    must gate on the LIVE kind, not the column, or it offers percent chips that
+    the executor rejects for a non-split-able pool/Aftermath position."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    pid = led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                              "0xw", add_sui=1.0, add_tokens=int(1e9),
+                              symbol="SUIFROG", venue="curve")
+    ui._position_kind = lambda pos: "pool"
+    calls = _run(ui, f"dg:sell:{pid}", led)
+    flat = str(calls[-1][2].inline_keyboard)
+    assert f"dg:sellp:{pid}:100" in flat
+    assert "25%" not in flat and f"dg:sellc:{pid}" not in flat
+
+
+def test_sell_never_dies_when_message_cannot_be_edited():
+    """2026-09-17 dead-button bug: a tap on a photo/card or a stale message made
+    `edit_message_text` raise BadRequest ("There is no text in the message to
+    edit"), the handler died silently and the Sell button looked dead. The flow
+    must fall back to a visible reply instead of raising."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    pid = led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
+                              "0xw", add_sui=1.0, add_tokens=int(1e9), symbol="SUICAT")
+
+    class BadEditQ(Q):
+        async def edit_message_text(self, text, **kw):
+            raise RuntimeError("BadRequest: There is no text in the message to edit")
+
+    msg = _msg()
+    q = BadEditQ(f"dg:sell:{pid}", msg)
+    asyncio.get_event_loop().run_until_complete(
+        ui.on_cb(_update(q=q, msg=msg), SimpleNamespace()))
+    kinds = [c[0] for c in msg.rec.calls]
+    assert "reply" in kinds, "must fall back to a visible reply, not die"
+    assert "Sell SUICAT" in str(msg.rec.calls[-1][1])
+
+
+def test_sell_unknown_position_replies_and_never_raises():
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1)
+    ui = _mk(led)
+    msg = _msg()
+    q = Q("dg:sellok:99999", msg)
+    asyncio.get_event_loop().run_until_complete(
+        ui.on_cb(_update(q=q, msg=msg), SimpleNamespace()))
+    assert "already closed" in str(msg.rec.calls[-1][1]).lower()

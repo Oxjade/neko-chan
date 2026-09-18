@@ -145,6 +145,28 @@ class DegenUI:
                 await self._purge_input(update)
                 return True
             self.led.set_config(bid, caps=caps)   # bad input: drop the ask, keep typing
+        pend_pct = (cfg.get("caps") or {}).get("_ask_sellpct")
+        if pend_pct:
+            mm = re.fullmatch(r"(?i)([\d]*\.?\d+)\s*%?", txt.strip())
+            try:
+                pct = float(mm.group(1)) if mm else 0.0
+            except ValueError:
+                pct = 0.0
+            caps = dict(cfg.get("caps") or {})
+            loc = caps.pop("_ask_sellloc", "")
+            pid = caps.pop("_ask_sellpct", "")
+            self.led.set_config(bid, caps=caps)
+            if pid:
+                await self._purge_input(update)
+                pos = self._find_position(bid, pid)
+                if not pos:
+                    return True
+                if 0 < pct <= 100:
+                    body, kb = self._sell_confirm_view(pos, pid, pct)
+                else:
+                    body, kb = self._sell_sheet_view(pos, pid)
+                await self._edit_at(context, bot, loc, body, kb)
+                return True
         if txt.lower().startswith("track ") and ADDR_RE.match(txt[6:]):
             self.led.track_wallet(bid, txt[6:].strip().split()[0])
             await self._purge_input(update)
@@ -227,6 +249,39 @@ class DegenUI:
         self._pnl_cache[bid] = (_t.time(), out)
         return out
 
+    def positions_marked(self, bid: int, ttl: int = 20) -> list[dict]:
+        """Open positions enriched for the MAIN dashboard: resolved symbol +
+        live mark + per-position P&L (else entry_price). Shares the _pnl cache
+        window so the dashboard strip and the equity line agree with rows."""
+        import time as _t
+        rows = self.led.positions(bid)
+        key = (bid, "marked")
+        hit = self._pnl_cache.get(key)
+        if hit and _t.time() - hit[0] < ttl:
+            return [dict(hit[1][i], **r) for i, r in enumerate(rows)] if len(hit[1]) == len(rows) \
+                else self._mark_rows(rows)
+        out = self._mark_rows(rows)
+        self._pnl_cache[key] = (_t.time(), out)
+        return out
+
+    def _mark_rows(self, rows: list[dict]) -> list[dict]:
+        out = []
+        for p in rows:
+            d = dict(p)
+            mark = float(p["entry_sui"] or 0.0)
+            try:
+                st = resolve_input(self.ch, p["curve_id"])
+                m = compute(self.ch, st)
+                mark = (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * (m.price_sui or 0.0)
+                d["symbol"] = (p.get("symbol") or getattr(st, "symbol", "") or
+                               (p.get("curve_id") or "")[:6])
+            except Exception:
+                d["symbol"] = p.get("symbol") or (p.get("curve_id") or "")[:6]
+            d["mark_sui"] = mark
+            d["pnl_sui"] = mark - float(p["entry_sui"] or 0.0)
+            out.append(d)
+        return out
+
     # ---------------- degen view (shared main dashboard + swapped buttons) ----
     def degen_strip(self, bot, cfg) -> str:
         """2-3 compact status lines appended to the MAIN dashboard text. Same
@@ -269,16 +324,30 @@ class DegenUI:
         caps = cfg.get("caps", {}) or {}
         kill_row = [B("♻️ Release Kill", "dg:unkill")] if caps.get("killed") \
             else [B("🛑 KILL", "dg:kill")]
+        rcpt_on = str(cfg.get("chat_receipt") or "public") == "private"
+        rcpt_row = [B("🔒 Receipts: Private", "dg:receipt")] if rcpt_on \
+            else [B("🌐 Receipts: Public", "dg:receipt")]
         # Positions live in the dashboard's SINGLE 📡 POSITIONS space (perp +
         # degen lines merged by dash()) — no duplicate positions button here.
+        # Each open position gets a one-tap EXIT row (confirm-gated) right under
+        # Buy: the engine has no partial path yet, so a tap dumps the whole leg.
+        sell_rows = []
+        try:
+            for p in self.led.positions(int(bot["id"]))[:3]:
+                sym = p.get("symbol") or (p.get("curve_id") or "?")[:8]
+                sell_rows.append([B(f"🔴 Sell {sym}", f"dg:sell:{p['id']}")])
+        except Exception:
+            sell_rows = []
         return KB([
             [B("🎯 Buy a meme", "dg:buy")],
+            *sell_rows,
             [B("📋 Orders", "dg:orders"), B("🛡 Risk", "dg:risk")],
             [B("🪝 Sniper", "dg:sniper"), B("👥 Copy", "dg:copy")],
             [B("🧺 Bundle", "dg:bundle"), B("⏻ Disable", "dg:off")],
             [B("🐸 Suipump", "dg:lp:suipump"), B("💣 Blast 🔒", "dg:lp:blast")],
             [B("⚡ Both venues", "dg:lp:both")],
             [B("📊 P&L", "dg:pnl"), B("🎁 Rewards", "sb:rewards")],
+            rcpt_row,
             kill_row,
             [B("📊 Main Dashboard", "dg:main"), B("↻ Refresh", "dg:hub")],
         ])
@@ -564,7 +633,7 @@ class DegenUI:
         # BadRequest "Query is already answered" and kills the branch — this
         # is why Blast/Suipump taps appeared to do nothing). Venue taps and the
         # no-key guard answer with their own toast instead.
-        if not (data.startswith("dg:lp:") or data == "dg:on"):
+        if not (data.startswith("dg:lp:") or data == "dg:on" or data == "dg:receipt"):
             await q.answer()
         bot = self._bot(update)
         if not bot:
@@ -605,6 +674,12 @@ class DegenUI:
                                .get(lp, "✓ venue set"), show_alert=False)
                 self.led.set_config(bid, launchpads=lp)
                 await self._render(update, context, bot)
+        elif data == "dg:receipt":
+            cur = str(cfg.get("chat_receipt") or "public")
+            nxt = "private" if cur == "public" else "public"
+            self.led.set_config(bid, chat_receipt=nxt)
+            await q.answer("🔒 Private" if nxt == "private" else "🌐 Public")
+            await self._render(update, context, bot)
         elif data == "dg:kill":
             self.led.set_config(bid, caps={**(cfg.get("caps") or {}), "killed": True})
             if self.ex:
@@ -679,6 +754,25 @@ class DegenUI:
             caps["_ui_mode"] = "advanced" if parts[2] == "adv" else "basic"
             self.led.set_config(bid, caps=caps)
             await self._repaint_card(q, bot, parts[3])
+        elif data.startswith("dg:sellok:"):
+            p = data.split(":")
+            await self._sell_position(q, bot, bid, p[2],
+                                      pct=float(p[3]) if len(p) > 3 else 100.0)
+        elif data.startswith("dg:sellp:"):
+            p = data.split(":")
+            await self._sell_confirm(q, bot, bid, p[2], float(p[3]))
+        elif data.startswith("dg:sellc:"):
+            pid = data.split(":")[2]
+            caps = dict(cfg.get("caps") or {})
+            caps["_ask_sellpct"] = pid
+            caps["_ask_sellloc"] = f"{q.message.chat_id}:{q.message.message_id}"
+            self.led.set_config(bid, caps=caps)
+            await q.edit_message_text(
+                "✏️ <b>X %</b> — type the percent of this position to sell, "
+                "e.g. <code>40</code>", parse_mode="HTML",
+                reply_markup=KB([[B("⛔ Cancel", f"dg:sell:{pid}")]]))
+        elif data.startswith("dg:sell:"):
+            await self._sell_sheet(q, bot, bid, data.split(":")[2])
         elif data == "dg:buy":
             await q.edit_message_text("🎯 Paste the token's contract address (or its "
                                       "launchpad link) — I'll open its card.",
@@ -775,8 +869,7 @@ class DegenUI:
         txt = (f"🚀 BUY <b>{esc(st.symbol or st.token_type[:8])}</b>\n"
                f"spend <b>{amt:g} SUI</b> · expect ≈ <code>{exp_tokens:,.0f}</code>\n"
                f"slippage <code>{slip}%</code> · min-out "
-               f"<code>{exp_tokens * (100 - slip) / 100:,.0f}</code>\n"
-               f"fee 0.5% on exit · 0% on entry")
+               f"<code>{exp_tokens * (100 - slip) / 100:,.0f}</code>")
         kb = KB([[B("✅ Confirm", f"dg:cconfirm:{ref}:{amt}"),
                   B("⛔ Cancel", "dg:hub")]])
         await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
@@ -834,11 +927,12 @@ class DegenUI:
             else:
                 price = m.price_sui or (self._dex_price(st) or 0.0)
                 exp_atoms = amt / max(price, 1e-18) * 10 ** (m.decimals or 6)
-            min_out = int(exp_atoms * (100 - slip) / 100)
+            min_out = 0   # executor probes the chain (dry-run) to set the floor
             res = (self.ex.buy(bid, launchpad="suipump", curve_id=st.curve_id,
                                token_type=st.token_type,
                                curve_isv=st.curve_obj.get("shared_version", 0),
                                sui_amount=amt, min_out=min_out,
+                               slip_bps=int(slip),
                                idem=f"ui{ref}:{amt}")
                    if self.ex else {"ok": False, "error": "no executor"})
         # §6.3c: sweep expired cards/sheets. We turn THIS message into the pinned
@@ -850,6 +944,152 @@ class DegenUI:
         kb = KB([[B("↻ Refresh", "dg:hub"), B("📊 Main Dashboard", "dg:main")]])
         await q.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
 
+    async def _safe_edit(self, q, text, reply_markup=None):
+        """Edit the tapped message, or fall back to a fresh reply.
+
+        A tap can arrive on a photo/PnL card or an already-deleted message, where
+        `edit_message_text` raises BadRequest and the handler dies silently —
+        the 2026-09-17 'sell button does nothing' bug."""
+        try:
+            await q.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+            return
+        except Exception as exc:
+            if "not modified" in str(exc).lower():
+                return
+            log.warning("[degen] edit failed (%s) - replying instead", exc)
+        try:
+            await q.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        except Exception as exc:
+            log.warning("[degen] reply fallback failed: %s", exc)
+
+    @staticmethod
+    def _pct_label(pct) -> str:
+        return "%g" % float(pct)
+
+    def _find_position(self, bid: int, pid) -> dict | None:
+        try:
+            own = int(pid)
+        except (TypeError, ValueError):
+            return None
+        try:
+            return next((p for p in self.led.positions(bid)
+                         if int(p["id"] or -1) == own), None)
+        except Exception as exc:
+            log.warning("[degen] positions lookup failed bot=%s: %s", bid, exc)
+            return None
+
+    async def _edit_at(self, context, bot, loc, text, kb):
+        """Put an updated screen back where a previous tap replaced it."""
+        if loc and ":" in loc and context and getattr(context, "bot", None):
+            chat, _, mid = loc.partition(":")
+            try:
+                await context.bot.edit_message_text(chat_id=int(chat), message_id=int(mid),
+                                                    text=text, parse_mode="HTML",
+                                                    reply_markup=kb)
+                return
+            except Exception:
+                pass
+        if context and getattr(context, "bot", None):
+            await context.bot.send_message(bot.get("tg_id") or 0, text,
+                                           parse_mode="HTML", reply_markup=kb)
+
+    def _position_kind(self, pos) -> str:
+        """Resolve the live asset kind (curve/pool/...). The DB `venue` column is
+        unreliable here: graduated buys leave it at the 'curve' default."""
+        try:
+            st = resolve_input(self.ch, pos.get("curve_id") or pos.get("pool_id")
+                               or pos.get("token_type") or "")
+            return str(getattr(st, "kind", "") or "")
+        except Exception:
+            return ""
+
+    def _sell_sheet_view(self, pos, pid):
+        """Percentage exit sheet: 25/50/75/100% + custom, mirroring the buy card's
+        chip rhythm. Curve positions only — an Aftermath/pool position cannot
+        split a coin, so it gets a single full-exit button."""
+        sym = pos.get("symbol") or str(pos.get("curve_id") or "?")[:8]
+        toks = float(pos.get("tokens") or 0.0)
+        head = (f"<b>🔴 Sell {esc(sym)}</b>\n<code>{'─' * 26}</code>\n"
+                f"📦 Holding <code>{toks:,.0f}</code> tok\n"
+                f"💵 Entry <code>{float(pos.get('entry_sui') or 0):.4f} SUI</code>")
+        if self._position_kind(pos) == "curve":
+            chip = lambda p: B(f"{p}%", f"dg:sellp:{pid}:{p}")
+            rows = [[chip(25), chip(50)], [chip(75), chip(100)],
+                    [B("✏️ X %", f"dg:sellc:{pid}")],
+                    [B("⛔ Cancel", "dg:hub")]]
+        else:
+            head += "\nThis venue only supports a full exit."
+            rows = [[B("✅ Sell 100%", f"dg:sellp:{pid}:100")],
+                    [B("⛔ Cancel", "dg:hub")]]
+        return head, KB(rows)
+
+    def _sell_confirm_view(self, pos, pid, pct):
+        sym = pos.get("symbol") or str(pos.get("curve_id") or "?")[:8]
+        toks = float(pos.get("tokens") or 0.0)
+        label = self._pct_label(pct)
+        return (f"⚠️ <b>Sell {label}% of {esc(sym)}?</b>\n"
+                f"≈ <code>{toks * float(pct) / 100:,.0f}</code> of "
+                f"<code>{toks:,.0f}</code> tok at the best route · irreversible.",
+                KB([[B(f"✅ Confirm sell {label}%", f"dg:sellok:{pid}:{label}")],
+                    [B("⛔ Cancel", f"dg:sell:{pid}")]]))
+
+    async def _sell_sheet(self, q, bot, bid, pid):
+        pos = self._find_position(bid, pid)
+        if not pos:
+            await self._safe_edit(q, "That position is already closed.",
+                                  reply_markup=self._hub_kb())
+            return
+        head, kb = self._sell_sheet_view(pos, pid)
+        await self._safe_edit(q, head, reply_markup=kb)
+
+    async def _sell_confirm(self, q, bot, bid, pid, pct):
+        pos = self._find_position(bid, pid)
+        if not pos:
+            await self._safe_edit(q, "That position is already closed.",
+                                  reply_markup=self._hub_kb())
+            return
+        body, kb = self._sell_confirm_view(pos, pid, pct)
+        await self._safe_edit(q, body, reply_markup=kb)
+
+    async def _sell_position(self, q, bot, bid, pid, pct: float = 100.0):
+        """Execute a percentage exit (100 = full market exit) of ONE degen
+        position. Never raises: every branch replies (via `_safe_edit`) with the
+        result or a visible error, so the button can never appear dead."""
+        pos = self._find_position(bid, pid)
+        if not pos:
+            await self._safe_edit(q, "That position is already closed.",
+                                  reply_markup=self._hub_kb())
+            return
+        sym = pos.get("symbol") or str(pos.get("curve_id") or "?")[:8]
+        back = KB([[B("📊 Positions", "dg:pos"), B("🏠 Main Dashboard", "dg:main")]])
+        if self.ex is None:
+            await self._safe_edit(q, "❌ executor offline — try again shortly.",
+                                  reply_markup=self._hub_kb())
+            return
+        try:
+            st = resolve_input(self.ch, pos.get("curve_id") or pos.get("pool_id")
+                               or pos.get("token_type") or "")
+            o = {"wallet": pos.get("wallet"), "launchpad": pos.get("launchpad"),
+                 "curve_id": pos.get("curve_id"), "otype": "market"}
+            res = self.ex.sell(bid, o, st, pos, fee_bps=K.PLATFORM_FEE_BPS,
+                               sell_pct=float(pct))
+            if not isinstance(res, dict):
+                res = {"ok": False, "error": "unexpected executor response"}
+        except Exception as exc:
+            log.warning("[degen] sell failed bot=%s pid=%s: %s", bid, pid, exc, exc_info=True)
+            res = {"ok": False, "error": str(exc)}
+        if res.get("ok"):
+            label = self._pct_label(pct)
+            sold = float(res.get("tokens_sold") or 0)
+            await self._safe_edit(
+                q,
+                f"✅ <b>SOLD {label}%</b> {esc(sym)} · <code>{sold:,.0f}</code> tok\n"
+                f"digest <code>{esc(str(res.get('digest', ''))[:14])}…</code>",
+                reply_markup=back)
+        else:
+            await self._safe_edit(q, f"❌ sell rejected: {esc(str(res.get('error') or '?'))}",
+                                  reply_markup=back)
+
     # ---------------- sections ----------------
     async def _section(self, bot, cfg, name):
         bid = int(bot["id"])
@@ -860,10 +1100,13 @@ class DegenUI:
                 return "<b>📊 POSITIONS</b>\nNo open degen positions. Paste a CA to start.", \
                     KB([back])
             lines = ["<b>📊 POSITIONS</b>"]
+            kb = []
             for p in rows:
-                lines.append(f"· {esc(p['symbol'] or p['curve_id'][:8])} [{p['venue']}] "
-                             f"{p['entry_sui']:.2f} SUI")
-            return "\n".join(lines), KB([back])
+                sym = p["symbol"] or p["curve_id"][:8]
+                lines.append(f"· {esc(sym)} [{p['venue']}] {p['entry_sui']:.2f} SUI")
+                kb.append([B(f"🔴 Sell {sym}", f"dg:sell:{p['id']}")])
+            kb.append(back)
+            return "\n".join(lines), KB(kb)
         if name == "orders":
             rows = self.led.armed_orders(bid)
             lines = ["<b>📋 ARMED ORDERS</b>"]

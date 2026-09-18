@@ -336,15 +336,28 @@ class DegenExecutor:
 
     # ---------------- sell (§3.2a fee on SUI side — deterministic) ----------------
     def sell(self, bot_id: int, o: dict, st, pos: dict, fee_bps: int = 0,
-             idem: str = "", sell_atoms: int | None = None) -> dict:
+             idem: str = "", sell_atoms: int | None = None,
+             sell_pct: float | None = None) -> dict:
         cfg = self.ledger.get_config(bot_id)
         if self.is_killed(bot_id):
             return {"ok": False, "error": "kill-switch engaged"}
+        if sell_atoms is not None and sell_pct is not None:
+            return {"ok": False, "error": "specify either sell_atoms or sell_pct, not both"}
+        pct: float | None = None
         if sell_atoms is not None:
             if type(sell_atoms) is not int or not 0 < sell_atoms < 2 ** 64:
                 return {"ok": False, "error": "sell_atoms must be a positive u64 integer"}
             if st.kind != "curve":
                 return {"ok": False, "error": "amount-based sells are not supported for this venue"}
+        elif sell_pct is not None:
+            try:
+                pct = float(sell_pct)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "sell_pct must be a number in (0, 100]"}
+            if not 0 < pct <= 100:
+                return {"ok": False, "error": "sell_pct must be a number in (0, 100]"}
+            if st.kind != "curve":
+                return {"ok": False, "error": "percentage sells are not supported for this venue"}
         wallet = o.get("wallet") or ""
         if wallet:
             adapter, _ = self._adapter(bot_id, wallet)
@@ -367,6 +380,15 @@ class DegenExecutor:
             token_ids = {c["objectId"] for c in tok_coins}
             tokens_before = sum(int(c["balance_mist"]) for c in tok_coins)
             extra = [(c["objectId"], c["version"], c["digest"]) for c in tok_coins[1:]]
+            if pct is not None:
+                # Resolve the percentage against the REAL on-chain balance (the
+                # ledger can lag the chain); 100% stays the full merge + exit path.
+                if pct >= 100:
+                    sell_atoms = None
+                else:
+                    sell_atoms = int(tokens_before * pct / 100)
+                    if sell_atoms <= 0:
+                        return {"ok": False, "error": "sell percentage rounds to zero tokens"}
             if sell_atoms is not None and sell_atoms > tokens_before:
                 return {"ok": False, "error": "sell amount exceeds available token balance"}
             partial = sell_atoms is not None and sell_atoms < tokens_before
