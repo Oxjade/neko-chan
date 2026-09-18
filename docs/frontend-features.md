@@ -21,7 +21,7 @@
 - `tgtrade` — trading page (TG-linked context)
 - `discover` — token discovery hub
 - `new-pair` — new token pair board
-- `monitor` — wallet/token monitor (the header "Monitor" nav target)
+- `monitor` — wallet/token monitor *(removed; /monitor now 404)*
 
 ### Solana-specific screens
 - `snipex` — the automatic sniper terminal (launch sniping engine)
@@ -41,7 +41,7 @@
 - `trend/NewTrendRank` — new trend ranking
 - `trend/TrendingMixRank` — blended trending ranking
 - `trend/WorldCupRank` — World Cup 2026 prediction leaderboard
-- `pump` — Pump.fun launchpad feed
+- `pump` — SuiPump (suipump.org) launchpad feed
 - `rank` — leaderboard/ranking page
 - `ranking` — rankings page (alias/companion)
 - `worldcup-2026` — FIFA World Cup 2026 prediction game (player cards, quiz, score predictions, prizes)

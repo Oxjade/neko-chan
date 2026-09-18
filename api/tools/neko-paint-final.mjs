@@ -1,0 +1,16 @@
+const CDR = "http://127.0.0.1:9333";
+const WANT = "0x4d671396980c41e02cbeda518e48c9127ccd177a4db3b9aa2e5b17763aa24f67";
+const tabs = await (await fetch(CDR + "/json/list")).json();
+const tab = tabs.find((t) => t.type === "page") || (await (await fetch(CDR + "/json/new", { method: "PUT", body: "http://127.0.0.1:8899/sol/token/" + WANT })).json());
+const ws = new WebSocket(tab.webSocketDebuggerUrl);
+await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+let id = 0; const pend = new Map();
+ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.id && pend.has(m.id)) { const { res, rej } = pend.get(m.id); pend.delete(m.id); m.error ? rej(new Error(m.error.message)) : res(m.result); } };
+const send = (method, params = {}) => new Promise((res, rej) => { const i = ++id; pend.set(i, { res, rej }); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+await send("Page.enable");
+await new Promise((r) => setTimeout(r, 8000));
+const r = await send("Runtime.evaluate", { expression: `(() => { const t = (document.body ? document.body.innerText : "") || ""; return { url: location.href.slice(0, 100), title: (document.title || "").slice(0, 60), h1: (document.querySelector("h1") ? document.querySelector("h1").innerText : "").slice(0, 40), hasBLUB: t.includes("BLUB"), hasDollar: /\\$/.test(t), headerText: (t.split("\\n").filter(Boolean).find((l) => /BLUB|\\$/.test(l)) || "").slice(0, 80), bodyLen: t.length }; })()`, returnByValue: true });
+console.log(JSON.stringify(r.value, null, 1));
+ws.close();
+process.exit(0);

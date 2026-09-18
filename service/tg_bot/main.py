@@ -68,6 +68,32 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     # with zero handler rewrites. Registered last in group 0 so specific master
     # commands (/start, nav:, admin:) win first.
     async def _router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        import logging
+        log = logging.getLogger("tg_bot")
+        # In-chat @neko buy for someone with no bot yet: point them at onboarding
+        # instead of silently dropping their tag.
+        try:
+            from chatbuy import parse_chat_buy, chat_usernames_from_env
+            msg = update.effective_message
+            if msg and msg.text:
+                log.info("router: text chat=%s uid=%s. %r", msg.chat_id,
+                         update.effective_user.id if update.effective_user else None,
+                         msg.text[:100])
+                p = parse_chat_buy(msg.text, chat_usernames_from_env())
+                if p is not None:
+                    uid = update.effective_user.id if update.effective_user else None
+                    log.info("router: chat-buy mention detected uid=%s parsed=%s", uid, p)
+                    if uid is not None and not registry.bots_for(uid):
+                        await msg.reply_text(
+                            "🐾 In-chat <b>buy</b> needs a trading bot of your own — "
+                            "your tags then trade from YOUR wallet (funded or not), "
+                            "and the position lands on your dashboard.",
+                            reply_markup=telegram.InlineKeyboardMarkup([[
+                                telegram.InlineKeyboardButton(
+                                    "🐾 Create my bot", callback_data="nav:add")]]))
+                        raise ApplicationHandlerStop
+        except Exception:  # noqa: BLE001
+            pass
         # Every update the master's own handlers did NOT claim is forwarded to
         # the caller's own dashboard Application. route() is owner-scoped, so a
         # stranger's update can never reach another trader's bot.

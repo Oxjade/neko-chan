@@ -8,6 +8,7 @@ settings, inbox. All data comes from the AI-Trader platform in real time.
 import asyncio
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -25,6 +26,8 @@ from telegram.request import HTTPXRequest
 from messages import USERBOT, WIZARD, NOTIF, ONBOARD, mask_key, humanize_error
 from store import utcnow
 from provider import validate_key, ProviderError
+from chatbuy import (chat_usernames_from_env, parse_chat_buy,
+                     receipt_text, execute_chat_buy)
 
 # Aftermath public perp API — the SAME pricing source the trading agent and
 # paper fills use, so dashboard marks/PnL match real fills. Overridable via
@@ -71,14 +74,78 @@ def _mask_addr(addr: str) -> str:
     return f"{addr[:6]}…{addr[-4:]}" if len(addr) > 12 else addr
 
 
+async def _answer_once(q, *args, **kwargs):
+    """Answer a callback query AT MOST once.
+
+    Telegram raises BadRequest 'Query is already answered' on a second answer,
+    which aborts the whole handler — the 2026-09-17 dead-button class of bug
+    (Start, close, rewards all answered bare first, then tried to show a reason
+    toast and died). The first answer goes through as before; any later reason
+    is delivered as a plain reply so it is never lost."""
+    if not getattr(q, "_neko_answered", False):
+        try:
+            await q.answer(*args, **kwargs)
+        except Exception as exc:
+            if "already answered" not in str(exc).lower():
+                raise
+        q._neko_answered = True
+        return
+    if args and args[0]:
+        try:
+            if getattr(q, "message", None) is not None:
+                await q.message.reply_text(str(args[0]))
+        except Exception:
+            pass
+
+
+async def _routed_error_handler(update, context):
+    """Surface exceptions from a routed per-bot app instead of failing silently.
+
+    Mirrors the master app's handler: log the traceback for the operator and
+    give the user a visible reply so a broken tap is never a dead tap."""
+    import logging as _logging
+    _logging.getLogger("tg_bot").error(
+        "Unhandled error (routed bot): %s", getattr(context, "error", None),
+        exc_info=getattr(context, "error", None))
+    try:
+        msg = getattr(update, "effective_message", None)
+        if msg is not None:
+            await msg.reply_text("⚠️ Internal error. The cat tripped.")
+    except Exception:
+        pass
+
+
 async def _safe_edit(q, text, parse_mode="HTML", reply_markup=None):
-    """edit_text that ignores the harmless 'Message is not modified' error so
-    repeat taps (Refresh / Back / Check Deposits) never throw BadRequest."""
+    """edit_text that survives every harmless Telegram edit error.
+
+    Repeat taps hit 'Message is not modified'; a tap on a button that lives on a
+    photo/older message hits 'There is no text in the message to edit' (the
+    2026-09-17 dead-button bug: the handler raised, the tap looked dead). In
+    both cases fall back to editing the caption, then to sending a fresh
+    message, so a tap ALWAYS produces a visible response."""
     try:
         await q.message.edit_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+        return
     except Exception as exc:
-        if "not modified" in str(exc).lower():
+        msg = str(exc).lower()
+        if "not modified" in msg:
             return
+        if ("no text in the message to edit" in msg
+                or "no caption in the message" in msg
+                or "message can't be edited" in msg
+                or "message to edit not found" in msg):
+            try:
+                await q.message.edit_caption(caption=text, parse_mode=parse_mode,
+                                             reply_markup=reply_markup)
+                return
+            except Exception:
+                pass
+            try:
+                await q.message.reply_text(text, parse_mode=parse_mode,
+                                           reply_markup=reply_markup)
+                return
+            except Exception:
+                pass
         raise
 
 
@@ -171,8 +238,12 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         pos_lines.append(f"  {_esc(sym)}  {side.upper()}{lev_tag} {qty:g}  {_money(pnl)}{meta}")
     for dp in _dg[:3]:
         venue = "🎨" if dp.get("venue") == "pool" else "🐸"
-        pos_lines.append(f"  {_esc(str(dp.get('symbol') or (dp.get('curve_id') or '?')[:6]))}"
-                         f"  DEGEN {venue}  {float(dp.get('entry_sui') or 0):g} SUI")
+        _sym = str(dp.get("symbol") or (dp.get("curve_id") or "?")[:6])
+        _entry = float(dp.get("entry_sui") or 0)
+        _mark = float(dp.get("mark_sui") or _entry)
+        _pnl = float(dp.get("pnl_sui") or (_mark - _entry))
+        pos_lines.append(f"  {_esc(_sym)}  DEGEN {venue}  {_entry:g} → {_mark:g} SUI"
+                         f" ({'+' if _pnl >= 0 else ''}{_pnl:.2f})")
     _n = len(positions) + len(_dg)
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
@@ -187,6 +258,22 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         f"<b>📡 POSITIONS ({_n})</b>\n" + "\n".join(pos_lines) + "\n"
         f"<code>{line}</code>"
     )
+
+
+def degen_sell_rows(degen_positions, limit: int = 3) -> list:
+    """One-tap exit rows for the open degen positions printed in 📡 POSITIONS, so
+    the MAIN dashboard (not only degen view) carries the sell action. Each tap
+    routes to the degen UI's confirm-gated `dg:sell:<position_id>` flow."""
+    rows = []
+    for dp in (degen_positions or []):
+        if not dp.get("id"):
+            continue
+        sym = str(dp.get("symbol") or (dp.get("curve_id") or "?")[:8])
+        rows.append([telegram.InlineKeyboardButton(
+            f"🔴 Sell {sym}", callback_data=f"dg:sell:{dp['id']}")])
+        if len(rows) >= limit:
+            break
+    return rows
 
 
 def _ago(iso: str | None) -> str:
@@ -322,6 +409,9 @@ class UserBotController:
         # bots served through the master router (token-less) vs their own poller
         self._route_managed: dict[int, bool] = {}
         self._routed_started: set[int] = set()  # lazy app.initialize() once
+        self._chat_buy_locks: dict[int, asyncio.Lock] = {}  # per-bot serialization
+        # (bot_id, chat_id) -> recent buy timestamps for a light abuse guard (TBP-08)
+        self._chat_buy_hits: dict[tuple[int, int], list[float]] = {}
         self._lock = threading.Lock()
         import tg_config as _cfg
         self._master_token = _cfg.MASTER_BOT_TOKEN or ""
@@ -492,8 +582,13 @@ class UserBotController:
                 # and any ledger-read failure then showed 'no wallet').
                 try:
                     b = self.registry.get_bot(bot_id)
-                    if b and not (b.get("wallet_addr") or ""):
-                        self.registry.update_bot(bot_id, wallet_addr=wallet.get("address") or "")
+                    _ledger_addr = wallet.get("address") or ""
+                    # Sync whenever they DIFFER, not only when empty: a
+                    # regenerated wallet otherwise leaves the registry pointing
+                    # at the bot's OLD address, which the deposit watcher then
+                    # monitors (the 2026-09-17 "watching the wrong wallet" bug).
+                    if b and _ledger_addr and (b.get("wallet_addr") or "") != _ledger_addr:
+                        self.registry.update_bot(bot_id, wallet_addr=_ledger_addr)
                 except Exception:
                     pass
                 return wallet
@@ -1044,6 +1139,11 @@ class UserBotController:
             self._register_user_input_ttl(app, send_token)
             self._install_owner_gate(app, bot)
             self._register_handlers(app, bot)
+            # A routed app MUST have its own error handler: the master app's
+            # handler never sees exceptions raised inside a routed bot, so
+            # without this a failing tap is completely silent to the user
+            # ("button does nothing" — the 2026-09-17 start-button bug).
+            app.add_error_handler(_routed_error_handler)
             self._apps[bot_id] = app
             # A master-only bot is fed by the router, not by its own poller.
             self._route_managed[bot_id] = (self_token is None)
@@ -1228,7 +1328,7 @@ class UserBotController:
             # chat-buy handler.
             factory = UserBotController._degen_wallet_factories.get(bid)
             if factory is not None:
-                _rt.get_runtime().set_wallet_adapter_factory(factory)
+                _rt.get_runtime().set_wallet_adapter_factory(factory, bot_id=bid)
             return cached
         try:
             rt = _rt.get_runtime()
@@ -1258,7 +1358,7 @@ class UserBotController:
                     return SUIAdapter(led, key, network="mainnet"), addr
                 except Exception:
                     return None, None
-            rt.set_wallet_adapter_factory(_factory)
+            rt.set_wallet_adapter_factory(_factory, bot_id=bid)
             UserBotController._degen_wallet_factories[bid] = _factory
             ui = rt.ui_for(bot_of=lambda tg: bot if int(tg) == tg_id else None,
                            ai_key_ok=lambda b: bool(self.registry.get_active_key(
@@ -1304,7 +1404,7 @@ class UserBotController:
 
         async def key_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             await q.message.edit_text(
                 "🔑 Where to get an AI API key:\n\n"
                 "• OpenAI: platform.openai.com → API keys → sk-…\n"
@@ -1318,7 +1418,7 @@ class UserBotController:
 
         async def key_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             # Gate: disclaimer must be accepted before key setup.
             user = self.registry.get_user(tg_id)
             if user and user.get("accepted_disclaimer"):
@@ -1334,7 +1434,7 @@ class UserBotController:
 
         async def key_disclaimer_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             self.registry.accept_disclaimer(tg_id)
             await _show_key_provider(q)
             return K_PROVIDER
@@ -1357,7 +1457,7 @@ class UserBotController:
 
         async def key_provider(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             provider = q.data.split(":", 1)[1]
             context.bot_data["key_provider"] = provider
             if provider == "custom":
@@ -1442,7 +1542,7 @@ class UserBotController:
 
         async def key_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             declined = q.data == "key:decline"
             # Unconfigured bot (no AI key yet) -> schedule cleanup so we don't
             # hold idle bots. The user gets a clear deadline + how to keep it.
@@ -1514,7 +1614,7 @@ class UserBotController:
 
         async def onboarding_trader(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             texts = {
                 "scalp": ONBOARD["trader_scalp"],
                 "intraday": ONBOARD["trader_intraday"],
@@ -1544,7 +1644,7 @@ class UserBotController:
 
         async def onboarding_chain(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             texts = {
                 "sui": ONBOARD["chain_sui"],
                 "solana": ONBOARD["chain_solana"],
@@ -1576,7 +1676,7 @@ class UserBotController:
 
         async def onboarding_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             chain = q.data.split(":")[-1]
             _dui = self._degen_ui(self.registry.get_bot(bot_id)) if chain == "sui" else None
             rows = [[telegram.InlineKeyboardButton("📈 Perps — AI-managed futures",
@@ -1598,7 +1698,7 @@ class UserBotController:
 
         async def onboarding_mode_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             which = q.data.split(":")[1]          # mode_perp | mode_degen
             if which == "mode_degen":
                 b = self.registry.get_bot(bot_id)
@@ -1609,7 +1709,7 @@ class UserBotController:
 
         async def onboarding_chain_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             chain = q.data.split(":")[-1]        # ob:chain_confirm:sui | ob:mode_*:sui
             self.registry.update_bot(bot_id, chain=chain)
             # DEFAULT WATCHLIST for new users: if the user hasn't picked any
@@ -1671,7 +1771,7 @@ class UserBotController:
 
         async def onboarding_key_saved(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             context.bot_data.pop("pending_key", None)
             self.registry.update_bot(bot_id, onboarding_complete=1)
             await q.message.edit_text(ONBOARD["wallet_saved"], parse_mode="HTML")
@@ -1718,7 +1818,7 @@ class UserBotController:
             try:
                 _dui = self._degen_ui(b)
                 if _dui is not None and _dui.led.get_config(bot_id).get("enabled"):
-                    _dpos = _dui.led.positions(bot_id)
+                    _dpos = _dui.positions_marked(bot_id)
             except Exception:
                 _dpos = []
             text = render_production_dashboard(b, account, chain, equity=_eq,
@@ -1748,7 +1848,11 @@ class UserBotController:
                 degen_rows = ([[telegram.InlineKeyboardButton("🎰 DEGEN — meme sniping",
                                 callback_data="degen:open")]]
                               if _dgu is not None else [])
-                kb = telegram.InlineKeyboardMarkup(key_row + degen_rows + [
+                # Degen positions print as rows in 📡 POSITIONS above, so their
+                # one-tap exit belongs HERE on the MAIN dashboard — not only in
+                # degen view. Tapping routes to the degen UI's sell flow.
+                dg_sell_rows = degen_sell_rows(_dpos)
+                kb = telegram.InlineKeyboardMarkup(key_row + degen_rows + dg_sell_rows + [
                     [telegram.InlineKeyboardButton(start_label, callback_data=start_cb),
                      telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek")],
                     [telegram.InlineKeyboardButton(mode_label, callback_data=mode_cb)],
@@ -1770,23 +1874,25 @@ class UserBotController:
 
         async def start_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
-            # Without an AI key the bot will NOT trade - tell the user plainly
-            # and send them to connect one instead of a misleading "quant mode".
+            # Answer EXACTLY once: without an AI key the reason is the alert
+            # itself (a second q.answer() would raise "Query is already answered"
+            # and kill the handler - the Start button then did nothing).
             if not self.registry.get_active_key(tg_id):
-                await q.answer("🔑 Connect your AI key first — your bot won't "
+                await _answer_once(q, "🔑 Connect your AI key first — your bot won't "
                                "trade without it.", show_alert=True)
+            else:
+                await _answer_once(q)
             self.registry.update_bot(bot_id, paused=0, is_running=1)
             if self.agent_pool:
                 self.agent_pool.start(bot_id)
-            await q.message.edit_text("▶️ Agent started. Neko-Chan is scanning markets.",
-                                      reply_markup=telegram.InlineKeyboardMarkup(
-                                          [[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek"),
-                                            telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
+            await _safe_edit(q, "▶️ Agent started. Neko-Chan is scanning markets.",
+                             reply_markup=telegram.InlineKeyboardMarkup(
+                                 [[telegram.InlineKeyboardButton("👀 Peek", callback_data="sb:peek"),
+                                   telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
 
         async def peek(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             mode = (b.get("trading_mode") or "paper").lower()
@@ -2074,7 +2180,7 @@ class UserBotController:
             and stays above. Falls back to a fresh dashboard if deletion is
             impossible (e.g. the message is already gone)."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             try:
                 await q.message.delete()
                 return
@@ -2088,7 +2194,7 @@ class UserBotController:
         async def pnl_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """P&L button = print a Neko-Chan PnL card (PNG) right in the chat."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             mode = (b.get("trading_mode") or "paper").lower()
@@ -2286,7 +2392,7 @@ class UserBotController:
             q = update.callback_query
             parts = (q.data or "").split(":", 1)
             if len(parts) != 2:
-                await q.answer("bad decision key")
+                await _answer_once(q, "bad decision key")
                 return
             verdict = "taken" if parts[0] == "papertake" else "rejected"
             dk = parts[1]
@@ -2294,14 +2400,14 @@ class UserBotController:
                 _ps = self._paper_store()
                 row = _ps.get_decision(dk)
                 if not row:
-                    await q.answer("Decision expired or unknown", show_alert=True)
+                    await _answer_once(q, "Decision expired or unknown", show_alert=True)
                     return
                 if row["status"] not in ("pending",):
-                    await q.answer(f"Already {row['status']}", show_alert=True)
+                    await _answer_once(q, f"Already {row['status']}", show_alert=True)
                     return
                 _ps.set_decision_status(dk, verdict)
             except Exception as exc:
-                await q.answer(f"failed: {str(exc)[:80]}", show_alert=True)
+                await _answer_once(q, f"failed: {str(exc)[:80]}", show_alert=True)
                 return
             sym = row["symbol"]
             direction = str(row["direction"]).upper()
@@ -2312,7 +2418,7 @@ class UserBotController:
                         "Neko skips this trade and looks for the next setup.",
                         parse_mode="HTML")
                 except Exception:
-                    await q.answer("Rejected")
+                    await _answer_once(q, "Rejected")
             else:
                 try:
                     await q.message.edit_text(
@@ -2320,12 +2426,12 @@ class UserBotController:
                         "Neko is executing the trade now…",
                         parse_mode="HTML")
                 except Exception:
-                    await q.answer("Approved — executing")
+                    await _answer_once(q, "Approved — executing")
 
         async def rewards_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Aftermath points & rewards panel: totals, claimable, claim button."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             mode = (b.get("trading_mode") or "paper").lower()
             if mode != "live":
@@ -2363,11 +2469,11 @@ class UserBotController:
         async def rewards_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Claim Aftermath liquid rewards on-chain (live bots only)."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             mode = (b.get("trading_mode") or "paper").lower()
             if mode != "live":
-                await q.answer("Paper trading doesn't earn rewards", show_alert=True)
+                await _answer_once(q, "Paper trading doesn't earn rewards", show_alert=True)
                 return
             await q.message.edit_text("⏳ Claiming rewards on-chain…")
             res = await asyncio.get_running_loop().run_in_executor(
@@ -2392,7 +2498,7 @@ class UserBotController:
 
         async def positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             mode = (b.get("trading_mode") or "paper").lower()
@@ -2463,19 +2569,19 @@ class UserBotController:
             available market price (Aftermath orderbook -> platform API ->
             entry as last resort). No confirm step: paper mistakes are free."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             mode = (b.get("trading_mode") or "paper").lower()
             if mode != "paper":
-                await q.answer("Live closes are executed by the bot's exit logic", show_alert=True)
+                await _answer_once(q, "Live closes are executed by the bot's exit logic", show_alert=True)
                 return
             sym = (q.data or "").split(":", 2)[-1].upper()
             pos = next((p for p in self._paper_store().positions(bot_id)
                         if p["symbol"] == sym), None)
             if not pos:
-                await q.answer(f"No open paper position on {sym}", show_alert=True)
+                await _answer_once(q, f"No open paper position on {sym}", show_alert=True)
                 return
-            await q.answer(f"⏳ Closing {sym} at market…")
+            await _answer_once(q, f"⏳ Closing {sym} at market…")
             # PRICE CHAIN: Aftermath orderbook -> platform API -> entry
             ref = 0.0
             try:
@@ -2493,16 +2599,16 @@ class UserBotController:
             if ref <= 0:
                 ref = float(pos["entry_price"])
             if ref <= 0:
-                await q.answer("No price available right now — try again", show_alert=True)
+                await _answer_once(q, "No price available right now — try again", show_alert=True)
                 return
             fill = self._paper_gateway().close(
                 bot_id, sym, ref, idempotency_key=f"manual-{bot_id}-{sym}-{int(time.time())}")
             if not fill.get("ok"):
                 # double-tap: another tap already closed it — not an error
                 if "no open paper position" in str(fill.get("error", "")).lower():
-                    await q.answer("Already closed ✓", show_alert=True)
+                    await _answer_once(q, "Already closed ✓", show_alert=True)
                     return
-                await q.answer(fill.get("error", "close failed"), show_alert=True)
+                await _answer_once(q, fill.get("error", "close failed"), show_alert=True)
                 return
             try:
                 await q.message.edit_text(
@@ -2520,7 +2626,7 @@ class UserBotController:
 
         async def live_markets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             lines = ["🏦 Live Markets  (real-time)\n"]
             markets = json.loads(bot["symbols"] or "{}")
             syms = []
@@ -2545,7 +2651,7 @@ class UserBotController:
 
         async def stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             lines = [
                 "📈 US Stocks\n",
                 "AAPL · NVDA · SPY\n",
@@ -2560,7 +2666,7 @@ class UserBotController:
 
         async def trades(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             try:
                 sigs = self.platform.signals(bot["agent_id"], limit=10) if bot.get("agent_id") else []
             except Exception:
@@ -2581,7 +2687,7 @@ class UserBotController:
 
         async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             try:
                 lb = self.platform.leaderboard(platform_token)
             except Exception:
@@ -2599,7 +2705,7 @@ class UserBotController:
 
         async def bot_controls(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             if q.data == "sb:pause_yes":
                 # Pause TRADING (LLM) only — keep the Telegram bot session online
@@ -2661,7 +2767,6 @@ class UserBotController:
                     "From now on the bot trades your <b>real on-chain funds</b>:\n"
                     "• Entries, stops and exits execute for real on "
                     f"{(b.get('chain') or 'sui').upper()} ({b.get('network') or 'mainnet'})\n"
-                    "• Every trade pays the venue fee + the platform fee\n"
                     "• Losses are real losses\n" + warn +
                     "\n\nPaper portfolio stays saved — switch back anytime.",
                     parse_mode="HTML",
@@ -2690,7 +2795,7 @@ class UserBotController:
                     from paper_store import PaperStore
                     PaperStore(self.registry.path).reset(bot_id)
                 except Exception as exc:
-                    await q.answer("reset failed")
+                    await _answer_once(q, "reset failed")
                     return
                 await q.message.edit_text(
                     "🧪 Paper portfolio reset to <b>$1,000.00</b>. Fresh start.",
@@ -2714,7 +2819,7 @@ class UserBotController:
 
         async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             if q.data.startswith("sb:set_network"):
                 net = q.data.rsplit(":", 1)[1]
@@ -2800,7 +2905,7 @@ class UserBotController:
 
         async def watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             watched = _parse_watchlist(b.get("watchlist"))
@@ -2823,6 +2928,14 @@ class UserBotController:
         async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Handle "start", "pause", "resume" text commands — control the
             agent (LLM + quant) without affecting the bot connection itself."""
+            # GROUP-CHAT GATE: inside a group/supergroup the ONLY thing neko
+            # speaks to is a buy @-mention — that is handled by chat_buy_text,
+            # registered ABOVE this catch-all. Every other group message (a tag
+            # that isn't a buy, "watch", CA paste, anything) is dropped silently;
+            # the dashboard verbs stay DM-only so the bot never chatters in a room.
+            _chat = update.effective_chat
+            if _chat and _chat.type in ("group", "supergroup"):
+                return
             # degen verbs first: Track/Snipe/<CA> paste (§6.4) — handled = stop here
             _dgi = self._degen_ui(bot)
             if _dgi is not None:
@@ -3037,7 +3150,7 @@ class UserBotController:
 
         async def watch_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             parts = q.data.split(":")
             if len(parts) < 3:
                 await q.message.edit_text("❓ Hmm, that option didn't parse. Try <b>watch &lt;ASSET&gt;</b> again.",
@@ -3113,7 +3226,7 @@ class UserBotController:
 
         async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             text = ("🆘 <b>Contact Support</b>\n\n"
                     "Need help? Reach the Neko-Chan team:\n\n"
                     "• Telegram: @support\n"
@@ -3123,7 +3236,7 @@ class UserBotController:
 
         async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             # Only trade events belong in the notification button: fills, closes,
             # stops, targets, liquidations. Milestone pings, position alerts and
             # daily reports are chat-only and never shown here.
@@ -3148,7 +3261,7 @@ class UserBotController:
 
         async def help_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             ttype = b.get("trader_type") or "scalp"
@@ -3188,7 +3301,7 @@ class UserBotController:
 
         async def wallet_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             try:
@@ -3218,7 +3331,7 @@ class UserBotController:
 
         async def receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = b.get("chain") or "sui"
             try:
@@ -3289,7 +3402,7 @@ class UserBotController:
 
         async def gen_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             chain = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else "sui"
             wallet = self._generate_user_wallet(bot_id, chain)
             if not wallet:
@@ -3311,7 +3424,7 @@ class UserBotController:
 
         async def gen_wallet_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             await q.message.edit_text("✅ Wallet saved. You can now receive funds.",
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton("📥 Receive", callback_data="sb:receive")],
@@ -3319,7 +3432,7 @@ class UserBotController:
 
         async def send_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             text = "📤 Provide the address you're sending to:"
             await q.message.edit_text(text, reply_markup=telegram.InlineKeyboardMarkup(
                 [[telegram.InlineKeyboardButton("❌ Cancel", callback_data="send:cancel")]]))
@@ -3403,7 +3516,7 @@ class UserBotController:
 
         async def send_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             await q.message.edit_text("❌ Canceled.",
                                       reply_markup=telegram.InlineKeyboardMarkup(
                                           [[telegram.InlineKeyboardButton(HOME, callback_data="sb:dash")]]))
@@ -3413,12 +3526,12 @@ class UserBotController:
             # Legacy entry point - the simplified flow confirms inline in the
             # amount step; nothing to do here.
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             return ConversationHandler.END
 
         async def chain_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             target = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else ""
             if target in ("sui", "solana", "hyperliquid"):
                 if target == "sui":
@@ -3450,7 +3563,7 @@ class UserBotController:
 
         async def wallet_keys(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             if not self._exec_ready():
                 await q.message.edit_text("🗝️ Execution isn't configured yet - no keys to show.",
                                           reply_markup=telegram.InlineKeyboardMarkup(
@@ -3493,7 +3606,7 @@ class UserBotController:
 
         async def wallet_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             if not self._exec_ready():
                 await q.message.edit_text("💸 Execution isn't configured yet - nothing to withdraw.",
                                           reply_markup=telegram.InlineKeyboardMarkup(
@@ -3513,7 +3626,7 @@ class UserBotController:
 
         async def wallet_fund(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             _, _, chain = q.data.split(":")
             if not self._exec_ready():
                 await q.message.edit_text(USERBOT["kill_no_exec"],
@@ -3542,7 +3655,7 @@ class UserBotController:
 
         async def check_deposits(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             chain = (b or {}).get("chain") or "sui"
             account = {"balances": {}, "positions": [], "wallet_address": ""}
@@ -3602,7 +3715,7 @@ class UserBotController:
 
         async def enable_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             if q.data == "sb:enable_agent_yes":
                 if not self.registry.get_active_key(tg_id):
                     await q.message.edit_text(USERBOT["enable_agent_no_key"],
@@ -3631,7 +3744,7 @@ class UserBotController:
 
         async def killswitch_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             if q.data == "sb:kill_yes":
                 if not self._exec_ready():
                     await q.message.edit_text(USERBOT["kill_no_exec"],
@@ -3678,7 +3791,7 @@ class UserBotController:
         async def close_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Take-profit / manual close of one position (from a P&L alert button)."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             _, _, symbol = q.data.split(":", 2)
             if q.data == f"sb:close_yes:{symbol}":
                 chain = (self.registry.get_bot(bot_id) or {}).get("chain") or "sui"
@@ -3749,7 +3862,7 @@ class UserBotController:
         async def keep_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """User chose to keep a position open - acknowledge with live P&L %."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             _, _, symbol = q.data.split(":", 2)
             pnl = pct = 0.0
             try:
@@ -3787,7 +3900,7 @@ class UserBotController:
         async def trade_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """User manually takes Neko's pending decision — executes against real USDC."""
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             try:
                 symbol = q.data.split(":", 2)[2].upper()
             except Exception:
@@ -3950,7 +4063,7 @@ class UserBotController:
 
         async def trade_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             try:
                 symbol = q.data.split(":", 2)[2].upper()
             except Exception:
@@ -3961,7 +4074,7 @@ class UserBotController:
 
         async def exec_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
-            await q.answer()
+            await _answer_once(q, )
             b = self.registry.get_bot(bot_id)
             if not self._exec_ready():
                 text = USERBOT["exec_risk_disabled"].format(name=b["bot_name"])
@@ -4028,7 +4141,7 @@ class UserBotController:
 
             async def _dgu_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 q = update.callback_query
-                await q.answer()
+                await _answer_once(q, )
                 _dgu.enter(bot_id)
                 await dash(update, context)      # edit IN PLACE: dashboard stays,
                                                  # keyboard becomes the degen set
@@ -4038,6 +4151,72 @@ class UserBotController:
                 app.add_handler(_h)
             for _h in _dgu.callback_handlers():
                 app.add_handler(_h)
+
+        # ---- in-chat @neko buy (group/chat) — gated by env username mention ----
+        _neko_names = chat_usernames_from_env()
+
+        async def chat_buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            import logging
+            log = logging.getLogger("tg_bot")
+            msg = update.effective_message
+            user = update.effective_user
+            if not msg or not msg.text or user is None or user.is_bot:
+                log.warning("chatbuy: dropped (no msg/user) chat=%s", getattr(msg, "chat_id", None))
+                return
+            if getattr(msg, "sender_chat", None) is not None:
+                log.warning("chatbuy: dropped anonymous sender chat=%s", msg.chat_id)
+                return
+            log.info("chatbuy: entered chat=%s uid=%s name=%r txt=%r",
+                     msg.chat_id, user.id, user.username, (msg.text or "")[:120])
+            parsed = parse_chat_buy(msg.text, _neko_names)
+            if not parsed:
+                log.warning("chatbuy: parse None -> fallthrough (not our @mention+buy)")
+                return
+            if parsed.get("error"):
+                log.warning("chatbuy: parse error %s", parsed["error"])
+                await msg.reply_text("❌ " + parsed["error"])
+                return
+            # TBP-08: light per-chat throttle (caps still bound total spend).
+            _now = time.time()
+            _hits = self._chat_buy_hits.setdefault((bot_id, msg.chat_id), [])
+            _hits[:] = [t for t in _hits if _now - t < 60.0]
+            if len(_hits) >= 10:
+                log.warning("chatbuy: rate-limited bot=%s chat=%s", bot_id, msg.chat_id)
+                await msg.reply_text("🐾 easy — too many buys at once. Try again in a minute.")
+                return
+            _hits.append(_now)
+            ui = self._degen_ui(bot)
+            if ui is None:
+                log.warning("chatbuy: degen ui None (disabled) bot=%s", bot_id)
+                await msg.reply_text("❌ degen engine unavailable")
+                return
+            lock = self._chat_buy_locks.setdefault(bot_id, asyncio.Lock())
+            idem = f"chat:{bot_id}:{msg.chat_id}:{msg.message_id}"
+            async with lock:
+                try:
+                    res = await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: execute_chat_buy(
+                            ui, bot_id, amount=parsed["amount"], ca=parsed["ca"], idem=idem))
+                except Exception as exc:  # noqa: BLE001
+                    res = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
+            log.info("chatbuy: exec res=%s", res)
+            if not res.get("ok"):
+                await msg.reply_text("❌ " + str(res.get("error", "rejected")))
+                return
+            mode = "public"
+            try:
+                mode = ui.led.get_config(bot_id).get("chat_receipt") or "public"
+            except Exception:  # noqa: BLE001
+                pass
+            txt = receipt_text(
+                mode, username=user.username or user.first_name or "trader",
+                amount=float(parsed["amount"]), digest=str(res.get("digest", "")),
+                mention=_neko_names[0] if _neko_names else "neko_tradesbot")
+            await msg.reply_text(txt, parse_mode="HTML")
+
+        _mention_any = "(?i)^\\s*@(" + "|".join(
+            re.escape(u.lstrip("@")) for u in _neko_names) + ")\\s+buy\\b"
+        app.add_handler(MessageHandler(filters.Regex(_mention_any), chat_buy_text))
 
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_command))
         app.add_handler(CallbackQueryHandler(support, pattern=r"^sb:support$"))

@@ -343,14 +343,27 @@ _exec_gateway = None
 
 # ---------------------------------------------------------------- platform client
 
+def _assert_secure_transport() -> None:
+    """Refuse to send the agent bearer over plaintext HTTP to a remote host (TBP-09)."""
+    from urllib.parse import urlparse
+    u = urlparse(BASE_URL)
+    if u.scheme == "http" and u.hostname not in ("127.0.0.1", "localhost", "::1", None):
+        raise RuntimeError(
+            f"AI_TRADER_URL={BASE_URL!r} is plaintext HTTP to a remote host; the agent "
+            "bearer would be exposed in transit. Set an https:// URL.")
+
+
 def _get_token() -> str:
+    _assert_secure_transport()
     if os.getenv("LIVE_AGENT_TOKEN"):
         return os.getenv("LIVE_AGENT_TOKEN")
     if TOKEN_FILE.exists():
         return TOKEN_FILE.read_text().strip()
     name = os.getenv("LIVE_AGENT_NAME", "LiveAgent")
     r = requests.post(f"{BASE_URL}/api/claw/agents/selfRegister",
-                      json={"name": name, "password": "live-agent-pass-2026"}, timeout=30)
+                      json={"name": name,
+                            "password": os.getenv("LIVE_AGENT_PASSWORD", "live-agent-pass-2026")},
+                      timeout=30)
     if r.status_code != 200:
         raise RuntimeError(f"register failed: {r.text[:200]}")
     token = r.json()["token"]

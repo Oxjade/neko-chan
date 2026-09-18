@@ -1,0 +1,18 @@
+{
+ "out": [
+  "DEPTH 8 <<obj>> {\"value\":\"{\\\"contentId\\\":\\\"radix-_r_4_\\\",\\\"triggerRef\\\":{\\\"current\\\":\\\"BUTTON\\\"},\\\"open\\\":false,\\\"hasCustomAnchor\\\":false,\\\"modal\\\":false}\"}",
+  "DEPTH 10 <<obj>> {\"value\":\"{\\\"anchor\\\":\\\"BUTTON\\\"}\"}",
+  "DEPTH 16 <G> {\"options\":\"[{\\\"value\\\":\\\"sol\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"bsc\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"robinhood\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"base\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"eth\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"arbitrum\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"stable\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false\",\"value\":\"[\\\"sol\\\"]\"}",
+  "DEPTH 17 <Y> {\"options\":\"[{\\\"value\\\":\\\"sol\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"bsc\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"robinhood\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"base\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"eth\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"arbitrum\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"stable\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false\",\"value\":\"[\\\"sol\\\"]\"}",
+  "DEPTH 18 <X> {\"options\":\"[{\\\"value\\\":\\\"sol\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"bsc\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"robinhood\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"base\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"eth\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"arbitrum\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false},{\\\"value\\\":\\\"stable\\\",\\\"disabled\\\":false,\\\"checkboxDisabled\\\":false\",\"value\":\"[\\\"sol\\\"]\"}",
+  "DEPTH 26 <<obj>> {\"value\":\"{}\"}",
+  "DEPTH 28 <<obj>> {\"value\":\"{}\"}",
+  "DEPTH 30 <<obj>> {\"value\":\"{}\"}",
+  "DEPTH 32 <<obj>> {\"value\":\"{\\\"isTgUser\\\":false,\\\"selectWalletAddress\\\":null,\\\"isSign\\\":false,\\\"isConnected\\\":false,\\\"address\\\":\\\"\\\"}\"}",
+  "DEPTH 34 <<obj>> {\"value\":\"{\\\"theme\\\":{\\\"dark\\\":true},\\\"prefix\\\":\\\"/static/icons/\\\"}\"}",
+  "DEPTH 38 <<obj>> {\"value\":\"{\\\"colorMode\\\":\\\"dark\\\",\\\"forced\\\":false}\"}",
+  "DEPTH 40 <<obj>> {}",
+  "DEPTH 42 <<obj>> {\"value\":\"{}\"}",
+  "DEPTH 44 <<obj>> {\"value\":\"{\\\"colorMode\\\":\\\"dark\\\",\\\"forced\\\":false}\"}"
+ ]
+}

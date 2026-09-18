@@ -395,34 +395,56 @@ class DegenExecutor:
             sold_atoms = sell_atoms if sell_atoms is not None else tokens_before
             est_sui = (sold_atoms * (st.sui_reserve_mist / max(1, st.token_reserve)) / K.MIST
                        if st.token_reserve else 0.0)
-            fee_mist = int(est_sui * 1e9 * fee_bps / 10000) if (fee_bps and self.fee_recipient) else 0
-            min_sui = int(est_sui * 1e9 * 0.9)  # 10% slippage guard
+            gas = next((c for c in self.ch.coins(adapter.address)
+                        if c["objectId"] not in token_ids
+                        and c["balance_mist"] >= 2_000_000), None)
+            gas_sel = gas and {"objectId": gas["objectId"], "version": gas["version"],
+                               "digest": gas["digest"], "balance_mist": gas["balance_mist"]}
             from .launchpad import curve_pkg as _curve_pkg
-            inputs, commands = ptb.build_sell(
-                o["curve_id"], st.curve_obj.get("shared_version", 0), st.token_type,
-                (coin["objectId"], coin["version"], coin["digest"]), min_sui,
-                user_addr=adapter.address, fee_sui_mist=fee_mist,
-                fee_recipient=self.fee_recipient,
-                pkg=_curve_pkg((getattr(st, "curve_obj", {}) or {}).get("type", "")),
-                extra_coins=extra, sell_atoms=sold_atoms if partial else None)
+            curve_pkg_id = _curve_pkg((getattr(st, "curve_obj", {}) or {}).get("type", ""))
+
+            def _build_sell(fee_m: int, min_s: int):
+                return ptb.build_sell(
+                    o["curve_id"], st.curve_obj.get("shared_version", 0), st.token_type,
+                    (coin["objectId"], coin["version"], coin["digest"]), min_s,
+                    user_addr=adapter.address, fee_sui_mist=fee_m,
+                    fee_recipient=self.fee_recipient, pkg=curve_pkg_id,
+                    extra_coins=extra, sell_atoms=sold_atoms if partial else None)
+
+            # The platform fee is charged on the SUI side, so it must track REAL
+            # proceeds. Probe the chain by dry-running the exact sell (min floor 0)
+            # and reading TokensSold.sui_out: the marginal x/y estimate understates
+            # a large sell by orders of magnitude (2026-09-17: booked 7.3e-5 SUI
+            # while the sale actually returned 0.392 SUI). Falls back to the
+            # analytic estimate when simulation is unavailable.
+            fee_mist = int(est_sui * 1e9 * fee_bps / 10000) if (fee_bps and self.fee_recipient) else 0
+            min_sui = int(est_sui * 1e9 * 0.9)  # 10% slippage guard (pre-sim fallback)
+            inputs, commands = _build_sell(fee_mist, min_sui)
+            sim_mist = 0
+            try:
+                sim_mist = adapter.simulate_event_u64(
+                    inputs, commands, self.ch.gas_price(), K.SNIPE_GAS_BUDGET_MIST,
+                    gas_sel, "::bonding_curve::TokensSold", "sui_out")
+            except Exception:
+                log.warning("sell simulation failed; using analytic estimate", exc_info=True)
+            if sim_mist > 0:
+                fee_mist = (int(sim_mist * fee_bps / 10000)
+                            if (fee_bps and self.fee_recipient) else 0)
+                min_sui = int(sim_mist * 0.9)
+                inputs, commands = _build_sell(fee_mist, min_sui)
+            qty_est = (sim_mist / K.MIST) if sim_mist > 0 else est_sui
             # Reserve before signing (TBP-03) so a replayed sell cannot double-exit.
             oid = self._reserve_order(bot_id, wallet=wallet, intent="sell",
                                       otype=o.get("otype", "market"),
                                       launchpad=o["launchpad"], curve_id=o["curve_id"],
-                                      token_type=st.token_type, qty_sui=round(est_sui, 6),
+                                      token_type=st.token_type, qty_sui=round(qty_est, 6),
                                       idempotency_key=idem or _h(bot_id, o["curve_id"], "sell",
                                                                  time.time_ns()))
             if oid <= 0:
                 return {"ok": False, "error": "duplicate order (already submitted)"}
             try:
-                gas = next((c for c in self.ch.coins(adapter.address)
-                            if c["objectId"] not in token_ids
-                            and c["balance_mist"] >= 2_000_000), None)
                 out = adapter._broadcast_ptb(inputs, commands, self.ch.gas_price(),
-                                             K.SNIPE_GAS_BUDGET_MIST,
-                                             gas_coin=gas and {"objectId": gas["objectId"],
-                                                               "version": gas["version"],
-                                                               "digest": gas["digest"]})
+                                             K.SNIPE_GAS_BUDGET_MIST, gas_coin=gas_sel)
             except Exception as exc:
                 self.ledger.set_order(oid, "failed", error=f"broadcast: {exc}"[:160])
                 return {"ok": False, "error": f"broadcast: {exc}"}
@@ -430,17 +452,27 @@ class DegenExecutor:
             self.ledger.set_order(oid, "fired" if filled else "failed",
                                   tx_digest=out.get("digest", ""),
                                   error="" if filled else str(out.get("status", "unknown")))
-            remaining = tokens_before - sold_atoms
             if filled:
-                self.ledger.record_fill(oid, out.get("digest", ""), sui=est_sui,
-                                        tokens=sold_atoms,
-                                        price=est_sui / max(1e-9, sold_atoms / 1e6),
+                digest = out.get("digest", "")
+                # Book the EXECUTED tx, not the estimate: read TokensSold ground
+                # truth (sui_out/tokens_in), falling back to the dry-run then est.
+                got_mist = (adapter.event_u64(digest, "::bonding_curve::TokensSold", "sui_out")
+                            if hasattr(adapter, "event_u64") else 0) or sim_mist
+                got_tokens = (adapter.event_u64(digest, "::bonding_curve::TokensSold", "tokens_in")
+                              if hasattr(adapter, "event_u64") else 0) or sold_atoms
+                if got_mist <= 0:
+                    got_mist = int(round(est_sui * K.MIST))
+                proceeds = got_mist / K.MIST
+                remaining = max(0, tokens_before - got_tokens)
+                self.ledger.record_fill(oid, digest, sui=proceeds, tokens=got_tokens,
+                                        price=proceeds / max(1e-9, got_tokens / 1e6),
                                         fee_sui=fee_mist / K.MIST)
                 entry = float(pos.get("entry_sui") or 0.0)
+                cost_removed = entry * got_tokens / max(1, tokens_before)
                 pid = self.ledger.upsert_position(bot_id, o["launchpad"], o["curve_id"],
                                                   st.token_type, wallet,
-                                                  add_sui=-min(est_sui, entry),
-                                                  add_tokens=-sold_atoms)
+                                                  add_sui=-cost_removed,
+                                                  add_tokens=-got_tokens)
                 # Position status follows the ACTUAL amount sold, so a partial exit
                 # stays open with the unsold remainder and only a 100% exit closes.
                 if remaining <= 0:
@@ -450,6 +482,9 @@ class DegenExecutor:
                         pid, status="open", tokens=float(remaining),
                         entry_sui=entry * remaining / tokens_before,
                         avg_entry_sui=entry / tokens_before)
+                sold_atoms = got_tokens
+            else:
+                remaining = tokens_before
             return {"ok": filled, "digest": out.get("digest", ""), "order_id": oid,
                     "status": out.get("status", ""), "tokens_sold": sold_atoms if filled else 0,
                     "tokens_left": remaining if filled else tokens_before}

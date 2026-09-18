@@ -19,4 +19,4 @@ pub async fn publish_checkpoint_in(
     neko_indexer::norm::publish_checkpoint(tx, res, checkpoint, ts_ms, events)
         .await
         .map_err(|e| anyhow::anyhow!("{e:#}"))
-}
+} 

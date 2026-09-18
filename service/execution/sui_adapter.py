@@ -1089,6 +1089,40 @@ class SUIAdapter:
                     return 0
         return 0
 
+    def event_u64(self, digest: str, event_suffix: str, field: str) -> int:
+        """Read a u64 `field` from the first event of an EXECUTED tx whose type
+        ends with `event_suffix`. This is the GROUND TRUTH for fills/fees (e.g.
+        `::bonding_curve::TokensSold` -> `sui_out`), unlike a pre-broadcast
+        estimate. Returns 0 when the tx/event/field is unavailable."""
+        d = str(digest or "")
+        if not d or len(d) > 100 or '"' in d:
+            return 0
+        q = ('{ transaction(digest: "' + d + '") { effects { events { nodes {'
+             ' contents { type { repr } json } } } } } }')
+        try:
+            data = self._gql(q)
+        except Exception:
+            return 0
+        nodes = (((data.get("transaction") or {}).get("effects") or {})
+                 .get("events") or {}).get("nodes") or []
+        for ev in nodes:
+            contents = (ev or {}).get("contents") or {}
+            t = str(((contents.get("type") or {}).get("repr")) or "")
+            if not t.endswith(event_suffix):
+                continue
+            payload = contents.get("json")
+            if isinstance(payload, str):
+                try:
+                    import json as _j
+                    payload = _j.loads(payload)
+                except Exception:
+                    return 0
+            try:
+                return int((payload or {}).get(field) or 0)
+            except (TypeError, ValueError):
+                return 0
+        return 0
+
     def _dry_run(self, tx_json: dict) -> dict:
         """Estimate gas for a transaction.
 

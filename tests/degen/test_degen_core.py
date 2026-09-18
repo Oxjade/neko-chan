@@ -77,11 +77,22 @@ class MockAdapter:
     def __init__(self, address):
         self.address = address
         self.broadcasts = []
+        self.sim_sui_out = 0        # dry-run TokensSold.sui_out (MIST)
+        self.realized = {}          # executed-tx event fields, e.g. {"sui_out": ...}
 
     def _broadcast_ptb(self, inputs, commands, gas_price, budget, gas_coin=None):
         self.broadcasts.append({"inputs": inputs, "commands": commands,
                                 "budget": budget, "gas_coin": gas_coin})
         return {"digest": "0xdead", "status": "SUCCESS"}
+
+    def simulate_event_u64(self, inputs, commands, gas_price, budget, gas_coin,
+                           event_suffix, field):
+        if event_suffix.endswith("::bonding_curve::TokensSold") and field == "sui_out":
+            return self.sim_sui_out
+        return 0
+
+    def event_u64(self, digest, event_suffix, field):
+        return int(self.realized.get(field, 0))
 
 
 def test_mainnet_sui_coins_prefer_rpc_over_partial_graphql_page():
@@ -403,6 +414,31 @@ def test_executor_sell_marks_position_closed_when_fully_exited():
     assert led.positions(1) == []                     # gone from "open"
     closed = led.positions(1, status="closed")
     assert closed and closed[0]["id"] == pid
+
+
+def test_executor_sell_books_realized_proceeds_and_fee_on_real_output():
+    """Regression (2026-09-17): a 97.2bn-token dump booked 7.3e-5 SUI because the
+    estimate used the marginal x/y ratio; the sale actually returned 0.392 SUI.
+    The fill must record the EXECUTED TokensSold.sui_out, and the 0.5% platform
+    fee must be charged on that real output — not the estimate."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=1, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    st = resolve_input(ch, CID)
+    tokens = 10 ** 10
+    pid = led.upsert_position(1, "suipump", CID, TOK, "", add_sui=0.05,
+                              add_tokens=tokens, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    real_mist = 392_031_896                 # MIST actually returned on-chain
+    ad.sim_sui_out = real_mist
+    ad.realized = {"sui_out": real_mist, "tokens_in": tokens}
+    r = ex.sell(1, {"wallet": "", "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, st, pos, fee_bps=50)
+    assert r["ok"], r
+    fill = led.fills_for(r["order_id"])[0]
+    assert fill["sui"] == pytest.approx(real_mist / K.MIST)          # 0.392031896
+    assert fill["fee_sui"] == pytest.approx((real_mist * 50 // 10000) / K.MIST)
+    assert led.positions(1) == []           # fully exited
 
 
 def test_executor_partial_sell_keeps_remainder_open():

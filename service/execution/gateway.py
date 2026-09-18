@@ -235,8 +235,14 @@ def _sui_deposit_checker(adapter):
             return []
         events = []
         try:
+            # Sui JSON-RPC takes ONE `TransactionBlockResponseQuery` object:
+            # {"filter": {"FromAddress": addr}, "options": {...}}. Passing the
+            # address as the first positional was malformed -> the node rejected
+            # it and the scanner silently returned [], so deposits were never
+            # detected by the Check Deposits button.
             res = adapter._rpc("suix_queryTransactionBlocks", [
-                addr, {"options": {"showBalanceChanges": True}},
+                {"filter": {"FromAddress": addr},
+                 "options": {"showBalanceChanges": True}},
             ])
             for block in (res.get("data") or [])[:10]:
                 bc = block.get("balanceChanges") or []

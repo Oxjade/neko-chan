@@ -16,6 +16,11 @@ from .launchpad import AssetState
 
 DEFAULT_SUI_USD_FALLBACK = 1.0  # used only when the on-chain oracle is unusable
 
+# Public JSON-RPC used to PROBE a sell (sui_dryRunTransactionBlock). The degen
+# subsystem talks GraphQL for reads; dry-run is a JSON-RPC method the GraphQL
+# endpoint does not expose (same host the executor's simulator uses).
+SUI_DRYRUN_RPC = "https://sui-rpc.publicnode.com"
+
 # Live SUI/USD for DISPLAY math. The venue's own PriceConfig oracle is stale by
 # ~15% sometimes; the DEX quote is the number traders actually see. Cached.
 _suiusd_cache = {"v": 0.0, "ts": 0.0}
@@ -178,6 +183,65 @@ def expected_tokens_out(x_mist: int, y_atoms: int, spend_mist: int,
     k = (x_mist + vx) * (y_atoms + vy)
     y_new = k / (x_mist + spend_mist + vx) - vy
     return max(0, int(y_atoms - y_new))
+
+
+def expected_exit_sui(ch: Chain, st: AssetState, owner: str,
+                      budget_mist: int | None = None) -> int | None:
+    """Ground-truth mark: what the wallet's ENTIRE token bag would return if it
+    exited NOW, by dry-running the exact full-exit sell PTB and reading the
+    executed-shape TokensSold.sui_out event.
+
+    SuiPump curves use a PriceConfig/reputation model, NOT constant-product —
+    the marginal x/y 'price' can understate a big exit by orders of magnitude
+    (2026-09-17: a 97.2bn-token dump marked ~7.3e-5 SUI actually returned 0.392
+    SUI). So we probe the chain, exactly like the buy path probes its min-out.
+    Returns None on any failure (caller falls back to the analytic mark)."""
+    if st is None or getattr(st, "kind", "") != "curve" or not owner:
+        return None
+    try:
+        tok = [c for c in ch.coins(owner, st.token_type)
+               if int(c.get("balance_mist") or 0) > 0]
+        if not tok:
+            return None
+        tok.sort(key=lambda c: int(c["balance_mist"]), reverse=True)
+        coin = tok[0]
+        extra = [(c["objectId"], c["version"], c["digest"]) for c in tok[1:]]
+        gas = next((c for c in ch.coins(owner)
+                    if int(c.get("balance_mist") or 0) >= 500_000), None)
+        if not gas:
+            return None
+        from . import ptb
+        from .launchpad import curve_pkg
+        co = (st.curve_obj or {})
+        inputs, commands = ptb.build_sell(
+            st.curve_id, int(co.get("shared_version") or 0), st.token_type,
+            (coin["objectId"], coin["version"], coin["digest"]), 0,
+            user_addr=owner, fee_sui_mist=0, fee_recipient="",
+            pkg=curve_pkg(str(co.get("type") or "")),
+            extra_coins=extra, sell_atoms=None)
+        from execution.sui_adapter import _serialize_tx_ptb_v1
+        budget = budget_mist or max(5_000_000, int(gas["balance_mist"]))
+        tx = _serialize_tx_ptb_v1(
+            inputs, commands, owner,
+            {"objectId": gas["objectId"], "version": gas["version"],
+             "digest": gas["digest"]},
+            ch.gas_price(), budget, {})
+        import base64
+        body = {"jsonrpc": "2.0", "id": 1, "method": "sui_dryRunTransactionBlock",
+                "params": [base64.b64encode(tx).decode()]}
+        resp = ch._post(SUI_DRYRUN_RPC, body)
+        data = resp if isinstance(resp, dict) else resp.json()
+        if data.get("error"):
+            return None
+        for ev in (data.get("result") or {}).get("events") or []:
+            if str(ev.get("type", "")).endswith("::bonding_curve::TokensSold"):
+                try:
+                    return int((ev.get("parsedJson") or {}).get("sui_out") or 0)
+                except (TypeError, ValueError):
+                    return None
+        return None
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------- curve fit (§3.0)

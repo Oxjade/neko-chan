@@ -137,7 +137,7 @@ class Watcher:
         equity = wallet USDC + Aftermath collateral + unrealized perp PnL.
         Returns None when the bot isn't a chain wallet we can read."""
         try:
-            bot = self.registry.get_bot(self.bot_id) or {}
+            bot = self._authoritative_bot()
             if not bot.get("wallet_addr"):
                 return None
             snap = sui_equity(bot)
@@ -149,7 +149,7 @@ class Watcher:
     def equity_snapshot(self) -> dict:
         """Full real-equity snapshot (USDC/collateral/unrealized/SUI/price)."""
         try:
-            bot = self.registry.get_bot(self.bot_id) or {}
+            bot = self._authoritative_bot()
             if not bot.get("wallet_addr"):
                 return {}
             snap = sui_equity(bot)
@@ -447,11 +447,42 @@ class Watcher:
     # the perp account).
     SUI_USDC_TESTNET = "0xcdd397f2cffb7f5d439f56fc01afe5585c5f06e3bcd2ee3a21753c566de313d9::usdc::USDC"
 
+    def _exec_wallet_addr(self, chain: str) -> str:
+        """Authoritative per-bot address straight from the execution ledger
+        (bot_id+chain scoped). The registry's wallet_addr is a denormalized
+        copy that can lag after a wallet regeneration; reading the ledger here
+        guarantees this watcher only ever tracks THIS bot's own wallet."""
+        try:
+            import sqlite3 as _sq
+            path = os.environ.get("EXEC_LEDGER_PATH", "exec_ledger.db")
+            con = _sq.connect(path)
+            try:
+                row = con.execute(
+                    "SELECT address FROM exec_wallets WHERE bot_id=? AND chain=?",
+                    (self.bot_id, chain),
+                ).fetchone()
+            finally:
+                con.close()
+            if row and row[0]:
+                return str(row[0])
+        except Exception:
+            pass
+        return ""
+
+    def _authoritative_bot(self) -> dict:
+        """Registry record with wallet_addr forced to the ledger's bot-scoped
+        address (falls back to the registry value if the ledger has none)."""
+        bot = dict(self.registry.get_bot(self.bot_id) or {})
+        addr = self._exec_wallet_addr(bot.get("chain") or "sui")
+        if addr:
+            bot["wallet_addr"] = addr
+        return bot
+
     def _wallet_balances(self) -> tuple[float, float] | None:
         """(USDC, SUI) on-chain balance for the bot's wallet via Sui GraphQL
         (JSON-RPC suix_getBalance is deprecated on public fullnodes)."""
         try:
-            bot = self.registry.get_bot(self.bot_id) or {}
+            bot = self._authoritative_bot()
             addr = bot.get("wallet_addr") or ""
             if not addr:
                 return None

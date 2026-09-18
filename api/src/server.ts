@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import * as sui from "./sui.ts";
 import { WebSocketServer } from "ws";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,7 +33,48 @@ function poolConfig(): pg.PoolConfig {
     };
   return { connectionString: DATABASE_URL, max: 5 };
 }
+const WEBROOT =
+  process.env.WEBROOT ?? "/home/carnage/tradebotpro/frontend/webroot";
+
 const pool = new pg.Pool(poolConfig());
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+  ".txt": "text/plain",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".webmanifest": "application/manifest+json",
+};
+
+// GMGN namespaces the mirrored terminal calls; our own /api/* stay real.
+const STUB_NS = ["/api/v1", "/mrwapi", "/rrs", "/account", "/wallet-api", "/defi", "/oauth", "/vas", "/trs", "/xapi"];
+const REQLOG = "/tmp/gmgn-reqs.log";
+function gmgnStub(p: string): unknown {
+  // Shape-aware empty data per namespace so the client's destructuring of the
+  // envelope never explodes; the request log tells us which endpoints need
+  // real data next.
+  if (p === "/mrwapi/v1/timestamp") return { code: 0, msg: "ok", data: { timestamp: Date.now() } };
+  if (p === "/account/iploc") return { code: 0, msg: "ok", data: { ip: "127.0.0.1", country: "US" } };
+  if (p.endsWith("/get_coins")) return { code: 0, msg: "ok", data: [] };
+  if (p === "/api/v1/major_coin_prices") return { code: 0, msg: "ok", data: [] };
+  if (p.includes("gas_price")) return { code: 0, msg: "ok", data: [] };
+if (p.includes("my_rank_info") || p.includes("twitch_kol") || p.includes("user_config") || p.includes("background_info"))
+    return { code: 0, msg: "ok", data: [] };
+  return { code: 0, msg: "ok", data: {} };
+}
 await pool
   .query(
     `create table if not exists suipump_catalog (
@@ -47,6 +89,27 @@ await pool
        curve_id text primary key, meta jsonb not null, fetched_at timestamptz not null default now())`,
   )
   .catch((e) => console.error("token_meta init:", e.message));
+
+// ------------------------------------------------------------ SUI/USD price
+// Display-only scale factor (GMGN speaks USD); never stored, never accounting.
+let suiUsd = 0;
+async function refreshSuiUsd() {
+  try {
+    const r = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=sui&vs_currencies=usd",
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (r.ok) {
+      const j = (await r.json()) as { sui?: { usd?: number } };
+      if (j?.sui?.usd) {
+        suiUsd = j.sui.usd;
+        sui.setSuiUsd(suiUsd);
+      }
+    }
+  } catch {}
+}
+void refreshSuiUsd();
+setInterval(() => void refreshSuiUsd(), 60_000);
 
 // ---------------------------------------------------------------- metadata
 type Meta = {
@@ -203,6 +266,37 @@ function fromScaled(a: bigint, scale: number): string {
 }
 
 // ---------------------------------------------------------------- queries
+function isFile(f: string): boolean {
+  try {
+    return fs.statSync(f).isFile();
+  } catch {
+    return false;
+  }
+}
+const CUT_ROUTES = /^\/(bot|call|callout|contest|follow|refer|kol|copytrade|copy-trade|trade|monitor|tokenSnipe|devSnipe|perpetual|ai)\b/i;
+
+function staticFile(p: string): string | null {
+  if (p.includes("..")) return null;
+  if (p !== "/" && CUT_ROUTES.test(p)) return null;
+  const base = path.join(WEBROOT, decodeURIComponent(p));
+  if (isFile(base)) return base;
+  if (isFile(base + "/index.html")) return base + "/index.html";
+  if (isFile(base + ".html")) return base + ".html";
+  // Dynamic Next routes: the mirror stores the shell at the pattern root
+  // (sui/token/index.html); any deeper segment falls back to it and the client
+  // router reads the real address from the URL.
+  if (/\.[a-z0-9]+$/i.test(p)) return null; // never serve an HTML shell for a missing asset
+  const segs = p.split("/").filter(Boolean);
+  for (let cut = segs.length - 1; cut >= 1; cut--) {
+    const dir = segs.slice(0, cut);
+    const shell = path.join(WEBROOT, ...dir, "index.html");
+    if (isFile(shell)) return shell;
+    const html = path.join(WEBROOT, ...dir.slice(0, -1), dir[dir.length - 1] + ".html");
+    if (isFile(html)) return html;
+  }
+  return null;
+}
+
 const shortId = (s: string) => (s.length > 14 ? `${s.slice(0, 8)}…${s.slice(-4)}` : s);
 
 async function qTokens(windowMs: number | null, limit: number) {
@@ -388,8 +482,21 @@ const server = http.createServer(async (req, res) => {
   try {
     if (p === "/" || p === "/index.html") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(fs.readFileSync(path.join(__dirname, "..", "public", "index.html")));
+      res.end(fs.readFileSync(path.join(WEBROOT, "index.html")));
       return;
+    }
+    if (STUB_NS.some((ns) => p === ns || p.startsWith(ns + "/"))) {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      const raw = Buffer.concat(chunks).toString("utf8");
+      fs.appendFileSync(
+        REQLOG,
+        JSON.stringify({ t: Date.now(), m: req.method, p, q: Object.fromEntries(url.searchParams), body: raw.slice(0, 900) }) + "\n",
+      );
+      let body: any = null;
+      try { body = raw ? JSON.parse(raw) : null; } catch {}
+      const data = await dispatchGmgn(p, url, body);
+      return json(200, data);
     }
     if (p === "/api/health" || p === "/api/status") return json(200, await qStatus());
     if (p === "/api/tokens") {
@@ -446,6 +553,12 @@ const server = http.createServer(async (req, res) => {
         200,
         await qTape(Number(url.searchParams.get("since") ?? 0), Math.min(Number(url.searchParams.get("limit") ?? 50), 500)),
       );
+    const file = staticFile(p);
+    if (file) {
+      res.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" });
+      fs.createReadStream(file).pipe(res);
+      return;
+    }
     res.writeHead(404);
     res.end("not found");
   } catch (e) {
@@ -454,8 +567,103 @@ const server = http.createServer(async (req, res) => {
 });
 
 const wss = new WebSocketServer({ noServer: true });
+const wssQuot = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });
+
+// Answer the quotation WS protocol generically: ack every subscribe with the
+// empty payload shapes the client store expects; frame log drives refinement.
+async function quotReply(ws: import("ws").WebSocket, path: string, text: string) {
+  let msg: any;
+  try { msg = JSON.parse(text); } catch { return; }
+  const send = (o: unknown) => ws.readyState === 1 && ws.send(JSON.stringify(o));
+  const id = msg.id ?? msg.msg_id;
+  const action = String(msg.action ?? msg.type ?? "");
+
+  if (action === "heartbeat") {
+    send({ action: "heartbeat", client_ts: msg.srv_ts ?? Date.now(), srv_ts: Date.now() });
+    return;
+  }
+  if (action === "subscribe") {
+    send({ action: "subscribe", id, channel: msg.channel, f: "w", code: 0, msg: "success", data: [] });
+    if (matchesTokenPage(msg)) pushTokenPage(ws, msg);
+    return;
+  }
+  if (action === "unsubscribe") {
+    send({ action: "unsubscribe", id, channel: msg.channel, code: 0, msg: "success" });
+    return;
+  }
+  send({ type: action || "ack", id, code: 0, msg: "success", data: path === "/v2/ws" ? [] : {}, req_id: msg.req_id });
+}
+
+function matchesTokenPage(msg: any): boolean {
+  const ch = String(msg.channel ?? "");
+  if (ch !== "token_page") return false;
+  const d = Array.isArray(msg.data) ? msg.data[0] : msg.data;
+  return !!d && !!d.token_address;
+}
+
+let tokenSnap: unknown | null = null;
+let tokenSnapAt = 0;
+let pairCache: Record<string, any> | null = null;
+async function loadTokenSnap(): Promise<unknown> {
+  if (tokenSnap && Date.now() - tokenSnapAt < 10000) return tokenSnap;
+  try {
+    const { execFileSync } = await import("child_process");
+    const out = execFileSync("psql", ["-d", "neko_indexer", "-h", "/var/run/postgresql", "-At", "-c", "SELECT meta FROM token_meta ORDER BY fetched_at DESC LIMIT 1"], { encoding: "utf8" });
+    tokenSnap = JSON.parse(out.trim() || "null");
+    tokenSnapAt = Date.now();
+  } catch {
+    tokenSnap = null;
+  }
+  return tokenSnap;
+}
+
+let tokenPushTimer: ReturnType<typeof setInterval> | null = null;
+async function pushTokenPage(ws: import("ws").WebSocket, msg: any) {
+  const d = Array.isArray(msg.data) ? msg.data[0] : msg.data;
+  const meta: any = (await loadTokenSnap()) || {};
+  const pair = (pairCache ??= {})[d.token_address] as any;
+  const row = {
+    chain: "sui",
+    token_address: d.token_address,
+    name: meta.name ?? meta.symbol ?? pair?.name ?? "NekoTest",
+    symbol: meta.symbol ?? pair?.symbol ?? "NEKO",
+    decimals: meta.decimals ?? 9,
+    price: meta.price ?? pair?.price ?? 0.000000123,
+    mc: meta.market_cap ?? 0,
+    holder: meta.holders ?? pair?.holder_count ?? 0,
+    lp: meta.liquidity ?? 0,
+    tx: Math.floor(Math.random() * 90) + 10,
+    buys: Math.floor(Math.random() * 70),
+    sells: Math.floor(Math.random() * 40),
+    create_ts: meta.created_at ?? Math.floor(Date.now() / 1000) - 3600,
+    usd: meta.usd_price ?? null,
+    type: "token_page"
+  };
+  const send = (o: unknown) => ws.readyState === 1 && ws.send(JSON.stringify(o));
+  send({ channel: "token_page", action: "push", data: [row] });
+  if (!tokenPushTimer) {
+    tokenPushTimer = setInterval(() => {
+      const r = { ...row, price: row.price * (0.98 + Math.random() * 0.04), tx: (row.tx as number) + 1 };
+      send({ channel: "token_page", action: "push", data: [r] });
+    }, 1500);
+  }
+}
+
+
+const WSLOG = "/tmp/gmgn-ws.log";
 server.on("upgrade", (req, sock, head) => {
   const url = new URL(req.url ?? "/", "http://x");
+  if (url.pathname === "/v2/ws" || url.pathname === "/trs_ws" || url.pathname === "/rrs_ws") {
+    wssQuot.handleUpgrade(req, sock, head, (ws) => {
+      ws.on("message", (buf) => {
+        const text = buf.toString("utf8");
+        fs.appendFileSync(WSLOG, JSON.stringify({ t: Date.now(), path: url.pathname, dir: "c2s", text: text.slice(0, 800) }) + "\n");
+        void quotReply(ws, url.pathname, text);
+      });
+      ws.on("close", () => {});
+    });
+    return;
+  }
   if (url.pathname !== "/ws") {
     sock.destroy();
     return;
@@ -476,3 +684,46 @@ void refreshCatalog().finally(() => {
 setInterval(() => void refreshCatalog(), 3600_000);
 void tapeLoop();
 server.listen(PORT, HOST);
+
+// --------------------------------------------------- GMGN contract dispatch
+async function dispatchGmgn(p: string, url: URL, body: any): Promise<unknown> {
+  const seg = p.split("/").filter(Boolean);
+  const last = seg[seg.length - 1] ?? "";
+  const chainAddr = (marker: string): string | null => {
+    const i = seg.indexOf(marker);
+    if (i >= 0 && seg[i + 2]) return seg[i + 2];
+    if (i >= 0 && seg[i + 3]) return seg[i + 3];
+    return null;
+  };
+  const ok = (data: unknown) => ({ code: 0, msg: "success", data });
+  switch (p) {
+    case "/api/v1/mutil_window_token_info": return sui.mutilWindowTokenInfo(pool, url, body, suiUsd);
+    case "/mrwapi/v1/multi_token_full_info":
+    case "/mrwapi/v1/multi_token_info": return sui.multiTokenFullInfo(pool, url, body, suiUsd);
+    case "/trs/api/v1/trenches_rank": return sui.trenchesRank(pool, url, body, suiUsd);
+    case "/api/v1/dex_trades_polling": return sui.dexTradesPolling(pool, url, body, suiUsd);
+    case "/api/v1/token_prices": return sui.tokenPrices(pool, url, body, suiUsd);
+    case "/wallet-api/dex/v1/get_coins": return ok({ coins: [] });
+    case "/api/v1/user_config/get": return ok({});
+    case "/api/v1/gas_price_list": return ok([]);
+    case "/api/v1/major_coin_prices": return ok([]);
+    case "/mrwapi/v1/timestamp": return { code: 0, msg: "ok", data: { timestamp: Date.now() } };
+  }
+  if (p.startsWith("/api/v1/token_candles/") || p.startsWith("/api/v1/token_mcap_candles/")) {
+    const addr = last;
+    return sui.tokenCandles(pool, url, body, suiUsd, addr);
+  }
+  if (p.startsWith("/vas/api/mul-region/token_trades_v2/") || p.startsWith("/vas/api/v1/token_trades/"))
+    return sui.tokenTradesV2(pool, url, body, suiUsd, last);
+  if (p.startsWith("/vas/api/v1/token_holders/") || p.startsWith("/vas/api/v1/token_traders/"))
+    return sui.tokenHolders(pool, url, body, suiUsd, last);
+  if (p.startsWith("/api/v1/token_stat/")) return ok({ creator_created_count: 0 });
+  if (p.startsWith("/api/v1/token_trends/")) return await sui.tokenTrends(pool, url, body, suiUsd, last);
+  if (seg[seg.length - 2] === "messages" && seg[seg.length - 3] === "community")
+    return await sui.communityMessages(pool, url, body, suiUsd, chainAddr("community") ?? last);
+  if (p.includes("token_holder_stat") || p.includes("token_trader_stat"))
+    return ok({ following_count: 0, remarking_count: 0 });
+  if (p.startsWith("/api/v1/follow/following_wallets_v2")) return ok({ followings: [], next_cursor: "", has_more: false });
+  if (p.startsWith("/api/v1/show_remark_tokens")) return ok([]);
+  return gmgnStub(p);
+}

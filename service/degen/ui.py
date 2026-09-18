@@ -32,7 +32,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler
 from . import constants as K
 from .db import DegenLedger
 from .launchpad import resolve_input
-from .metrics import compute, token_total_supply
+from .metrics import compute, expected_exit_sui, token_total_supply
 from .validate import run_gauntlet
 
 log = logging.getLogger(__name__)
@@ -231,20 +231,18 @@ class DegenUI:
         return v
 
     def _pnl(self, bid: int) -> tuple:
-        """(invested, marked, realized_today_sui) for open degen positions."""
+        """(invested, marked, realized_today_sui) for open degen positions.
+
+        Marks come from positions_marked() (on-chain exit probes) so the strip,
+        the pnl panel and the dashboard rows all agree on the same numbers."""
         import time as _t
         hit = self._pnl_cache.get(bid)
         if hit and _t.time() - hit[0] < 20:
             return hit[1]
         inv = mark = 0.0
-        for p in self.led.positions(bid):
-            inv += p["entry_sui"] or 0.0
-            try:
-                st = resolve_input(self.ch, p["curve_id"])
-                m = compute(self.ch, st)
-                mark += (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * (m.price_sui or 0.0)
-            except Exception:
-                mark += p["entry_sui"] or 0.0
+        for p in self.positions_marked(bid, ttl=60):
+            inv += float(p["entry_sui"] or 0.0)
+            mark += float(p.get("mark_sui") or 0.0)
         out = (inv, mark, self.led.realized_pnl_today(bid))
         self._pnl_cache[bid] = (_t.time(), out)
         return out
@@ -268,17 +266,29 @@ class DegenUI:
         out = []
         for p in rows:
             d = dict(p)
-            mark = float(p["entry_sui"] or 0.0)
+            entry = float(p["entry_sui"] or 0.0)
+            mark = entry
             try:
                 st = resolve_input(self.ch, p["curve_id"])
                 m = compute(self.ch, st)
-                mark = (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * (m.price_sui or 0.0)
                 d["symbol"] = (p.get("symbol") or getattr(st, "symbol", "") or
                                (p.get("curve_id") or "")[:6])
+                # Live mark = the REAL exit value: dry-run the wallet's full sell
+                # and read TokensSold.sui_out (marginal x/y is not what a big exit
+                # receives on SuiPump's PriceConfig curve). Fallback: spot mark.
+                w = d.get("wallet") or ""
+                if w:
+                    mist = expected_exit_sui(self.ch, st, w)
+                    if mist:
+                        mark = mist / K.MIST
+                if not w or not mark or mark <= 0:
+                    mark = (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * (m.price_sui or 0.0) or entry
             except Exception:
                 d["symbol"] = p.get("symbol") or (p.get("curve_id") or "")[:6]
+                mark = entry
             d["mark_sui"] = mark
-            d["pnl_sui"] = mark - float(p["entry_sui"] or 0.0)
+            d["pnl_sui"] = mark - entry
+            d["pnl_pct"] = (mark / entry - 1) * 100 if entry > 0 else 0.0
             out.append(d)
         return out
 
@@ -1003,6 +1013,20 @@ class DegenUI:
         except Exception:
             return ""
 
+    def _position_mark(self, pos) -> float | None:
+        """Live exit value of this position (SUI) via an on-chain probe, or None
+        if the venue/wallet can't be probed right now."""
+        try:
+            st = resolve_input(self.ch, pos.get("curve_id") or pos.get("pool_id")
+                               or pos.get("token_type") or "")
+            w = pos.get("wallet") or ""
+            if not w:
+                return None
+            mist = expected_exit_sui(self.ch, st, w)
+            return mist / K.MIST if mist else None
+        except Exception:
+            return None
+
     def _sell_sheet_view(self, pos, pid):
         """Percentage exit sheet: 25/50/75/100% + custom, mirroring the buy card's
         chip rhythm. Curve positions only — an Aftermath/pool position cannot
@@ -1012,6 +1036,10 @@ class DegenUI:
         head = (f"<b>🔴 Sell {esc(sym)}</b>\n<code>{'─' * 26}</code>\n"
                 f"📦 Holding <code>{toks:,.0f}</code> tok\n"
                 f"💵 Entry <code>{float(pos.get('entry_sui') or 0):.4f} SUI</code>")
+        mark = self._position_mark(pos)
+        if mark and mark > 0:
+            head += (f"\n💰 Exit value ≈ <code>{mark:.4f} SUI</code>"
+                     f" (on-chain dry run incl. 0.5% fee)")
         if self._position_kind(pos) == "curve":
             chip = lambda p: B(f"{p}%", f"dg:sellp:{pid}:{p}")
             rows = [[chip(25), chip(50)], [chip(75), chip(100)],
@@ -1023,13 +1051,18 @@ class DegenUI:
                     [B("⛔ Cancel", "dg:hub")]]
         return head, KB(rows)
 
-    def _sell_confirm_view(self, pos, pid, pct):
+    def _sell_confirm_view(self, pos, pid, pct, mark=None):
         sym = pos.get("symbol") or str(pos.get("curve_id") or "?")[:8]
         toks = float(pos.get("tokens") or 0.0)
         label = self._pct_label(pct)
+        val = ""
+        if mark and mark > 0:
+            val = (f"\n💰 Today's exit value ≈ <code>{mark * float(pct) / 100:.4f} SUI</code>"
+                   f" (on-chain dry run incl. 0.5% fee)")
         return (f"⚠️ <b>Sell {label}% of {esc(sym)}?</b>\n"
                 f"≈ <code>{toks * float(pct) / 100:,.0f}</code> of "
-                f"<code>{toks:,.0f}</code> tok at the best route · irreversible.",
+                f"<code>{toks:,.0f}</code> tok at the best route · irreversible."
+                + val,
                 KB([[B(f"✅ Confirm sell {label}%", f"dg:sellok:{pid}:{label}")],
                     [B("⛔ Cancel", f"dg:sell:{pid}")]]))
 
@@ -1048,7 +1081,7 @@ class DegenUI:
             await self._safe_edit(q, "That position is already closed.",
                                   reply_markup=self._hub_kb())
             return
-        body, kb = self._sell_confirm_view(pos, pid, pct)
+        body, kb = self._sell_confirm_view(pos, pid, pct, mark=self._position_mark(pos))
         await self._safe_edit(q, body, reply_markup=kb)
 
     async def _sell_position(self, q, bot, bid, pid, pct: float = 100.0):
@@ -1141,21 +1174,17 @@ class DegenUI:
         if name == "pnl":
             inv, mark, rlz = self._pnl(bid)
             unreal = mark - inv
-            rows = self.led.positions(bid)
+            pct = (unreal / inv * 100) if inv > 0 else 0.0
+            rows = self.positions_marked(bid, ttl=60)
             lines = ["<b>📊 DEGEN P&L</b>",
                      f"open: in <code>{inv:.3f}</code> → marked <code>{mark:.3f}</code> SUI"
-                     f" · <code>{'+' if unreal >= 0 else ''}{unreal:.3f}</code>",
+                     f" · <code>{'+' if unreal >= 0 else ''}{unreal:.3f}</code>"
+                     f" ({pct:+.1f}%)",
                      f"realized today: <code>{rlz:+.3f} SUI</code>"]
             for p in rows:
-                try:
-                    st = resolve_input(self.ch, p["curve_id"])
-                    m = compute(self.ch, st)
-                    cur = (p["tokens"] or 0) / (10 ** (m.decimals or 6)) * m.price_sui
-                except Exception:
-                    cur = p["entry_sui"]
-                lines.append(f"· {esc(p['symbol'] or p['curve_id'][:6])} "
-                             f"{p['entry_sui']:.2f} → {cur:.2f} SUI "
-                             f"[{p['venue']}]")
+                lines.append(f"· {esc(p.get('symbol') or (p.get('curve_id') or '?')[:6])} "
+                             f"{p['entry_sui']:.2f} → {p.get('mark_sui', 0):.2f} SUI "
+                             f"({p.get('pnl_sui', 0):+.2f}) [{p['venue']}]")
             return "\n".join(lines), KB([back])
         if name == "risk":
             caps = cfg.get("caps", {}) or {}
