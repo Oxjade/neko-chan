@@ -74,6 +74,19 @@ def _mask_addr(addr: str) -> str:
     return f"{addr[:6]}…{addr[-4:]}" if len(addr) > 12 else addr
 
 
+async def _try_answer(q, *args, **kwargs):
+    """Answer a callback query, tolerating only the 'already answered' error.
+
+    Every real Telegram error still propagates so the caller's error handler
+    can surface it; a repeat tap on the same button is the one case we swallow
+    (a second answer on an already-answered query is harmless)."""
+    try:
+        await q.answer(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        if "already answered" not in str(exc).lower():
+            raise
+
+
 async def _answer_once(q, *args, **kwargs):
     """Answer a callback query AT MOST once.
 
@@ -115,7 +128,6 @@ async def _answer_once(q, *args, **kwargs):
 
 _ANSWERED_IDS: set[str] = set()
 _ANSWERED_IDS_MAX = 2048
-_ANSWERED_IDS_MAX_USED = False
 
 
 
