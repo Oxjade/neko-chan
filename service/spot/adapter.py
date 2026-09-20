@@ -52,6 +52,40 @@ TERMS_BYTES = b"Aftermath Terms and Conditions"
 _COINS_CACHE: dict[str, tuple[float, set[str]]] = {}
 COINS_CACHE_TTL = 24 * 3600
 
+# The Aftermath router flaps under load: 5xx responses and reads timing out are
+# transient, so the swap path retries before surfacing an error (§trade-500).
+_SWAP_RETRIES = 2
+_SWAP_BACKOFF_S = 0.8
+_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+
+
+def _post_with_retry(url: str, *, json_body: dict, timeout_s: int = 30,
+                     retries: int = _SWAP_RETRIES,
+                     backoff_s: float = _SWAP_BACKOFF_S) -> requests.Response:
+    """POST to the Aftermath router and raise on failure, retrying transient
+    5xx/429 responses and network timeouts with exponential backoff.
+
+    Deterministic 4xx (bad coin, signature, …) still raise immediately.
+    """
+    last = None
+    for attempt in range(retries + 1):
+        if attempt:
+            time.sleep(backoff_s * (2 ** (attempt - 1)))
+        try:
+            r = requests.post(url, json=json_body, timeout=timeout_s)
+        except requests.RequestException as exc:
+            last = exc
+            if attempt == retries:
+                raise
+            continue
+        if r.status_code < 400:
+            return r
+        if r.status_code not in _TRANSIENT_STATUS:
+            r.raise_for_status()  # deterministic 4xx: surface immediately
+        last = r
+    last.raise_for_status()  # type: ignore[union-attr]  # transient on every attempt
+    return last
+
 
 class AftermathSpotAdapter:
     """One adapter instance per bot wallet (same Sui key as perps)."""
@@ -135,8 +169,7 @@ class AftermathSpotAdapter:
             # {recipient, feePercentage} — Aftermath pays it out of the route's
             # output INSIDE the swap tx (atomic integrator fee).
             body["externalFee"] = external_fee
-        r = requests.post(f"{self.api}/router/trade-route", json=body, timeout=30)
-        r.raise_for_status()
+        r = _post_with_retry(f"{self.api}/router/trade-route", json_body=body)
         return r.json()
 
     @staticmethod
@@ -160,9 +193,8 @@ class AftermathSpotAdapter:
         returned kind is the remaining P1 wrap step (docs §3.5)."""
         body = {"completeRoute": complete_route, "walletAddress": wallet_address,
                 "slippage": slippage_bps / 10000.0, "isSponsoredTx": False}
-        r = requests.post(f"{self.api}/router/v1/transactions/trade",
-                          json=body, timeout=30)
-        r.raise_for_status()
+        r = _post_with_retry(f"{self.api}/router/v1/transactions/trade",
+                             json_body=body)
         return r.json()
 
     def swap_tx(self, route_complete: str) -> str:

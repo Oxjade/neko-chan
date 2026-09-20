@@ -369,7 +369,7 @@ class DegenLedger:
                 avg = (tot_sui / tot_tok) if tot_tok > 0 else r["avg_entry_sui"]
                 self._conn.execute(
                     """UPDATE degen_position SET entry_sui=?, avg_entry_sui=?, tokens=?,
-                       pool_id=?, venue=?, symbol=?, updated_at=? WHERE id=?""",
+                       status='open', pool_id=?, venue=?, symbol=?, updated_at=? WHERE id=?""",
                     (tot_sui, avg, tot_tok, pool_id or r["pool_id"], venue,
                      symbol or r["symbol"], now, r["id"]))
                 self._conn.commit()

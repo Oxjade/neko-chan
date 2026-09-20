@@ -78,20 +78,28 @@ async def _answer_once(q, *args, **kwargs):
     """Answer a callback query AT MOST once.
 
     Telegram raises BadRequest 'Query is already answered' on a second answer,
-    which aborts the whole handler — the 2026-09-17 dead-button class of bug
-    (Start, close, rewards all answered bare first, then tried to show a reason
-    toast and died). The FIRST answer goes through as before; any later reason
-    is delivered as a plain reply so it is never lost.
+    which aborts the whole handler — the 2026-09-17 "cat tripped" degen-hub class
+    of bug (Start, close, rewards all answered bare first, then tried to show a
+    reason toast and died). The FIRST answer goes through as before; any later
+    reason is delivered as a plain reply instead, so it is never lost.
 
-    Answered-state is tracked in a module-level set keyed by callback id, never
-    by writing an attribute onto the CallbackQuery object: python-telegram-bot
-    versions that build CallbackQuery with __slots__ (the VPS install) raise
-    AttributeError on the stamp ('CallbackQuery' object has no attribute
-    '_neko_answered' — the 2026-09-20 "cat tripped" degen-hub class of bug),
-    while the dev venv (slots=False) silently allowed it. id-keyed set is
-    version-proof: it uses only q.id, which every PTB version provides."""
+    Answered-state lives in a MODULE-LEVEL, id-keyed set (bounded, cleared when
+    it overflows), never written as an attribute on the CallbackQuery object:
+    python-telegram-bot versions that build CallbackQuery with __slots__ (the
+    VPS install) raise AttributeError on a stamp like `q._neko_answered = True`
+    (the 2026-09-20 degen-hub bug) while the dev venv (slots=False) silently
+    allowed it. The id-keyed set is version-proof: it uses only q.id, which every
+    PTB version provides. The cap (2048) keeps memory flat on high-traffic hubs.
+    """
+
+    global _ANSWERED_IDS, _ANSWERED_IDS_MAX
     qid = getattr(q, "id", "")
-    if qid and qid in _ANSWERED_IDS:
+    if not qid:
+        # No stable callback id (some proxies/venvs)? Just answer bare once.
+        if "already answered" not in str((await _try_answer(q, *args, **kwargs)) or "").lower():
+            pass
+        return
+    if qid in _ANSWERED_IDS:
         if args and args[0]:
             try:
                 if getattr(q, "message", None) is not None:
@@ -99,15 +107,17 @@ async def _answer_once(q, *args, **kwargs):
             except Exception:
                 pass
         return
-    try:
-        await q.answer(*args, **kwargs)
-    except Exception as exc:
-        if "already answered" not in str(exc).lower():
-            raise
-    if qid:
-        _ANSWERED_IDS.add(qid)
-        if len(_ANSWERED_IDS) > _MAX_ANSWERED_IDS:
-            _ANSWERED_IDS.clear()
+    await _try_answer(q, *args, **kwargs)
+    _ANSWERED_IDS.add(qid)
+    if len(_ANSWERED_IDS) > _ANSWERED_IDS_MAX:
+        _ANSWERED_IDS.clear()
+
+
+_ANSWERED_IDS: set[str] = set()
+_ANSWERED_IDS_MAX = 2048
+_ANSWERED_IDS_MAX_USED = False
+
+
 
 
 async def _routed_error_handler(update, context):

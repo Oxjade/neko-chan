@@ -1003,16 +1003,6 @@ class DegenUI:
             await context.bot.send_message(bot.get("tg_id") or 0, text,
                                            parse_mode="HTML", reply_markup=kb)
 
-    def _position_kind(self, pos) -> str:
-        """Resolve the live asset kind (curve/pool/...). The DB `venue` column is
-        unreliable here: graduated buys leave it at the 'curve' default."""
-        try:
-            st = resolve_input(self.ch, pos.get("curve_id") or pos.get("pool_id")
-                               or pos.get("token_type") or "")
-            return str(getattr(st, "kind", "") or "")
-        except Exception:
-            return ""
-
     def _position_mark(self, pos) -> float | None:
         """Live exit value of this position (SUI) via an on-chain probe, or None
         if the venue/wallet can't be probed right now."""
@@ -1028,9 +1018,9 @@ class DegenUI:
             return None
 
     def _sell_sheet_view(self, pos, pid):
-        """Percentage exit sheet: 25/50/75/100% + custom, mirroring the buy card's
-        chip rhythm. Curve positions only — an Aftermath/pool position cannot
-        split a coin, so it gets a single full-exit button."""
+        """Percentage exit sheet: 25/50/75/100% + custom, on every venue (a pool
+        position sells a slice just like a curve one — the slice is resolved
+        against the real on-chain balance on the executor side)."""
         sym = pos.get("symbol") or str(pos.get("curve_id") or "?")[:8]
         toks = float(pos.get("tokens") or 0.0)
         head = (f"<b>🔴 Sell {esc(sym)}</b>\n<code>{'─' * 26}</code>\n"
@@ -1040,15 +1030,10 @@ class DegenUI:
         if mark and mark > 0:
             head += (f"\n💰 Exit value ≈ <code>{mark:.4f} SUI</code>"
                      f" (on-chain dry run incl. 0.5% fee)")
-        if self._position_kind(pos) == "curve":
-            chip = lambda p: B(f"{p}%", f"dg:sellp:{pid}:{p}")
-            rows = [[chip(25), chip(50)], [chip(75), chip(100)],
-                    [B("✏️ X %", f"dg:sellc:{pid}")],
-                    [B("⛔ Cancel", "dg:hub")]]
-        else:
-            head += "\nThis venue only supports a full exit."
-            rows = [[B("✅ Sell 100%", f"dg:sellp:{pid}:100")],
-                    [B("⛔ Cancel", "dg:hub")]]
+        chip = lambda p: B(f"{p}%", f"dg:sellp:{pid}:{p}")
+        rows = [[chip(25), chip(50)], [chip(75), chip(100)],
+                [B("✏️ X %", f"dg:sellc:{pid}")],
+                [B("⛔ Cancel", "dg:hub")]]
         return head, KB(rows)
 
     def _sell_confirm_view(self, pos, pid, pct, mark=None):

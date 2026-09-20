@@ -544,21 +544,20 @@ def test_basic_advanced_mode_toggle():
     assert led.get_config(1)["caps"]["_ui_mode"] == "basic"
 
 
-def test_sell_sheet_pool_position_offers_full_exit_only():
-    """A graduated position is stored with the default venue='curve'; the sheet
-    must gate on the LIVE kind, not the column, or it offers percent chips that
-    the executor rejects for a non-split-able pool/Aftermath position."""
+def test_sell_sheet_pool_position_still_offers_percent_chips():
+    """The exit sheet offers the 25/50/75/100% + custom chips on EVERY venue
+    now — pool/Aftermath positions sell a slice just like curves do."""
     led = DegenLedger(":memory:")
     led.set_config(1, enabled=1, ai_key_ok=1)
     ui = _mk(led)
     pid = led.upsert_position(1, "suipump", CID, "0x" + "ee" * 32 + "::t::T",
                               "0xw", add_sui=1.0, add_tokens=int(1e9),
                               symbol="SUIFROG", venue="curve")
-    ui._position_kind = lambda pos: "pool"
     calls = _run(ui, f"dg:sell:{pid}", led)
     flat = str(calls[-1][2].inline_keyboard)
-    assert f"dg:sellp:{pid}:100" in flat
-    assert "25%" not in flat and f"dg:sellc:{pid}" not in flat
+    for pct in (25, 50, 75, 100):
+        assert f"dg:sellp:{pid}:{pct}" in flat
+    assert f"dg:sellc:{pid}" in flat
 
 
 def test_sell_never_dies_when_message_cannot_be_edited():

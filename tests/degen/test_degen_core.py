@@ -564,12 +564,117 @@ def test_executor_failed_sell_preserves_position(amount):
     assert led.fills_for(result["order_id"]) == []
 
 
-def test_executor_partial_sell_rejects_unsupported_venue():
+def test_pool_partial_sell_slices_real_balance():
+    """A pool position now sells a % of its REAL on-chain balance slice (the
+    ledger can lag the chain); 25% of a 4e12 holding books a 1e12 sell and the
+    ledger keeps the remainder."""
     led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
     ex, ad, ch = _mk_exec(led)
-    result = ex.sell(1, {}, _pool_state(), {}, sell_atoms=1)
-    assert not result["ok"]
-    assert ad.broadcasts == []
+    base64b = __import__("base64")
+
+    class FakeSpot:
+        def quote_route(self, ci, co, amount_in_atoms=None, slippage_bps=100,
+                        external_fee=None, protocols_whitelist=None):
+            return {"feeBreakdown": [{"recipient": external_fee["recipient"],
+                                      "amount": str(int(amount_in_atoms * 0.005)) + "n"}],
+                    "routes": []}
+        def swap_tx_b64(self, q, wallet, slip):
+            return {"transaction": base64b.b64encode(b"\x00PTBBODY").decode()}
+
+    ex._spot = lambda addr: FakeSpot()
+    real_tokens = 4_000_000_000_000
+    ch._coins[ad.address] = [
+        {"objectId": "0x" + "e1" * 32, "version": 1, "digest": "f1" * 32,
+         "balance_mist": real_tokens},
+        {"objectId": "0x" + "c1" * 32, "version": 1, "digest": "d1" * 32,
+         "balance_mist": 10 ** 9}]                                  # SUI gas coin
+    balances = iter([real_tokens, real_tokens, 100_000_000, 200_000_000])
+    ch.balance = lambda addr, ct=None: next(balances)
+    ad._broadcast_raw_ptb = lambda body, gp, budget, gas_coin=None: (
+        {"digest": "0xsell1", "status": "SUCCESS"})
+    pid = led.upsert_position(1, "suipump", CID, TOK, ad.address, add_sui=0.4,
+                              add_tokens=16 * 10 ** 12, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    r = ex.sell(1, {"wallet": ad.address, "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, _pool_state(), pos, sell_pct=25)
+    assert r["ok"], r
+    assert r["tokens_sold"] == real_tokens // 4
+    row = next(p for p in led.positions(1) if p["id"] == pid)
+    assert row["status"] == "open"
+    assert row["tokens"] == 16 * 10 ** 12 - real_tokens // 4
+
+
+def test_pool_full_sell_closes_position():
+    """100% pool exit sells everything and CLOSES the ledger row (previously it
+    rejected pct on pools outright; before that a full exit would strand an
+    open zero-token position)."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    base64b = __import__("base64")
+
+    class FakeSpot:
+        def quote_route(self, ci, co, amount_in_atoms=None, slippage_bps=100,
+                        external_fee=None, protocols_whitelist=None):
+            return {"feeBreakdown": [], "routes": []}
+        def swap_tx_b64(self, q, wallet, slip):
+            return {"transaction": base64b.b64encode(b"\x00PTBBODY").decode()}
+
+    ex._spot = lambda addr: FakeSpot()
+    real_tokens = 3 * 10 ** 12
+    ch._coins[ad.address] = [
+        {"objectId": "0x" + "e1" * 32, "version": 1, "digest": "f1" * 32,
+         "balance_mist": real_tokens},
+        {"objectId": "0x" + "c1" * 32, "version": 1, "digest": "d1" * 32,
+         "balance_mist": 10 ** 9}]
+    balances = iter([real_tokens, real_tokens, 100_000_000, 500_000_000])
+    ch.balance = lambda addr, ct=None: next(balances)
+    ad._broadcast_raw_ptb = lambda body, gp, budget, gas_coin=None: (
+        {"digest": "0xsell2", "status": "SUCCESS"})
+    pid = led.upsert_position(1, "suipump", CID, TOK, ad.address, add_sui=0.4,
+                              add_tokens=real_tokens, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    r = ex.sell(1, {"wallet": ad.address, "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, _pool_state(), pos, sell_pct=100)
+    assert r["ok"] and r["tokens_sold"] == real_tokens
+    assert led.positions(1) == []                                     # closed
+
+
+def test_pool_sell_by_explicit_amount():
+    """Pool venues also accept a bare sell_atoms slice (no %-resolution)."""
+    led = DegenLedger(":memory:")
+    led.set_config(1, enabled=1, ai_key_ok=0, budget_sui=20)
+    ex, ad, ch = _mk_exec(led)
+    base64b = __import__("base64")
+
+    class FakeSpot:
+        def quote_route(self, ci, co, amount_in_atoms=None, slippage_bps=100,
+                        external_fee=None, protocols_whitelist=None):
+            return {"feeBreakdown": [], "routes": []}
+        def swap_tx_b64(self, q, wallet, slip):
+            return {"transaction": base64b.b64encode(b"\x00PTBBODY").decode()}
+
+    ex._spot = lambda addr: FakeSpot()
+    real_tokens = 8 * 10 ** 12
+    ch._coins[ad.address] = [
+        {"objectId": "0x" + "e1" * 32, "version": 1, "digest": "f1" * 32,
+         "balance_mist": real_tokens},
+        {"objectId": "0x" + "c1" * 32, "version": 1, "digest": "d1" * 32,
+         "balance_mist": 10 ** 9}]
+    balances = iter([real_tokens, 100_000_000, 500_000_000])
+    ch.balance = lambda addr, ct=None: next(balances)
+    ad._broadcast_raw_ptb = lambda body, gp, budget, gas_coin=None: (
+        {"digest": "0xsell3", "status": "SUCCESS"})
+    pid = led.upsert_position(1, "suipump", CID, TOK, ad.address, add_sui=0.4,
+                              add_tokens=real_tokens, symbol="GT")
+    pos = next(p for p in led.positions(1) if p["id"] == pid)
+    slice_atoms = 2 * 10 ** 12
+    r = ex.sell(1, {"wallet": ad.address, "launchpad": "suipump", "curve_id": CID,
+                    "otype": "market"}, _pool_state(), pos, sell_atoms=slice_atoms)
+    assert r["ok"] and r["tokens_sold"] == slice_atoms
+    row = next(p for p in led.positions(1) if p["id"] == pid)
+    assert row["tokens"] == real_tokens - slice_atoms
 
 
 def test_sell_ptb_merged_partial_with_fee_returns_primary_coin():
@@ -764,8 +869,8 @@ def test_dex_swap_post_grad_records_fill_and_position():
     assert fills and fills[0]["tokens"] == 99_999_000_000, fills
     pos = led.positions(1)
     assert pos and pos[0]["entry_sui"] == 0.5
-    # integrator fee actually requested on the route
-    assert calls["quote"][3] and calls["quote"][3]["feePercentage"] == 0.5
+    # integrator fee actually requested on the route (0.5% == 0.005, not 0.5=50%)
+    assert calls["quote"][3] and calls["quote"][3]["feePercentage"] == 0.005
     assert calls["wl"] == ["Cetus"]        # suipump graduates pinned to Cetus
 
 
@@ -779,3 +884,49 @@ def test_insufficient_balance_says_so_plainly():
                sui_amount=0.5, min_out=0)
     assert r["ok"] is False and r["error"] == "insufficient SUI balance", r
     assert ad.broadcasts == []                        # never reached broadcaster
+
+
+def test_aftermath_gas_caps_budget_to_single_coin():
+    """A 0.587-SUI coin must not be broadcast with a flat 1-SUI budget cap —
+    Sui rejects gas balance < budget. Budget must shrink to the leftover, and
+    the gas coin must be the one covering the swap input."""
+    led = DegenLedger(":memory:")
+    ex, ad, ch = _mk_exec(led)
+    ch._coins = {ad.address: [
+        {"objectId": "0x" + "11" * 32, "version": 1, "digest": "22" * 32,
+         "balance_mist": int(0.587 * 1e9)}]}
+    budget, gas = ex._aftermath_gas(ad, int(0.1 * 1e9), int(0.005 * 1e8 * 0.1))
+    assert gas["objectId"] == "0x" + "11" * 32
+    assert 0 < budget < 1_000_000_000            # capped below the 1-SUI flat cap
+    assert int(0.1e9) + int(0.005 * 0.1e9) + budget < 0.587 * 1e9
+    assert budget >= 5_000_000                    # but still enough for gas
+
+
+def test_aftermath_gas_picks_smallest_coin_that_fits():
+    led = DegenLedger(":memory:")
+    ex, ad, ch = _mk_exec(led)
+    ch._coins = {ad.address: [
+        {"objectId": "0x" + "33" * 32, "version": 1, "digest": "44" * 32,
+         "balance_mist": int(0.05 * 1e9)},     # dust, too small to cover input
+        {"objectId": "0x" + "55" * 32, "version": 1, "digest": "66" * 32,
+         "balance_mist": int(0.45 * 1e9)},     # fits: chosen
+        {"objectId": "0x" + "77" * 32, "version": 1, "digest": "88" * 32,
+         "balance_mist": int(2.0 * 1e9)}]}
+    budget, gas = ex._aftermath_gas(ad, int(0.1 * 1e9), 0)
+    assert gas["objectId"] == "0x" + "55" * 32
+    assert budget < 1_000_000_000
+
+
+def test_aftermath_gas_refuses_when_no_coin_covers_input():
+    led = DegenLedger(":memory:")
+    ex, ad, ch = _mk_exec(led)
+    ch._coins = {ad.address: [
+        {"objectId": "0x" + "33" * 32, "version": 1, "digest": "44" * 32,
+         "balance_mist": int(0.05 * 1e9)}]}
+    from sui_adapter import SuiRpcError
+    try:
+        ex._aftermath_gas(ad, int(1.0 * 1e9), 0)    # need 1 SUI, have 0.05
+    except SuiRpcError as exc:
+        assert "single coin" in str(exc)
+    else:
+        raise AssertionError("expected SuiRpcError for low single-coin balance")

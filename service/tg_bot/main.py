@@ -77,7 +77,8 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
         try:
             from chatwallet import (parse_chat_wallet, created_reply, exists_reply,
                                     failed_reply, provision_wallet,
-                                    enable_degen_defaults, master_username)
+                                    enable_degen, master_username,
+                                    chat_usernames_from_env)
             msg = update.effective_message
             if msg and msg.text:
                 w = parse_chat_wallet(msg.text, chat_usernames_from_env())
@@ -92,9 +93,7 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
                         bid = max(b["id"] for b in bots) if bots else None
                         if bid is not None and any(b["id"] == bid and b.get("wallet_addr")
                                                    for b in bots):
-                            addr = next((b.get("wallet_addr") for b in bots
-                                         if b["id"] == bid and b.get("wallet_addr")), "")
-                            await msg.reply_text(exists_reply(name, master, addr),
+                            await msg.reply_text(exists_reply(name, master),
                                                  parse_mode="HTML")
                             raise ApplicationHandlerStop
                         if bid is None:
@@ -123,7 +122,7 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
                         registry.update_bot(bid, wallet_addr=address,
                                             wallet_precreated=1, chain="sui",
                                             network="mainnet")
-                        degen_on = enable_degen_defaults(bid)
+                        degen_on = enable_degen(bid)
                         try:
                             userbot.start_bot(bid)
                         except Exception:  # noqa: BLE001 - best-effort
@@ -142,7 +141,7 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
         # In-chat @neko buy for someone with no bot yet: point them at onboarding
         # instead of silently dropping their tag.
         try:
-            from chatbuy import parse_chat_buy, chat_usernames_from_env
+            from chatbuy import parse_chat_buy
             msg = update.effective_message
             if msg and msg.text:
                 log.info("router: text chat=%s uid=%s. %r", msg.chat_id,

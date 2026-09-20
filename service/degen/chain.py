@@ -272,3 +272,51 @@ class Chain:
             return int(cfg.get("referenceGasPrice") or 1000)
         except (GqlError, ValueError):
             return 1000
+
+    def tx_balance_change(self, owner: str, coin_type: str, digest: str) -> int:
+        """Net coin delta (positive only) a successful tx sent to (owner, coin_type).
+
+        Reads transaction.effects.balanceChangesJson — an exact, settled record —
+        so fill amounts never depend on GraphQL balance eventual-consistency."""
+        owner = safe_addr(owner)
+        coin_type = safe_type(coin_type)
+        digest = (digest or "").strip()
+        if owner is None or coin_type is None or not _CURSOR_RE.match(digest):
+            return 0
+
+        def _inner(t: str) -> str:
+            t = (t or "").lower()
+            prefix = "0x2::coin::coin<"
+            if t.startswith(prefix) and t.endswith(">"):
+                t = t[len(prefix):-1]
+            return t
+
+        want = _inner(coin_type)
+        q = '{ transaction(digest: "' + digest + '") { effects { status balanceChangesJson } } }'
+        try:
+            tx = (self.query(q) or {}).get("transaction") or {}
+            eff = tx.get("effects") or {}
+            if str(eff.get("status", "")).upper() != "SUCCESS":
+                return 0
+            raw = eff.get("balanceChangesJson")
+            try:
+                changes = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            except (TypeError, ValueError):
+                changes = []
+            got = 0
+            for ch in changes:
+                if not isinstance(ch, dict):
+                    continue
+                if _inner(ch.get("coinType") or "") != want:
+                    continue
+                if (ch.get("address") or "").lower() != owner.lower():
+                    continue
+                try:
+                    n = int(ch.get("amount") or 0)
+                except (TypeError, ValueError):
+                    n = 0
+                if n > 0:
+                    got += n
+            return got
+        except (GqlError, ValueError, TypeError, KeyError):
+            return 0
