@@ -66,6 +66,7 @@ CREATE TABLE bots (
     watchlist TEXT DEFAULT '',
     onboarding_complete INTEGER DEFAULT 0,
     wallet_addr TEXT DEFAULT '',
+    wallet_precreated INTEGER DEFAULT 0,
     trading_mode TEXT DEFAULT 'paper',
     priority_watch TEXT DEFAULT '',
     created_at TEXT NOT NULL
@@ -82,7 +83,7 @@ _ORDERED_NEW_COLS = [
     "interval_sec", "risk_profile", "risk_caps", "is_running", "paused", "pid",
     "last_heartbeat", "last_error", "scheduled_deletion_at", "trader_type",
     "chain", "network", "watchlist", "onboarding_complete", "wallet_addr",
-    "trading_mode", "priority_watch", "created_at",
+    "wallet_precreated", "trading_mode", "priority_watch", "created_at",
 ]
 
 

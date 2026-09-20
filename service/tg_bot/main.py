@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes, TypeHandler, ApplicationHandlerStop
 
 import tg_config as cfg
@@ -70,6 +70,75 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     async def _router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         import logging
         log = logging.getLogger("tg_bot")
+        # In-chat @neko "create wallet": provision a Sui wallet + register the
+        # tagger so one /start later drops them straight onto the dashboard in
+        # degen mode. Runs BEFORE the buy branch so it also works for brand-new
+        # users (chatbuy's no-bot fallback only knows about buys).
+        try:
+            from chatwallet import (parse_chat_wallet, created_reply, exists_reply,
+                                    failed_reply, provision_wallet,
+                                    enable_degen_defaults, master_username)
+            msg = update.effective_message
+            if msg and msg.text:
+                w = parse_chat_wallet(msg.text, chat_usernames_from_env())
+                if w is not None:
+                    user = update.effective_user
+                    uid = user.id if user else None
+                    if uid is not None:
+                        name = (user.username or user.first_name or "trader")
+                        log.info("router: create-wallet mention uid=%s name=%r", uid, w)
+                        master = master_username()
+                        bots = registry.bots_for(uid)
+                        bid = max(b["id"] for b in bots) if bots else None
+                        if bid is not None and any(b["id"] == bid and b.get("wallet_addr")
+                                                   for b in bots):
+                            addr = next((b.get("wallet_addr") for b in bots
+                                         if b["id"] == bid and b.get("wallet_addr")), "")
+                            await msg.reply_text(exists_reply(name, master, addr),
+                                                 parse_mode="HTML")
+                            raise ApplicationHandlerStop
+                        if bid is None:
+                            # token-less master-only bot row; degen does not read
+                            # platform_token/agent credentials, so the platform
+                            # register_agent round-trip is skipped here.
+                            import re as _re
+                            agent = _re.sub(r"[^0-9A-Za-z_-]", "-",
+                                            f"tag-{name}-{uid % 10000}")[:32]
+                            try:
+                                bid = registry.create_bot(
+                                    uid, name, None, None, agent, "",
+                                    {"perps": 0, "spot": 1, "us-stock": 0, "forex": 0},
+                                    1.0, 120, "balanced")["id"]
+                            except ValueError as exc:
+                                log.warning("router: create-wallet bot row failed: %s", exc)
+                                await msg.reply_text(failed_reply(name, master),
+                                                     parse_mode="HTML")
+                                raise ApplicationHandlerStop
+                        address, key = provision_wallet(bid)
+                        if not address:
+                            log.warning("router: create-wallet provision failed bot=%s", bid)
+                            await msg.reply_text(failed_reply(name, master),
+                                                 parse_mode="HTML")
+                            raise ApplicationHandlerStop
+                        registry.update_bot(bid, wallet_addr=address,
+                                            wallet_precreated=1, chain="sui",
+                                            network="mainnet")
+                        degen_on = enable_degen_defaults(bid)
+                        try:
+                            userbot.start_bot(bid)
+                        except Exception:  # noqa: BLE001 - best-effort
+                            pass
+                        log.info("router: wallet created bot=%s uid=%s degen=%s", bid, uid, degen_on)
+                        await msg.reply_text(
+                            created_reply(name, master), parse_mode="HTML",
+                            reply_markup=InlineKeyboardMarkup([[
+                                InlineKeyboardButton("🗝️ Get my key",
+                                                     url=f"https://t.me/{master}")]]))
+                        raise ApplicationHandlerStop
+        except ApplicationHandlerStop:
+            raise
+        except Exception:  # noqa: BLE001 - the router must never dead-drop updates
+            pass
         # In-chat @neko buy for someone with no bot yet: point them at onboarding
         # instead of silently dropping their tag.
         try:

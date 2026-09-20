@@ -80,22 +80,34 @@ async def _answer_once(q, *args, **kwargs):
     Telegram raises BadRequest 'Query is already answered' on a second answer,
     which aborts the whole handler — the 2026-09-17 dead-button class of bug
     (Start, close, rewards all answered bare first, then tried to show a reason
-    toast and died). The first answer goes through as before; any later reason
-    is delivered as a plain reply so it is never lost."""
-    if not getattr(q, "_neko_answered", False):
-        try:
-            await q.answer(*args, **kwargs)
-        except Exception as exc:
-            if "already answered" not in str(exc).lower():
-                raise
-        q._neko_answered = True
+    toast and died). The FIRST answer goes through as before; any later reason
+    is delivered as a plain reply so it is never lost.
+
+    Answered-state is tracked in a module-level set keyed by callback id, never
+    by writing an attribute onto the CallbackQuery object: python-telegram-bot
+    versions that build CallbackQuery with __slots__ (the VPS install) raise
+    AttributeError on the stamp ('CallbackQuery' object has no attribute
+    '_neko_answered' — the 2026-09-20 "cat tripped" degen-hub class of bug),
+    while the dev venv (slots=False) silently allowed it. id-keyed set is
+    version-proof: it uses only q.id, which every PTB version provides."""
+    qid = getattr(q, "id", "")
+    if qid and qid in _ANSWERED_IDS:
+        if args and args[0]:
+            try:
+                if getattr(q, "message", None) is not None:
+                    await q.message.reply_text(str(args[0]))
+            except Exception:
+                pass
         return
-    if args and args[0]:
-        try:
-            if getattr(q, "message", None) is not None:
-                await q.message.reply_text(str(args[0]))
-        except Exception:
-            pass
+    try:
+        await q.answer(*args, **kwargs)
+    except Exception as exc:
+        if "already answered" not in str(exc).lower():
+            raise
+    if qid:
+        _ANSWERED_IDS.add(qid)
+        if len(_ANSWERED_IDS) > _MAX_ANSWERED_IDS:
+            _ANSWERED_IDS.clear()
 
 
 async def _routed_error_handler(update, context):
@@ -1386,6 +1398,35 @@ class UserBotController:
             if (b or {}).get("onboarding_complete"):
                 await dash(update, context)
                 return
+            # Wallet was pre-created via "@neko create wallet" in a group: skip
+            # the whole wizard, reveal the ONE-TIME key here in the DM, then drop
+            # them straight onto the dashboard (degen view already armed).
+            if (b or {}).get("wallet_precreated"):
+                try:
+                    self._exec_path()
+                    from chatwallet import wallet_credentials
+                    addr, key = wallet_credentials(bot_id)
+                except Exception:
+                    addr, key = "", ""
+                if addr and key:
+                    text = ONBOARD["wallet_created"].format(chain="Sui",
+                                                            address=addr,
+                                                            private_key=key)
+                    text += ("\n\n🎰 You're set up in <b>degen mode</b> — tap the "
+                             "degen cards on your dashboard to start sniping.")
+                    kb = telegram.InlineKeyboardMarkup([
+                        [telegram.InlineKeyboardButton("🗝️ I've saved my key",
+                                                       callback_data="ob:key_saved")],
+                    ])
+                    if update.message:
+                        m = await update.message.reply_text(text, parse_mode="HTML",
+                                                            reply_markup=kb)
+                    else:
+                        m = await update.callback_query.message.edit_text(
+                            text, parse_mode="HTML", reply_markup=kb)
+                    _schedule_msg_delete(self._master_token or "",
+                                         update.effective_chat.id, m.message_id)
+                    return
             # onboarding first (trader type -> chain -> wallet) — key comes later
             text = (
                 f"🐾 Welcome to {bot['bot_name']} - your AI trading cat.\n\n"
