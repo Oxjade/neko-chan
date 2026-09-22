@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "execution"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, ContextTypes, TypeHandler, ApplicationHandlerStop
+from telegram.ext import (Application, ContextTypes, TypeHandler,
+                        ApplicationHandlerStop, CallbackQueryHandler)
 
 import tg_config as cfg
 from key_vault import KeyVault
