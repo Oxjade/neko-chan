@@ -97,9 +97,8 @@ def tracked_reply(username: str = "", count: int = 1, max_tracks: int = MAX_TRAC
                   mention: str = "") -> str:
     name = esc(username or "trader")
     mention = esc(mention or "neko_tradesbot")
-    return (f"🐾 @{name}, <b>tracking wallet now.</b> ({count}/{max_tracks})\n\n"
-            f"I'll alert this chat when the wallet trades on Sui — buys and sells "
-            f"from <b>1 SUI</b> up. Trade it now with @{mention}.")
+    return (f"🐾 Neko is keeping an eye on this wallet. ({count}/{max_tracks})\n\n"
+            f"⚡ Trade with @{mention}")
 
 
 def limit_reply(username: str = "", max_tracks: int = MAX_TRACKS) -> str:
