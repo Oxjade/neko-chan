@@ -9,7 +9,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from tg_config import RUNNER_SCRIPT, RISK_PRESETS
+from tg_config import RUNNER_SCRIPT, RISK_PRESETS, PROVIDER_PRESETS
 from store import utcnow
 
 
@@ -91,6 +91,16 @@ class AgentPool:
         except Exception:
             markets = {"perps": 1, "spot": 0, "us-stock": 0, "forex": 0}
         env = os.environ.copy()
+        # Preset providers (openai/openrouter/deepseek/claude) use their own
+        # endpoint even when the stored key has no base_url: falling back to
+        # OpenRouter here sent a deepseek key to openrouter.ai and 401'd every
+        # LLM call (`Missing Authentication header`) - the bot looked alive but
+        # never made a decision.
+        _key_base = (key or {}).get("base_url") or ""
+        if key and not _key_base:
+            _preset = PROVIDER_PRESETS.get((key.get("provider") or "").strip().lower())
+            if _preset:
+                _key_base = _preset["base_url"]
         env.update({
             "LIVE_AGENT_SYMBOLS": _symbols_to_universe(
                 markets, float(bot.get("leverage") or 1.0),
@@ -103,7 +113,7 @@ class AgentPool:
             "LIVE_AGENT_LEVERAGE": str(bot.get("leverage") or 1),
             "LIVE_AGENT_API_KEY": key["api_key"] if key else "",
             "LIVE_AGENT_PROVIDER": key["provider"] if key else "",
-            "LIVE_AGENT_BASE_URL": key.get("base_url") or "" if key else "",
+            "LIVE_AGENT_BASE_URL": _key_base,
             "LIVE_AGENT_MODEL": key.get("model") or "gpt-4o-mini" if key else "",
             "LIVE_AGENT_TOKEN": bot["platform_token"],
             "LIVE_AGENT_NAME": bot["agent_name"],

@@ -1595,12 +1595,21 @@ class UserBotController:
                     f"• If your provider uses a non-standard API shape, the bot "
                     f"falls back to OpenAI-compatible calls"
                 )
-            await update.message.reply_text(
-                f"✅ Key works ({provider}) · model <code>{model}</code>\n\n"
-                "Let's set up how Neko-Chan trades for you." + rule_notice,
-                parse_mode="HTML",
-            )
-            await onboarding_intro(update, context)
+            # Already-set-up users just go back to their dashboard: re-running
+            # the full onboarding wizard after every key connect trapped perp
+            # users on a "Continue" that only walked them through setup again
+            # (no straight path back to trading).
+            _b = self.registry.get_bot(bot_id)
+            if (_b or {}).get("onboarding_complete"):
+                await update.message.reply_text(
+                    f"✅ Key works ({provider}) · model <code>{model}</code>\n"
+                    "Your bot stays exactly as configured — you're back on the "
+                    "dashboard and ready to trade." + rule_notice,
+                    parse_mode="HTML",
+                )
+                await dash(update, context)
+            else:
+                await onboarding_intro(update, context)
             return ConversationHandler.END
 
         async def key_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):

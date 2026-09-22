@@ -123,6 +123,17 @@ except Exception:
 LIVE_AGENT_API_KEY = os.getenv("LIVE_AGENT_API_KEY", "")
 LIVE_AGENT_PROVIDER = os.getenv("LIVE_AGENT_PROVIDER", "openai")
 LIVE_AGENT_BASE_URL = os.getenv("LIVE_AGENT_BASE_URL", "")
+# Provider preset endpoints (mirror of service/tg_bot/tg_config.py
+# PROVIDER_PRESETS). If no base URL is passed for a preset provider, route the
+# caller to that provider's real endpoint instead of the OpenRouter default -
+# a deepseek/openai key sent to OpenRouter 401s every LLM call and the bot
+# never makes a decision.
+_PROVIDER_DEFAULT_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+    "claude": "https://api.anthropic.com/v1",
+}
 LIVE_AGENT_LEVERAGE = float(os.getenv("LIVE_AGENT_LEVERAGE", "20"))
 # Max leverage is PER ASSET, per venue. VERIFIED from Aftermath
 # /api/perpetuals/all-markets marginRatioInitial (maxLev = 1/IMR), 2026-09-01:
@@ -897,7 +908,7 @@ def _provider_completion(system: str, user: str) -> dict:
 
     # ---- Anthropic (Claude): /v1/messages + x-api-key ----
     if prov == "claude":
-        base = (LIVE_AGENT_BASE_URL or "https://api.anthropic.com/v1").rstrip("/")
+        base = (LIVE_AGENT_BASE_URL or _PROVIDER_DEFAULT_BASE_URLS["claude"]).rstrip("/")
         url = f"{base}/messages"
         headers = {
             "x-api-key": LIVE_AGENT_API_KEY,
@@ -928,7 +939,8 @@ def _provider_completion(system: str, user: str) -> dict:
             return {"action": "hold", "quantity": 0, "reasoning": f"llm-error: {exc}"}
     else:
         # ---- OpenAI / OpenRouter / DeepSeek / custom: /chat/completions ----
-        base = (LIVE_AGENT_BASE_URL or "https://openrouter.ai/api/v1").rstrip("/")
+        base = (LIVE_AGENT_BASE_URL
+                or _PROVIDER_DEFAULT_BASE_URLS.get(prov, "https://openrouter.ai/api/v1")).rstrip("/")
         url = f"{base}/chat/completions"
         headers = {"Authorization": f"Bearer {LIVE_AGENT_API_KEY}",
                    "Content-Type": "application/json"}
@@ -2033,6 +2045,16 @@ def run_cycle(token: str, dry: bool = False) -> None:
                         matrix = scenario_matrix(scenario_closes, prices,
                                                  trader_type=TRADER_TYPE,
                                                  bars_per_year=bpy_by_symbol)
+                        # FULL pre-filter matrix: keep a snapshot of BOTH
+                        # directions BEFORE the RSI/scalp-momentum hard gates
+                        # strip the unfavored side. In an uptrend the hard
+                        # gates remove every short and best_short becomes None
+                        # - the LLM then only ever sees LONG rows and re-picks
+                        # LONG every cycle (the "long drift"). best_long and
+                        # best_short below come from THIS full set so the model
+                        # always sees a real long vs short choice; the hard
+                        # gates still decide which scenarios are fillable.
+                        matrix_full = list(matrix)
                         # MOMENTUM CONFIRMATION (the proven scalp edge): LONG is
                         # favored when EMA8 > EMA21 on the 5m series, SHORT when
                         # EMA8 < EMA21. This lifts the ~36% GBM coin-flip win rate
@@ -2154,11 +2176,17 @@ def run_cycle(token: str, dry: bool = False) -> None:
                                 pass
                         if _traded_today:
                             _skipped_today = sorted(s for s in _traded_today
-                                                    if any(s == sc.symbol for sc in matrix))
-                            matrix = [s for s in matrix if s.symbol not in _traded_today]
+                                                    if any(s == sc.symbol for sc in matrix)
+                                                    and s != PRIORITY)
+                            # ONE TRADE PER TOKEN PER DAY - but a PRIORITY WATCH
+                            # ('watch X now') is an explicit user demand and stays
+                            # analyzable even if the symbol was filled earlier today.
+                            matrix = [s for s in matrix
+                                      if s.symbol not in _traded_today or s.symbol == PRIORITY]
                             if _skipped_today:
                                 print(f"[quant] already traded today: {', '.join(_skipped_today)} "
-                                      f"- moving to next token")
+                                      f"- moving to next token"
+                                      + (f" (PRIORITY {PRIORITY} exempt)" if PRIORITY in _traded_today else ""))
                         # WATCHED = WAIT FOR GREAT (applies to the cooldown
                         # path too): if a watched symbol is the would-be pick,
                         # it only proceeds when its conviction matches or
@@ -2199,9 +2227,9 @@ def run_cycle(token: str, dry: bool = False) -> None:
                     # lets the LLM weigh P(win)/EV/momentum and pick the better
                     # direction. The positive-EV + floor rules still gate the
                     # FILL slots below and the deterministic cooldown path.
-                    best_long = max((s for s in matrix if s.direction == "long"),
+                    best_long = max((s for s in matrix_full if s.direction == "long"),
                                     key=lambda s: s.conviction, default=None)
-                    best_short = max((s for s in matrix if s.direction == "short"),
+                    best_short = max((s for s in matrix_full if s.direction == "short"),
                                      key=lambda s: s.conviction, default=None)
                     top = []
                     # WATCHED FIRST: the user's watched tokens take priority -
