@@ -2,7 +2,8 @@
 
 import telegram
 from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
+from telegram.ext import (ContextTypes, CommandHandler, CallbackQueryHandler,
+                          ApplicationHandlerStop)
 
 from tg_config import ADMIN_TG_IDS
 from key_vault import KeyVault
@@ -15,6 +16,23 @@ def tour_nav(page: int):
     single screen with the straight-to-onboarding button."""
     page = min(len(TOUR), max(1, page))
     return TOUR[page], "🐾 Create my bot", "nav:add"
+
+
+def provision_generic_bot(registry, user):
+    """Auto-provision a token-less, degen-first bot row under a GENERIC name so
+    a brand-new user is identifiable without picking a name (Sui memes only).
+
+    Mirrors the @neko 'create wallet' path (main.py): no platform agent, no
+    per-user Telegram token — degen doesn't read either. Returns the bot row or
+    None on any failure (callers fall back to the guided tour)."""
+    tag = user.id % 10000
+    try:
+        return registry.create_bot(
+            user.id, f"Neko Trader {tag}", None, None, f"neko_trader_{tag}", "",
+            {"perps": 0, "spot": 0, "us-stock": 0, "forex": 0},
+            1.0, 120, "balanced")
+    except Exception:
+        return None
 
 
 def register_master_handlers(app, registry, platform, userbot_controller):
@@ -36,7 +54,23 @@ def register_master_handlers(app, registry, platform, userbot_controller):
                 except Exception:
                     pass
                 if await userbot_controller.route(update, target):
-                    return
+                    # Stop propagation: the master TypeHandler router would
+                    # otherwise re-route the same /start into the bot app and
+                    # double-render the dashboard/onboarding.
+                    raise ApplicationHandlerStop
+        # Brand-new user: auto-provision a generic-name bot and drop them straight
+        # into the Sui degen onboarding. The guided tour stays registered below as
+        # a fallback for when provisioning fails.
+        if not promoted and userbot_controller is not None:
+            row = provision_generic_bot(registry, user)
+            if row:
+                context.chat_data["active_bot_id"] = row["id"]
+                try:
+                    userbot_controller.start_bot(row["id"])
+                except Exception:
+                    pass
+                if await userbot_controller.route(update, row["id"]):
+                    raise ApplicationHandlerStop
         if promoted:
             text = (f"👑 Welcome, {user.first_name or user.username or 'owner'}! You're the owner of Neko. 🐾")
         else:

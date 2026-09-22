@@ -208,12 +208,16 @@ def _schedule_msg_delete(bot_token: str, chat_id: int, message_id: int,
 
 def render_production_dashboard(bot: dict, account: dict, chain: str,
                                 equity: dict | None = None,
-                                degen_positions: list | None = None) -> str:
+                                degen_positions: list | None = None,
+                                wallet_sui: float | None = None) -> str:
     """Simple production dashboard: real chain balance + address + positions.
 
     `equity` is an optional sui_equity.sui_equity() snapshot used to show a
     real Equity (wallet USDC + Aftermath collateral + unrealized PnL) and the
-    on-chain breakdown, instead of a hard-coded baseline."""
+    on-chain breakdown, instead of a hard-coded baseline.
+
+    `wallet_sui` (degen hub): the on-chain SUI wallet balance. When present the
+    paper/demo USDC balance is hidden — real funds only."""
     line = "─" * 26
     bal = account.get("balances") or {}
     usdc = float(bal.get("USDC", 0))
@@ -279,14 +283,21 @@ def render_production_dashboard(bot: dict, account: dict, chain: str,
         pos_lines.append(f"  {_esc(_sym)}  DEGEN {venue}  {_entry:g} → {_mark:g} SUI"
                          f" ({'+' if _pnl >= 0 else ''}{_pnl:.2f})")
     _n = len(positions) + len(_dg)
+    # Real on-chain SUI (degen hub) replaces the paper/demo balance block.
+    if wallet_sui is not None:
+        balance_lines = [f"  💎 SUI <code>{wallet_sui:,.4f}</code>"]
+    else:
+        balance_lines = [f"  USDC <code>{_money(usdc, sign=False)}</code>"]
+        if native:
+            balance_lines.append(f"  SUI <code>{native:,.4f}</code>")
+        if realized:
+            balance_lines.append(f"  realized {_money(realized)}")
     return (
         f"<b>🐾 {_esc(bot['bot_name'])}</b>\n"
         f"<code>{line}</code>\n"
         f"{_chain_label(chain)}\n\n"
         f"<b>💰 BALANCE</b>\n"
-        f"  USDC <code>{_money(usdc, sign=False)}</code>\n"
-        f"{f'  SUI <code>{native:,.4f}</code>' if native else ''}\n"
-        f"{f'  realized {_money(realized)}' if realized else ''}\n"
+        f"{chr(10).join(balance_lines)}\n"
         f"{equity_lines}\n"
         f"{('<b>🔗 ADDRESS</b>\n  <code>' + _esc(addr) + '</code>') if addr else ''}\n"
         f"<b>📡 POSITIONS ({_n})</b>\n" + "\n".join(pos_lines) + "\n"
@@ -1341,6 +1352,32 @@ class UserBotController:
 
     # ---------------- handlers ----------------
 
+    async def alert_buy(self, bot_id: int, amount: float, ca: str,
+                        idem: str) -> dict:
+        """Execute a degen buy for bot_id from an in-chat wallet-tracker alert.
+
+        Mirrors the chat_buy flow: per-bot serialization (SUI coin race guard),
+        auto-enable + kill-switch handled inside execute_chat_buy, and the reply
+        text is built by the caller. Returns {"ok":…,"digest":…,"error":…,"kind":…}.
+        """
+        res = {"ok": False, "error": "degen engine offline"}
+        try:
+            ui = self._degen_ui(self.registry.get_bot(bot_id))
+        except Exception as exc:  # noqa: BLE001
+            res["error"] = f"engine: {type(exc).__name__}"
+            return res
+        if ui is None:
+            return res
+        lock = self._chat_buy_locks.setdefault(bot_id, asyncio.Lock())
+        async with lock:
+            try:
+                res = await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: execute_chat_buy(
+                        ui, bot_id, amount=amount, ca=ca, idem=idem))
+            except Exception as exc:  # noqa: BLE001
+                res = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
+        return res
+
     # ------------------------------------------------------------- degen (env-gated)
     _degen_cache: dict = {}
     _degen_wallet_factories: dict = {}
@@ -1449,12 +1486,12 @@ class UserBotController:
                     _schedule_msg_delete(self._master_token or "",
                                          update.effective_chat.id, m.message_id)
                     return
-            # onboarding first (trader type -> chain -> wallet) — key comes later
+            # onboarding first (degen-first Sui wallet) — key comes later
             text = (
                 f"🐾 Welcome to {bot['bot_name']} - your AI trading cat.\n\n"
-                "Setup takes 30 seconds: pick a style, a chain, back up your "
-                "wallet — then you're on the dashboard with a $1,000 paper "
-                "portfolio. (You'll connect an AI key so your bot can trade.)\n\n"
+                "One tap and I'll create your <b>Sui wallet</b>, you back up your "
+                "private key once, then you're straight on the <b>degen hub</b> — "
+                "meme sniping on Sui, no AI key needed.\n\n"
                 "⚠️ Trading involves real risk. (I'm a cat, not an advisor.)"
             )
             kb = telegram.InlineKeyboardMarkup([
@@ -1675,7 +1712,7 @@ class UserBotController:
                      "properly (updates, tips, announcements).")
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("📣 Follow @Nekobotnews", url="https://t.me/Nekobotnews")],
-                [telegram.InlineKeyboardButton("Continue →", callback_data="ob:trader")],
+                [telegram.InlineKeyboardButton("Continue →", callback_data="ob:fast")],
             ])
             msg = update.message or update.callback_query.message
             if update.callback_query:
@@ -1740,8 +1777,6 @@ class UserBotController:
                 return
             kb = telegram.InlineKeyboardMarkup([
                 [telegram.InlineKeyboardButton("⛓ Sui (live)", callback_data="ob:chain:sui")],
-                [telegram.InlineKeyboardButton("⛓ Solana", callback_data="ob:chain:solana")],
-                [telegram.InlineKeyboardButton("⛓ Hyperliquid", callback_data="ob:chain:hyperliquid")],
                 [telegram.InlineKeyboardButton(BACK, callback_data="ob:trader")],
             ])
             await q.message.edit_text(ONBOARD["chain"], parse_mode="HTML", reply_markup=kb)
@@ -1751,17 +1786,20 @@ class UserBotController:
             await _answer_once(q, )
             chain = q.data.split(":")[-1]
             _dui = self._degen_ui(self.registry.get_bot(bot_id)) if chain == "sui" else None
-            rows = [[telegram.InlineKeyboardButton("📈 Perps — AI-managed futures",
-                                                    callback_data=f"ob:mode_perp:{chain}")]]
+            # Degen is the main lane: it always leads for Sui. Perps stays coded
+            # but only surfaces as a fallback when the degen engine is unmounted.
+            rows = []
             if _dui is not None:
-                rows.insert(0, [telegram.InlineKeyboardButton(
+                rows.append([telegram.InlineKeyboardButton(
                     "🎰 Degen — meme sniping on Suipump",
                     callback_data=f"ob:mode_degen:{chain}")])
+            else:
+                rows.append([telegram.InlineKeyboardButton(
+                    "📈 Perps — AI-managed futures",
+                    callback_data=f"ob:mode_perp:{chain}")])
             rows.append([telegram.InlineKeyboardButton(BACK, callback_data=f"ob:chain:{chain}")])
             await q.message.edit_text(
-                "🎯 <b>Pick your lane</b>\n\n"
-                "📈 <b>Perps</b> — the AI runs leveraged futures for you "
-                "(needs an AI key for auto-trade).\n"
+                "🎯 <b>Your lane</b>\n\n"
                 "🎰 <b>Degen</b> — high-speed memecoin sniping on Suipump: "
                 "you tap, we fire. No AI key needed.\n\n"
                 "You can switch anytime from the dashboard.",
@@ -1778,6 +1816,21 @@ class UserBotController:
                 if _dui is not None:
                     _dui.enter(bot_id)            # dashboard opens in degen view
             await onboarding_chain_confirm(update, context)
+
+        async def onboarding_fast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Degen-first one-tap setup: auto profile, Sui only, degen view, then
+            straight to the shared wallet-generation path (same as chain_confirm)."""
+            q = update.callback_query
+            await _answer_once(q, )
+            self.registry.update_bot(bot_id, trader_type="auto", leverage=2.0,
+                                     chain="sui")
+            b_now = self.registry.get_bot(bot_id)
+            if not _parse_watchlist((b_now or {}).get("watchlist")):
+                self.registry.update_bot(bot_id, watchlist="BTC,ETH,HYPE,SOL,SUI")
+            _dui = self._degen_ui(b_now)
+            if _dui is not None:
+                _dui.enter(bot_id)                # dashboard opens in degen view
+            await _finalize_chain(q, bot_id, "sui", context)
 
         async def onboarding_chain_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             q = update.callback_query
@@ -1796,9 +1849,14 @@ class UserBotController:
                 }.get(chain, ["BTC", "ETH"])
                 self.registry.update_bot(bot_id,
                                          watchlist=",".join(sorted(_def_watch)))
-            # Generate the real per-chain wallet (address + private key).
-            # Persist EVEN without a gateway so the user's wallet survives
-            # restarts and is always recoverable via the Registry.
+            await _finalize_chain(q, bot_id, chain, context)
+
+        async def _finalize_chain(q, bot_id: int, chain: str,
+                                  context: ContextTypes.DEFAULT_TYPE):
+            """Generate the real per-chain wallet (address + private key) and
+            reveal the ONE-TIME key. Persist EVEN without a gateway so the user's
+            wallet survives restarts and is always recoverable via the Registry.
+            Shared by the full wizard (ob:mode_*) and the degen-first fast path."""
             key_hex = None
             addr = None
             try:
@@ -1846,7 +1904,14 @@ class UserBotController:
             await _answer_once(q, )
             context.bot_data.pop("pending_key", None)
             self.registry.update_bot(bot_id, onboarding_complete=1)
-            await q.message.edit_text(ONBOARD["wallet_saved"], parse_mode="HTML")
+            # SECURITY: the one-time key message is deleted the moment the user
+            # confirms (plus the 5-min safety net scheduled when it was sent) —
+            # nothing with a private key stays on screen.
+            try:
+                await q.message.delete()
+            except Exception:
+                pass
+            await q.message.reply_text(ONBOARD["wallet_saved"], parse_mode="HTML")
             await dash(update, context)
 
         async def dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1887,14 +1952,20 @@ class UserBotController:
             mode = (b.get("trading_mode") or "paper").lower()
             _eq = None if mode == "paper" else self._equity_snapshot(b)
             _dpos = []
+            _wallet_sui = None
             try:
                 _dui = self._degen_ui(b)
-                if _dui is not None and _dui.led.get_config(bot_id).get("enabled"):
+                if _dui is not None and _dui.degen_on(bot_id):
                     _dpos = _dui.positions_marked(bot_id)
+                    try:
+                        _wallet_sui = _dui._wallet_sui(b)
+                    except Exception:
+                        _wallet_sui = None
             except Exception:
                 _dpos = []
             text = render_production_dashboard(b, account, chain, equity=_eq,
-                                               degen_positions=_dpos)
+                                               degen_positions=_dpos,
+                                               wallet_sui=_wallet_sui)
             has_key = bool(self.registry.get_active_key(tg_id))
             # Pause now means "pause trading (LLM)" — bot stays online, so use `paused` flag
             is_trading = not b.get("paused") and b.get("is_running")
@@ -4162,6 +4233,7 @@ class UserBotController:
         app.add_handler(key_conv)
         # onboarding: how Neko trades -> trader type -> chain -> wallet backup
         app.add_handler(CallbackQueryHandler(onboarding_intro, pattern=r"^ob:intro$"))
+        app.add_handler(CallbackQueryHandler(onboarding_fast, pattern=r"^ob:fast$"))
         app.add_handler(CallbackQueryHandler(onboarding_trader, pattern=r"^ob:trader"))
         app.add_handler(CallbackQueryHandler(onboarding_chain, pattern=r"^ob:chain(?::|$)"))
         app.add_handler(CallbackQueryHandler(onboarding_mode, pattern=r"^ob:mode:"))

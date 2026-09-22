@@ -21,7 +21,8 @@ def utcnow() -> str:
 
 
 def _norm_addr(a: str) -> str:
-    core = a[2:] if a.startswith("0x") else a
+    a = str(a).strip()
+    core = a[2:] if a.lower().startswith("0x") else a
     return "0x" + core.zfill(64).lower()
 
 
@@ -201,6 +202,18 @@ CREATE TABLE IF NOT EXISTS ui_ref (
     kind TEXT NOT NULL,                           -- ship inline (§ refs only)
     value TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_track (
+    tg_uid INTEGER NOT NULL,                      -- subscriber (Telegram user id)
+    chat_id INTEGER NOT NULL,                     -- where the alert is posted (group/DM)
+    wallet TEXT NOT NULL,                         -- tracked Sui address (no bot needed)
+    bot_id INTEGER,                               -- tagger's bot at subscribe time (buy button)
+    username TEXT NOT NULL DEFAULT '',            -- tagger handle for @mentions
+    buys INTEGER NOT NULL DEFAULT 3,              -- 1=buys, 2=sells, 3=both
+    min_sui REAL NOT NULL DEFAULT 1.0,            -- ignore activity below this amount
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (tg_uid, wallet)
 );
 """
 
@@ -576,6 +589,56 @@ class DegenLedger:
                  f.get("win_rate", 0.0), f.get("realized_sui", 0.0),
                  f.get("avg_hold_s", 0.0), f.get("trades", 0), f.get("rugs", 0), utcnow()))
             self._conn.commit()
+
+    # ---------------- in-chat wallet tracking ----------------
+
+    def chat_track_count(self, tg_uid: int) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) c FROM chat_track WHERE tg_uid=? AND enabled=1",
+                (tg_uid,)).fetchone()
+        return int(row["c"]) if row else 0
+
+    def chat_track_add(self, tg_uid: int, chat_id: int, wallet: str,
+                       bot_id: int | None = None, username: str = "",
+                       buys: int = 3, min_sui: float = 1.0) -> bool:
+        """Upsert one tracked wallet. Returns True on success."""
+        if buys not in (1, 2, 3):
+            buys = 3
+        min_sui = max(0.0, float(min_sui))
+        try:
+            with self._lock:
+                self._conn.execute(
+                    """INSERT INTO chat_track (tg_uid, chat_id, wallet, bot_id, username,
+                       buys, min_sui, enabled, created_at) VALUES (?,?,?,?,?,?,?,1,?)
+                       ON CONFLICT(tg_uid, wallet) DO UPDATE SET
+                         chat_id=excluded.chat_id, bot_id=excluded.bot_id,
+                         username=excluded.username, buys=excluded.buys,
+                         min_sui=excluded.min_sui, enabled=1""",
+                    (tg_uid, chat_id, _norm_addr(wallet), bot_id, username,
+                     buys, min_sui, utcnow()))
+                self._conn.commit()
+            return True
+        except Exception:
+            return False
+
+    def chat_track_remove(self, tg_uid: int, wallet: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE chat_track SET enabled=0 WHERE tg_uid=? AND wallet=? AND enabled=1",
+                (tg_uid, _norm_addr(wallet)))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def chat_track_rows(self, tg_uid: int) -> list[dict]:
+        q = "SELECT * FROM chat_track WHERE tg_uid=? AND enabled=1 ORDER BY created_at"
+        with self._lock:
+            return [dict(r) for r in self._conn.execute(q, (tg_uid,))]
+
+    def chat_track_all(self) -> list[dict]:
+        q = "SELECT * FROM chat_track WHERE enabled=1 ORDER BY created_at"
+        with self._lock:
+            return [dict(r) for r in self._conn.execute(q)]
 
     # ---------------- streamer cursors / gas pool / launchpad state ----------------
 

@@ -61,6 +61,56 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
     app.add_handler(simple_flow_handlers(registry, vault, platform, userbot, agent_pool))
     register_master_handlers(app, registry, platform, userbot)
 
+    from chattrack import chat_usernames_from_env as _track_names
+    _neko_names = _track_names() or ["neko_tradesbot"]
+
+    # In-chat wallet-tracker "buy it" button (alert CTA). Registered before the
+    # router so the press is consumed here, not forwarded into a bot app.
+    async def _on_tbuy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        from tracker import get_tracker
+        q = update.callback_query
+        if q:
+            await q.answer()
+        _tr = get_tracker()
+        if _tr is None:
+            await q.message.reply_text("❌ wallet tracker offline")
+            raise ApplicationHandlerStop
+        payload = _tr.pop_cta(str(q.data).split(":")[-1]) if q and q.data else None
+        if not payload:
+            await q.message.reply_text("🐾 this trade link expired — re-tag @neko to buy.")
+            raise ApplicationHandlerStop
+        amount = float(payload.get("amount") or 1.0)
+        ca = payload.get("ca") or ""
+        bot_id = payload.get("bot_id")
+        user = update.effective_user
+        uid = user.id if user else None
+        name = (user.username or user.first_name or "trader") if user else "trader"
+        if not uid or uid != payload.get("tg_uid"):
+            await q.message.reply_text(
+                "🐾 that button belongs to its tagger — tag me yourself: "
+                f"<code>@{_neko_names[0]} buy 1 sui {ca}</code>", parse_mode="HTML")
+            raise ApplicationHandlerStop
+        if not (ca and bot_id):
+            await q.message.reply_text(
+                "🐾 In-chat <b>buy</b> needs a trading bot of your own — press "
+                "<b>Start</b> on @%s first, then tap buy again." % _neko_names[0],
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🐾 Create my bot", callback_data="nav:add")]]))
+            raise ApplicationHandlerStop
+        idem = f"tbuy:{bot_id}:{uid}:{q.message.message_id}"
+        res = await userbot.alert_buy(bot_id, amount, ca, idem)
+        if not res.get("ok"):
+            await q.message.reply_text("❌ " + str(res.get("error", "rejected")))
+            raise ApplicationHandlerStop
+        from chatbuy import receipt_text
+        txt = receipt_text("public", username=name, amount=amount,
+                           digest=str(res.get("digest", "")),
+                           mention=_tr.neko_username)
+        await q.message.reply_text(txt, parse_mode="HTML")
+        raise ApplicationHandlerStop
+
+    app.add_handler(CallbackQueryHandler(_on_tbuy, pattern=r"^sb:tbuy:"))
+
     # Master router: single-bot serving. Every update the master's own handlers
     # did NOT claim (dashboard callbacks, onboarding, text on a bot screen) is
     # forwarded into the OWNING bot's Application, whose send identity is the
@@ -137,6 +187,68 @@ def build_app(registry: Registry, platform: PlatformClient, vault: KeyVault,
         except ApplicationHandlerStop:
             raise
         except Exception:  # noqa: BLE001 - the router must never dead-drop updates
+            pass
+        # In-chat @neko wallet tracking: subscribe/untrack/list. A tracked wallet
+        # is just an on-chain Sui address — no bot row needed. Max 8 per tg uid.
+        try:
+            from chattrack import (parse_chat_track, tracked_reply, limit_reply,
+                                   untracked_reply, not_tracked_reply,
+                                   list_reply, MAX_TRACKS)
+            msg = update.effective_message
+            if msg and msg.text:
+                p = parse_chat_track(msg.text, _track_names())
+                if p is not None:
+                    user = update.effective_user
+                    uid = user.id if user else None
+                    name = (user.username or user.first_name or "trader")
+                    if p.get("error"):
+                        await msg.reply_text("❌ " + p["error"], parse_mode="HTML")
+                        raise ApplicationHandlerStop
+                    if uid is None:
+                        log.info("router: track dropped anonymous chat=%s", msg.chat_id)
+                        raise ApplicationHandlerStop
+                    try:
+                        from degen.runtime import get_ledger
+                        _led = get_ledger()
+                    except Exception as exc:
+                        log.warning("router: track ledger offline: %s", exc)
+                        _led = None
+                    if _led is None:
+                        await msg.reply_text("❌ tracking engine offline — degen is dark.")
+                        raise ApplicationHandlerStop
+                    op, wallet = p["op"], p["wallet"]
+                    if op == "track":
+                        log.info("router: track uid=%s wallet=%s", uid, wallet)
+                        if _led.chat_track_count(uid) >= MAX_TRACKS:
+                            await msg.reply_text(limit_reply(name), parse_mode="HTML")
+                            raise ApplicationHandlerStop
+                        bot_id = None
+                        try:
+                            _bots = registry.bots_for(uid)
+                            _act = context.chat_data.get("active_bot_id")
+                            ids = {b["id"] for b in _bots}
+                            bot_id = _act if _act in ids else (max(ids) if ids else None)
+                        except Exception:
+                            bot_id = None
+                        _led.chat_track_add(uid, msg.chat_id, wallet, bot_id=bot_id,
+                                            username=name)
+                        await msg.reply_text(tracked_reply(
+                            name, _led.chat_track_count(uid), mention=p["mention"]),
+                            parse_mode="HTML")
+                        raise ApplicationHandlerStop
+                    if op == "untrack":
+                        removed = _led.chat_track_remove(uid, wallet)
+                        await msg.reply_text(
+                            untracked_reply(name, wallet) if removed
+                            else not_tracked_reply(name, wallet), parse_mode="HTML")
+                        raise ApplicationHandlerStop
+                    if op == "list":
+                        await msg.reply_text(list_reply(_led.chat_track_rows(uid), name),
+                                             parse_mode="HTML")
+                        raise ApplicationHandlerStop
+        except ApplicationHandlerStop:
+            raise
+        except Exception:  # noqa: BLE001
             pass
         # In-chat @neko buy for someone with no bot yet: point them at onboarding
         # instead of silently dropping their tag.
@@ -221,6 +333,13 @@ def start_watchers(registry: Registry, platform: PlatformClient):
         t.start()
         threads.append(t)
         log.info("[watcher] started for bot %s (agent %s)", bot["id"], bot.get("agent_id"))
+    # In-chat wallet tracking: one shared poller, alerts posted via the same
+    # budgeted master notifier. No-op when degen is disabled (env-gated).
+    try:
+        from tracker import start_wallet_tracker
+        start_wallet_tracker(notifier=notifier, budget=budget)
+    except Exception as exc:
+        log.warning("[tracker] start failed: %s", exc)
     return threads
 
 
