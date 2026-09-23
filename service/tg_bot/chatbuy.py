@@ -110,7 +110,7 @@ def execute_chat_buy(ui, bot_id: int, *, amount: float, ca: str,
 
     st = resolve_input(ch, ca)
     kind = getattr(st, "kind", "unknown") if st else "unknown"
-    if st is None or kind not in ("curve", "pool", "generic"):
+    if st is None or kind not in ("curve", "pool", "graduating", "generic"):
         return {"ok": False, "error": f"not buyable ({kind})", "kind": kind}
     if ex is None:
         return {"ok": False, "error": "degen engine offline", "kind": kind}
@@ -142,7 +142,7 @@ def execute_chat_buy(ui, bot_id: int, *, amount: float, ca: str,
             target_price=None,
             source="chat",
         )
-    elif kind == "pool":
+    elif kind in ("pool", "graduating"):
         res = ex.buy_post_grad(
             bot_id, {"qty_sui": float(amount)}, st,
             side="buy", slip_bps=int(slip_bps), idem=idem,

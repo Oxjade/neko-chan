@@ -136,6 +136,33 @@ def test_resolve_curve_graduating_pool():
     assert st2.kind == "pool" and st2.pool_id == "0x" + "ff" * 32
 
 
+def test_resolve_suipump_prebond_curve_by_type():
+    # pre-bond (not graduated) token pasted by full type string, lowercase struct
+    cid = "0x" + "cc" * 32
+    creator = "0x" + "ab" * 32
+    tok = "0x" + "dd" * 32 + "::suipump::SUIPUMP"
+    ch = MockChain({cid: curve_json(cid, creator, 2 * 10 ** 9, 4 * 10 ** 14, int(9000e9))})
+    st = resolve_input(ch, tok)
+    assert st.kind == "curve" and st.launchpad == "suipump"
+    assert st.curve_id == cid and st.progress_bps == int(2e9 * 10000 / 9e12)
+
+
+def test_resolve_suipump_token_case_insensitive():
+    from degen.launchpad import _canonical_token_case
+    cid = "0x" + "cc" * 32
+    creator = "0x" + "ab" * 32
+    LONG = "0x" + "dd" * 32
+    canon = LONG + "::suipump::SUIPUMP"
+    ch = MockChain({cid: curve_json(cid, creator, int(8910e9), 1, int(9000e9))})
+    # lowercase struct must canonicalize to the on-chain casing
+    st = resolve_input(ch, LONG + "::suipump::suipump")
+    assert st.kind == "curve" and st.token_type == canon
+    st2 = resolve_input(ch, LONG + "::suipump::SUIPUMP")
+    assert st2.kind == "curve" and st2.token_type == canon
+    # canonical helper fast-path (struct already uppercased)
+    assert _canonical_token_case(ch, canon) == canon
+
+
 def test_resolve_wallet_and_unknown():
     ch = MockChain()
     st = resolve_input(ch, "0x" + "12" * 32)

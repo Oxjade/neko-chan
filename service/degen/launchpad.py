@@ -34,6 +34,25 @@ def _pad_type(t: str) -> str:
                   lambda m: "0x" + m.group(1).zfill(64), t)
 
 
+_SUIPUMP_TOKEN_RE = re.compile(r"(?i)^(0x[0-9a-f]{1,64})::suipump::suipump$")
+
+
+def _canonical_token_case(ch: Chain, token_type: str) -> str:
+    """Rebuild a pasted type with the package's real on-chain casing.
+
+    Move identifiers are case-sensitive on-chain, but charts and traders
+    commonly lowercase them (``::suipump::suipump`` vs real ``::SUIPUMP``).
+    The regex constrains module+struct to a ``suipump``-named pair, so the
+    canonical form is deterministic: ``{pkg}::suipump::SUIPUMP`` (module
+    names are lowercase, the struct is ``SUIPUMP``). No introspection needed.
+    Falls back to the input unchanged when unresolvable."""
+    m = _SUIPUMP_TOKEN_RE.match(token_type or "")
+    if not m:
+        return token_type
+    pkg = _pad_addr(m.group(1))
+    return f"{pkg}::suipump::SUIPUMP"
+
+
 def _jint(v) -> int:
     try:
         return int(v)
@@ -119,10 +138,10 @@ class SuipumpLaunchpad(Launchpad):
         return "Curve<" + _pad_type(token_type) + ">"
 
     def is_own_token_type(self, type_str: str) -> bool:
-        return type_str.endswith(K.SUIPUMP_TOKEN_TYPE_SUFFIX)
+        return bool(_SUIPUMP_TOKEN_RE.match(type_str or ""))
 
     def find_curve(self, ch: Chain, token_type: str) -> dict | None:
-        tok = _pad_type(token_type)
+        tok = _pad_type(_canonical_token_case(ch, token_type))
         for pkg in self.packages():
             for f in ch.objects_by_type(f"{pkg}::{K.SUIPUMP_MODULE}::Curve<{tok}>"):
                 o = ch.object(f["address"])
@@ -133,7 +152,7 @@ class SuipumpLaunchpad(Launchpad):
     def build_state(self, ch: Chain, curve_obj: dict) -> AssetState:
         j = curve_obj.get("json") or {}
         m = re.match(r"(?i)^0x[0-9a-f]+::bonding_curve::Curve<(.+)>$", curve_obj.get("type", ""))
-        token_type = _pad_type(m.group(1)) if m else ""
+        token_type = _pad_type(_canonical_token_case(ch, m.group(1))) if m else ""
         sui_reserve = _jint(j.get("sui_reserve"))
         tok_reserve = _jint(j.get("token_reserve"))
         # real on-chain field names (verified from curve contents):
