@@ -147,6 +147,8 @@ def test_tracker_alerts_buy_and_sell():
         assert "3.00 SUI" in m["text"]
         assert W in m["text"]  # full address in the alert
         assert "@neko_tradesbot" in m["text"]
+        # subscriber is @mentioned (tg://user link) so they get pinged
+        assert f'tg://user?id=1' in m["text"] and "@alice" in m["text"]
         # CTA button registered (row = [label, callback])
         assert m["buttons"][0][1].startswith("sb:tbuy:")
     cta_id = nf.sent[0]["buttons"][0][1].split(":")[-1]

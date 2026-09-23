@@ -185,8 +185,10 @@ class WalletTracker:
         cta_id = self._register_cta(
             {"tg_uid": row["tg_uid"], "bot_id": row.get("bot_id"),
              "amount": max(DEFAULT_MIN_SUI, round(amt, 2)), "ca": ca})
+        tag = f'<a href="tg://user?id={int(row["tg_uid"])}">@{esc_html(row.get("username") or "you")}</a>'
         text = (
-            f"🐟 <code>{esc_html(row['wallet'])}</code> "
+            f"🐟 {tag} — tracked wallet moved\n"
+            f"<code>{esc_html(row['wallet'])}</code> "
             f"<b>{verb}</b> <b>{amt:.2f} SUI</b> of <b>{esc_html(symbol)}</b>\n"
             f"🔗 https://suiscan.xyz/mainnet/tx/{digest}\n\n"
             f"⚡ trade it now with @{self.neko_username}: "
