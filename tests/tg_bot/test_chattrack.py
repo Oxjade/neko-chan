@@ -113,9 +113,25 @@ class FakeNotifier:
 class FakeChain:
     def __init__(self, nodes=None):
         self._nodes = nodes or {}
+        self.tx_pages = {}            # wallet -> list of digest-lists (consumed in order)
+        self.tx_deltas = {}           # digest -> [{coinType, amount}]
+        self.coin_decs = {}           # coin_type -> decimals
 
     def events(self, t, first=50, after=""):
         return self._nodes.get(t, []), "", False
+
+    def wallet_txs(self, wallet, first=12):
+        pages = self.tx_pages.get(wallet)
+        if not pages:
+            return []
+        page = pages.pop(0) if len(pages) > 1 else pages[0]
+        return page[:first]
+
+    def tx_balance_deltas(self, wallet, digest):
+        return list(self.tx_deltas.get(digest, []))
+
+    def coin_decimals(self, coin_type):
+        return self.coin_decs.get(coin_type, 9)
 
 
 def _node(ev, seq=1, wallet=W, amt_atoms=3 * 10**9, curve="0x" + "e" * 64,
@@ -207,3 +223,110 @@ def test_tracker_dedup_and_cooldown():
     # second identical poll after cooldown -> still deduped
     tr.poll_once()
     assert len(nf.sent) == 1
+
+
+# ------------------------------------------------ any-coin balance alerts
+D1 = "d1" + "b" * 62
+D2 = "d2" + "c" * 62
+TOKEN = "0x" + "f" * 64 + "::pump::TEST"
+
+
+
+
+
+def _bal_tracker(min_sui=1.0):
+    """Any-coin balance tracker on wallet W with subscriber alice/chat 999."""
+    led = make_ledger()
+    led.chat_track_add(1, 999, W, username="alice", buys=3, min_sui=min_sui)
+    ch = FakeChain()
+    nf = FakeNotifier()
+    tr = WalletTracker(ch, led, nf)
+    return led, ch, nf, tr
+
+
+def test_balance_baseline_sets_cursor_no_alert():
+    """First poll only establishes the tx:track cursor (no history spam)."""
+    led, ch, nf, tr = _bal_tracker()
+    ch.tx_pages[W] = [[D1]]
+    assert tr.poll_once() == 0
+    assert nf.sent == []
+    assert led.get_cursor(f"tx:track:{W}") == D1
+
+
+def test_balance_new_digest_alerts():
+    """New digest with any-coin deltas fires a generic balance alert."""
+    led, ch, nf, tr = _bal_tracker()
+    led.set_cursor(f"tx:track:{W}", D1)
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [
+        {"coinType": TOKEN, "amount": 120 * 10**6},
+        {"coinType": K.SUI_COIN_TYPE, "amount": -7 * 10**9},
+    ]
+    ch.coin_decs[TOKEN] = 6
+    assert tr.poll_once() == 1
+    assert len(nf.sent) == 1
+    text = nf.sent[0]["text"]
+    assert "💰" in text
+    assert f'tg://user?id=1' in text and "@alice" in text
+    assert "+120.0000 pump:TEST" in text
+    assert "−7.0000 SUI" in text
+    assert f"https://suiscan.xyz/mainnet/tx/{D2}" in text
+
+
+def test_balance_multi_subscriber_same_wallet():
+    """One fired alert per eligible subscriber row for the same wallet."""
+    led, ch, nf, tr = _bal_tracker()
+    led.chat_track_add(2, 888, W, username="bob", buys=3, min_sui=1.0)
+    led.set_cursor(f"tx:track:{W}", D1)
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [
+        {"coinType": TOKEN, "amount": 120 * 10**6},
+        {"coinType": K.SUI_COIN_TYPE, "amount": 7 * 10**9},
+    ]
+    ch.coin_decs[TOKEN] = 6
+    assert tr.poll_once() == 2
+    assert len(nf.sent) == 2
+    chats = {m["chat_id"] for m in nf.sent}
+    assert chats == {999, 888}
+
+
+def test_balance_skips_already_alerted_event_digest():
+    """Buy event on a digest already fires; the balance path suppresses the
+    duplicate for that same digest (one alert total)."""
+    led, ch, nf, tr = _bal_tracker()
+    led.set_cursor(f"tx:track:{W}", D1)
+    # buy event on D2 enqueues the buy alert AND remembers the event digest
+    tr._event_digests.add((W.lower(), D2))
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [
+        {"coinType": TOKEN, "amount": 120 * 10**6},
+        {"coinType": K.SUI_COIN_TYPE, "amount": -7 * 10**9},
+    ]
+    ch.coin_decs[TOKEN] = 6
+    assert tr.poll_once() == 0   # balance path sees event digest -> suppressed
+    assert nf.sent == []
+
+
+def test_balance_min_sui_dust_does_not_alert():
+    """A pure-SUI move below min_sui stays silent; token moves always alert."""
+    led, ch, nf, tr = _bal_tracker(min_sui=2.0)
+    led.set_cursor(f"tx:track:{W}", D1)
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [{"coinType": K.SUI_COIN_TYPE, "amount": 5 * 10**8}]  # 0.5 SUI
+    ch.coin_decs[TOKEN] = 6
+    assert tr.poll_once() == 0
+    assert nf.sent == []
+
+
+def test_balance_buys_sells_preference():
+    """buys=1 alerts only incoming (buys); buys=2 only outgoing (sells)."""
+    # buys-only subscriber ignores a pure-SUI outgoing move
+    led, ch, nf, tr = _bal_tracker()
+    led.chat_track_add(3, 777, W, username="carol", buys=1)  # buys-only
+    led.set_cursor(f"tx:track:{W}", D1)
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [{"coinType": K.SUI_COIN_TYPE, "amount": -9 * 10**9}]
+    assert tr.poll_once() == 1
+    # only the buys=3 (both) subscriber got an alert for this send
+    assert len(nf.sent) == 1
+    assert nf.sent[0]["chat_id"] == 999

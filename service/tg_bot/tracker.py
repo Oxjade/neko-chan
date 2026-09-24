@@ -16,7 +16,7 @@ import os
 import threading
 import time
 
-from degen.constants import MIST, SUIPUMP_PACKAGES, SUIPUMP_MODULE
+from degen.constants import MIST, SUI_COIN_TYPE, SUIPUMP_PACKAGES, SUIPUMP_MODULE
 from degen.runtime import get_ledger, env_on
 from degen.chain import Chain
 from degen.launchpad import resolve_input
@@ -30,6 +30,8 @@ PAGE = 50
 WALLET_COOLDOWN_S = float(os.getenv("TRACKER_COOLDOWN_S", "20.0"))
 SYMBOL_TTL_S = float(os.getenv("TRACKER_SYMBOL_TTL_S", "120.0"))
 DEFAULT_MIN_SUI = 1.0
+TX_PAGE = 15          # recent txs fetched per tracked wallet per poll
+SUI_DECIMALS = 9
 
 _EVENTS = ("TokensPurchased", "TokensSold")
 _SIDE = {"TokensPurchased": ("buyer", "sui_in", "bought"),
@@ -80,6 +82,8 @@ class WalletTracker:
         self._cta_lock = threading.Lock()
         self._wallet_set: set[str] = set()
         self._rows: list[dict] = []
+        self._coin_meta: dict[str, tuple[str, int, float]] = {}  # coin_type -> (label, decimals, ts)
+        self._event_digests: set[tuple[str, str]] = set()  # (wallet, digest) already event-alerted
 
     # ---------------- subscription snapshot ----------------
     def _reload(self) -> None:
@@ -147,7 +151,148 @@ class WalletTracker:
                         fired += 1
                 if cursor:
                     self.led.set_cursor(key, cursor)
+        fired += self._poll_balances()
         return fired
+
+    # ------- generic any-coin balance alerts (sends / receives / any move) -------
+    def _poll_balances(self) -> int:
+        """For each tracked wallet, walk its recent txs (newest-first) and alert on
+        any coin balance change (not just SuiPump trades). Per-wallet low-water
+        digest cursor avoids alerting history or re-alerting the same digests."""
+        fired = 0
+        for wallet in sorted(self._wallet_set):
+            try:
+                digests = self.ch.wallet_txs(wallet, first=TX_PAGE)
+            except Exception as exc:
+                log.warning("tracker bal poll %s: %s", wallet, exc)
+                continue
+            low_key = f"tx:track:{wallet}"
+            low = self.led.get_cursor(low_key)
+            if not low:
+                if digests:
+                    self.led.set_cursor(low_key, digests[0])   # baseline: no history spam
+                continue
+            if not digests:
+                continue
+            new = []
+            for d in digests:
+                if d == low:
+                    break
+                new.append(d)
+                if len(new) >= TX_PAGE:
+                    break
+            if new:
+                self.led.set_cursor(low_key, digests[0])
+            for d in new:
+                fired += self._handle_balance_digest(wallet, d)
+        return fired
+
+    def _handle_balance_digest(self, wallet: str, digest: str) -> int:
+        """Process one wallet tx: fetch its deltas once, then alert every
+        eligible subscriber row for that wallet on it."""
+        if self._event_digests_contain(wallet, digest):
+            return 0
+        if not self._mark_seen(("bal", wallet, digest)):
+            return 0
+        try:
+            deltas = self.ch.tx_balance_deltas(wallet, digest)
+        except Exception as exc:
+            log.warning("tracker bal deltas %s %s: %s", wallet, digest, exc)
+            return 0
+        if not deltas:
+            return 0
+        # aggregate per coin type
+        agg: dict[str, int] = {}
+        for d in deltas:
+            t = d.get("coinType") or ""
+            agg[t] = agg.get(t, 0) + int(d.get("amount") or 0)
+        if not any(agg.values()):
+            return 0
+        fired = 0
+        for row in self._rows:
+            if (row.get("wallet") or "").lower() != wallet:
+                continue
+            # eligibility: ignores pure-gas dust and honors buys/sells preference.
+            if not self._balance_eligible(row, agg):
+                continue
+            if self._fire_balance(row, wallet, agg, digest, len(deltas)):
+                fired += 1
+        return fired
+
+    def _balance_eligible(self, row: dict, agg: dict) -> bool:
+        """Honor `buys` (1=buys, 2=sells, 3=both) and `min_sui`. For a generic
+        balance move, 'received'≈buy-sides, 'sent'≈sell-sides; if both present the
+        dominant side decides. Pure SUI dust (gas) below min_sui is ignored."""
+        want = int(row.get("buys", 3))
+        received = sum(a for a in agg.values() if a > 0)
+        sent = -sum(a for a in agg.values() if a < 0)
+        if want == 1 and sent > received:
+            return False
+        if want == 2 and received >= sent:
+            return False
+        min_sui = float(row.get("min_sui", DEFAULT_MIN_SUI))
+        if received + sent <= 0:
+            return False
+        # If only SUI moved and it's dust, skip; token moves always alert.
+        sui = agg.get(SUI_COIN_TYPE, 0)
+        non_sui = sum(a for t, a in agg.items() if t != SUI_COIN_TYPE and a)
+        if not non_sui and abs(sui) < min_sui * (10 ** SUI_DECIMALS):
+            return False
+        return True
+
+    def _coin_label(self, coin_type: str) -> str:
+        """(label, decimals) for a coin type — metadata-cached for 60s."""
+        now = time.time()
+        hit = self._coin_meta.get(coin_type)
+        if hit and now - hit[2] < SYMBOL_TTL_S:
+            return hit[0], hit[1]
+        label, dec = coin_type, SUI_DECIMALS
+        try:
+            if coin_type == SUI_COIN_TYPE:
+                label, dec = "SUI", SUI_DECIMALS
+            else:
+                dec = self.ch.coin_decimals(coin_type)
+                tail = coin_type.rsplit("::", 2)
+                if len(tail) == 3:
+                    label = f"{tail[1]}:{tail[2]}"
+                else:
+                    label = tail[-1]
+        except Exception as exc:
+            log.debug("coin label failed %s: %s", coin_type, exc)
+        self._coin_meta[coin_type] = (label, dec, now)
+        return label, dec
+
+    def _fmt_balance(self, coin_type: str, amount: int) -> str:
+        label, dec = self._coin_label(coin_type)
+        val = amount / (10 ** dec)
+        sign = "+" if amount >= 0 else "−"
+        return f"{sign}{abs(val):,.4f} {label}"
+
+    def _fire_balance(self, row: dict, wallet: str, agg: dict, digest: str,
+                      n_sources: int) -> bool:
+        ck = (row["tg_uid"], wallet, "balance")
+        now = time.time()
+        if ck in self._cooldown and now - self._cooldown[ck] < WALLET_COOLDOWN_S:
+            return False
+        self._cooldown[ck] = now
+        tag = f'<a href="tg://user?id={int(row["tg_uid"])}">@{esc_html(row.get("username") or "you")}</a>'
+        lines = [self._fmt_balance(t, a) for t, a in sorted(agg.items())]
+        head = "received" if sum(agg.values()) > 0 else "sent"
+        text = (
+            f"💰 {tag} — wallet balance moved\n"
+            f"<code>{esc_html(wallet)}</code> <b>{head}</b>\n"
+            + "\n".join(lines) +
+            f"\n🔗 https://suiscan.xyz/mainnet/tx/{digest}"
+        )
+        try:
+            ok = self.notifier._send(None, int(row["chat_id"]), text)
+            if ok:
+                log.info("tracker bal alert chat=%s wallet=%s n=%s coins=%s",
+                         row["chat_id"], wallet, n_sources, len(agg))
+            return bool(ok)
+        except Exception as exc:
+            log.warning("tracker bal send failed chat=%s: %s", row["chat_id"], exc)
+            return False
 
     def _handle(self, node: dict, ev_name: str) -> bool:
         j = node.get("json") or {}
@@ -169,7 +314,14 @@ class WalletTracker:
                 continue
             if self._fire(row, ev_name, verb, amt, curve_id, node):
                 fired = True
+                self._event_digests.add((wallet, str(node.get("digest", ""))))
+                if len(self._event_digests) > 5000:
+                    self._event_digests = set(
+                        list(self._event_digests)[-3000:])
         return fired
+
+    def _event_digests_contain(self, wallet: str, digest: str) -> bool:
+        return (wallet.lower(), digest) in self._event_digests
 
     # ---------------- alert ----------------
     def _fire(self, row: dict, ev_name: str, verb: str, amt: float,
