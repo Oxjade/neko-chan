@@ -320,3 +320,79 @@ class Chain:
             return got
         except (GqlError, ValueError, TypeError, KeyError):
             return 0
+
+    def tx_balance_deltas(self, owner: str, digest: str) -> list[dict]:
+        """All settled coin deltas for `owner` in a successful tx.
+
+        Each entry: {"coinType": padded type, "amount": signed mist}. Mirror of
+        tx_balance_change but returns every coin the wallet gained/lost, which is
+        what the wallet-tracker generic balance alerts need."""
+        owner = safe_addr(owner)
+        digest = (digest or "").strip()
+        if owner is None or not _CURSOR_RE.match(digest):
+            return []
+        q = '{ transaction(digest: "' + digest + '") { effects { status balanceChangesJson } } }'
+        try:
+            tx = (self.query(q) or {}).get("transaction") or {}
+            eff = tx.get("effects") or {}
+            if str(eff.get("status", "")).upper() != "SUCCESS":
+                return []
+            raw = eff.get("balanceChangesJson")
+            try:
+                changes = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            except (TypeError, ValueError):
+                changes = []
+            out = []
+            for ch in changes:
+                if not isinstance(ch, dict):
+                    continue
+                if (ch.get("address") or "").lower() != owner.lower():
+                    continue
+                try:
+                    n = int(ch.get("amount") or 0)
+                except (TypeError, ValueError):
+                    n = 0
+                if n:
+                    out.append({"coinType": re.sub(r"0x([0-9a-fA-F]{1,64})(?![0-9a-fA-F])",
+                                                   lambda m: "0x" + m.group(1).zfill(64),
+                                                   str(ch.get("coinType") or "")),
+                                "amount": n})
+            return out
+        except (GqlError, ValueError, TypeError, KeyError):
+            return []
+
+    def wallet_txs(self, owner: str, first: int = 12) -> list[str]:
+        """Most recent transaction digests involving `owner` (newest-first)."""
+        owner = safe_addr(owner)
+        if owner is None:
+            return []
+        first = max(1, min(int(first), 50))
+        q = ('{ address(address: "' + owner + '") { transactions(first: ' + str(first)
+             + ') { nodes { digest } } } }')
+        try:
+            a = (self.query(q) or {}).get("address") or {}
+            return [n.get("digest", "") for n in a.get("transactions", {}).get("nodes", [])
+                    if n.get("digest")]
+        except (GqlError, TypeError, KeyError):
+            return []
+
+    def coin_decimals(self, coin_type: str) -> int:
+        """Decimal places of a coin (from on-chain CoinMetadata), 9 if unknown."""
+        coin_type = safe_type(coin_type)
+        if coin_type is None:
+            return 9
+        try:
+            meta = f"0x2::coin::CoinMetadata<{coin_type}>"
+            q = ('{ objects(filter: { type: "' + meta + '" }, first: 1) '
+                 '{ nodes { contents { json } } } }')
+            objs = (self.query(q) or {}).get("objects") or {}
+            for n in objs.get("nodes", []):
+                try:
+                    raw = json.loads(n["contents"]["json"]) if isinstance(n["contents"]["json"], str) \
+                        else (n["contents"].get("json") or {})
+                    return int(raw.get("decimals") or 0) if raw.get("decimals") is not None else 9
+                except (ValueError, TypeError):
+                    return 9
+            return 9
+        except (GqlError, TypeError, KeyError):
+            return 9
