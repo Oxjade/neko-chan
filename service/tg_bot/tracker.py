@@ -399,7 +399,31 @@ class WalletTracker:
             return self._ctas.pop(cta_id, None)
 
     # ---------------- loop ----------------
+    def prime_baseline(self) -> int:
+        """Point every wallet cursor at its current newest tx.
+
+        Alerts are meant to be live, not a replay of history. On startup each
+        cursor is snapped forward to the newest digest so the first poll has
+        nothing above the cursor and stays silent, instead of dumping a backlog
+        of old trades into the chat. Returns the number of wallets primed.
+        """
+        primed = 0
+        self._reload()
+        for wallet in sorted(self._wallet_set):
+            try:
+                digests = self.ch.wallet_txs(wallet, first=1)
+            except Exception as exc:
+                log.warning("tracker prime %s: %s", wallet, exc)
+                continue
+            if not digests:
+                continue
+            self.led.set_cursor(f"tx:track:{wallet}", digests[0])
+            primed += 1
+        log.info("tracker primed %d wallet cursor(s) to newest tx (live-only)", primed)
+        return primed
+
     def run_forever(self) -> None:
+        self.prime_baseline()
         while not self._stop.is_set():
             t0 = time.time()
             try:

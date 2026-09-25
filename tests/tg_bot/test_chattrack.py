@@ -276,6 +276,50 @@ def test_balance_new_digest_alerts():
     assert f"https://suiscan.xyz/mainnet/tx/{D2}" in text
 
 
+def test_prime_baseline_snaps_cursor_to_newest_and_suppresses_replay():
+    """Startup must make the tracker silent: no old trades replayed into chat."""
+    led, ch, nf, tr = _bal_tracker()
+    old = ["d1", "d2", "d3"]
+    ch.tx_pages[W] = [list(reversed(old))]        # newest-first, from the chain
+    led.set_cursor(f"tx:track:{W}", "d1")          # stale cursor on the oldest
+    assert tr.prime_baseline() == 1
+    assert led.get_cursor(f"tx:track:{W}") == "d3"
+    assert tr.poll_once() == 0
+    assert nf.sent == []
+
+
+def test_prime_baseline_keeps_future_trades_live():
+    """After priming, a genuinely new tx still alerts."""
+    led, ch, nf, tr = _bal_tracker()
+    ch.tx_pages[W] = [["d1"]]
+    tr.prime_baseline()
+    ch.tx_pages[W] = [["d2", "d1"]]
+    ch.tx_deltas["d2"] = [{"coinType": K.SUI_COIN_TYPE, "amount": 7 * 10**9}]
+    assert tr.poll_once() == 1
+    assert len(nf.sent) == 1
+    assert "+7.0000 SUI" in nf.sent[0]["text"]
+
+
+def test_prime_baseline_tolerates_empty_wallet():
+    """A wallet with no digests is skipped, not crashed on."""
+    led, ch, nf, tr = _bal_tracker()
+    ch.tx_pages[W] = [[]]
+    assert tr.prime_baseline() == 0
+    assert tr.poll_once() == 0
+
+
+def test_prime_baseline_survives_chain_error():
+    """A failing chain during priming must not stop the poll loop."""
+    led, ch, nf, tr = _bal_tracker()
+
+    def boom(*a, **k):
+        raise RuntimeError("rpc down")
+
+    ch.wallet_txs = boom
+    assert tr.prime_baseline() == 0
+    assert tr.poll_once() == 0
+
+
 def test_wallet_txs_queries_with_last_not_first():
     """Regression: the connection is oldest-first, so `first: N` hides new txs.
 
