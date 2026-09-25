@@ -32,6 +32,7 @@ SYMBOL_TTL_S = float(os.getenv("TRACKER_SYMBOL_TTL_S", "120.0"))
 DEFAULT_MIN_SUI = 1.0
 TX_PAGE = 15          # recent txs fetched per tracked wallet per poll
 CATCHUP_MAX = 5       # max balance alerts replayed per wallet in one poll (burst cap)
+CATCHUP_WINDOW_S = float(os.getenv("TRACKER_CATCHUP_S", "3600"))  # replay window after downtime
 SUI_DECIMALS = 9
 
 _EVENTS = ("TokensPurchased", "TokensSold")
@@ -400,16 +401,25 @@ class WalletTracker:
 
     # ---------------- loop ----------------
     def prime_baseline(self) -> int:
-        """Point every wallet cursor at its current newest tx.
+        """Prepare cursors at startup so alerts are live, not a history replay.
 
-        Alerts are meant to be live, not a replay of history. On startup each
-        cursor is snapped forward to the newest digest so the first poll has
-        nothing above the cursor and stays silent, instead of dumping a backlog
-        of old trades into the chat. Returns the number of wallets primed.
+        Normally each cursor is snapped forward to the wallet's newest digest, so
+        the first poll has nothing above the cursor and stays silent. If the stored
+        cursor is only slightly stale (age <= CATCHUP_WINDOW_S) it is deliberately
+        left in place, so the first poll replays just the trades that happened
+        while the service was down. A longer outage re-primes to newest instead of
+        dumping an unbounded backlog into the chat.
+
+        Returns the number of wallets re-primed.
         """
-        primed = 0
         self._reload()
+        primed = replay = 0
         for wallet in sorted(self._wallet_set):
+            key = f"tx:track:{wallet}"
+            age = self.led.get_cursor_age(key)
+            if age is not None and age <= CATCHUP_WINDOW_S:
+                replay += 1
+                continue
             try:
                 digests = self.ch.wallet_txs(wallet, first=1)
             except Exception as exc:
@@ -417,9 +427,10 @@ class WalletTracker:
                 continue
             if not digests:
                 continue
-            self.led.set_cursor(f"tx:track:{wallet}", digests[0])
+            self.led.set_cursor(key, digests[0])
             primed += 1
-        log.info("tracker primed %d wallet cursor(s) to newest tx (live-only)", primed)
+        log.info("tracker start: %d cursor(s) primed to newest, %d kept for "
+                 "catch-up (window %ss)", primed, replay, int(CATCHUP_WINDOW_S))
         return primed
 
     def run_forever(self) -> None:

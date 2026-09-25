@@ -276,12 +276,34 @@ def test_balance_new_digest_alerts():
     assert f"https://suiscan.xyz/mainnet/tx/{D2}" in text
 
 
-def test_prime_baseline_snaps_cursor_to_newest_and_suppresses_replay():
-    """Startup must make the tracker silent: no old trades replayed into chat."""
+def test_prime_baseline_replays_when_cursor_is_within_catchup_window():
+    """A short outage keeps the cursor so the first poll replays what we missed."""
     led, ch, nf, tr = _bal_tracker()
-    old = ["d1", "d2", "d3"]
-    ch.tx_pages[W] = [list(reversed(old))]        # newest-first, from the chain
-    led.set_cursor(f"tx:track:{W}", "d1")          # stale cursor on the oldest
+    ch.tx_pages[W] = [["d3", "d2", "d1"]]          # newest-first
+    led.set_cursor(f"tx:track:{W}", "d1")          # cursor written seconds ago
+    assert tr.prime_baseline() == 0                # nothing re-primed
+    assert led.get_cursor(f"tx:track:{W}") == "d1", "stale-but-recent cursor must survive"
+    ch.tx_deltas["d3"] = [{"coinType": K.SUI_COIN_TYPE, "amount": 4 * 10**9}]
+    assert tr.poll_once() == 1
+    assert "+4.0000 SUI" in nf.sent[0]["text"]
+
+
+def test_prime_baseline_reprimes_when_cursor_older_than_window():
+    """A long outage re-primes to newest so history is never dumped."""
+    led, ch, nf, tr = _bal_tracker()
+    ch.tx_pages[W] = [["d3", "d2", "d1"]]          # newest-first, from the chain
+    led.set_cursor(f"tx:track:{W}", "d1")          # cursor stuck on the oldest
+    led.get_cursor_age = lambda name: tracker.CATCHUP_WINDOW_S + 600
+    assert tr.prime_baseline() == 1
+    assert led.get_cursor(f"tx:track:{W}") == "d3"
+    assert tr.poll_once() == 0
+    assert nf.sent == [], "an aged cursor must not replay old trades"
+
+
+def test_prime_baseline_never_seen_cursor_is_primed():
+    """No stored cursor means prime to newest rather than replay everything."""
+    led, ch, nf, tr = _bal_tracker()
+    ch.tx_pages[W] = [["d3", "d2", "d1"]]
     assert tr.prime_baseline() == 1
     assert led.get_cursor(f"tx:track:{W}") == "d3"
     assert tr.poll_once() == 0

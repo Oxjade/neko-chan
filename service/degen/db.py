@@ -648,6 +648,21 @@ class DegenLedger:
                 "SELECT cursor FROM stream_cursor WHERE name=?", (name,)).fetchone()
         return row["cursor"] if row else ""
 
+    def get_cursor_age(self, name: str) -> float | None:
+        """Seconds since this cursor was last written, or None if never set."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT updated_at FROM stream_cursor WHERE name=?", (name,)).fetchone()
+        if not row or not row["updated_at"]:
+            return None
+        try:
+            ts = datetime.fromisoformat(str(row["updated_at"]))
+        except ValueError:
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
+
     def set_cursor(self, name: str, cursor: str, checkpoint: int = 0) -> None:
         with self._lock:
             self._conn.execute(
