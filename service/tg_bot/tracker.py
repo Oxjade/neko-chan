@@ -31,6 +31,7 @@ WALLET_COOLDOWN_S = float(os.getenv("TRACKER_COOLDOWN_S", "20.0"))
 SYMBOL_TTL_S = float(os.getenv("TRACKER_SYMBOL_TTL_S", "120.0"))
 DEFAULT_MIN_SUI = 1.0
 TX_PAGE = 15          # recent txs fetched per tracked wallet per poll
+CATCHUP_MAX = 5       # max balance alerts replayed per wallet in one poll (burst cap)
 SUI_DECIMALS = 9
 
 _EVENTS = ("TokensPurchased", "TokensSold")
@@ -181,43 +182,61 @@ class WalletTracker:
                 new.append(d)
                 if len(new) >= TX_PAGE:
                     break
-            if new:
-                self.led.set_cursor(low_key, digests[0])
+            if not new:
+                continue
+            new = new[:CATCHUP_MAX]
+            consumed_newest = None
             for d in new:
-                fired += self._handle_balance_digest(wallet, d)
+                f, consumed = self._handle_balance_digest(wallet, d)
+                fired += f
+                # Newest-first: the first consumed digest is the high-water mark
+                # we may advance to. Anything newer that failed stays above the
+                # cursor and is retried on the next poll.
+                if consumed and consumed_newest is None:
+                    consumed_newest = d
+            if consumed_newest is not None:
+                self.led.set_cursor(low_key, consumed_newest)
         return fired
 
-    def _handle_balance_digest(self, wallet: str, digest: str) -> int:
+    def _handle_balance_digest(self, wallet: str, digest: str) -> tuple[int, bool]:
         """Process one wallet tx: fetch its deltas once, then alert every
-        eligible subscriber row for that wallet on it."""
+        eligible subscriber row for that wallet on it.
+
+        Returns (fired, consumed). `consumed` is False only when the digest must
+        be retried (delta lookup failed, or a Telegram send was not delivered).
+        """
         if self._event_digests_contain(wallet, digest):
-            return 0
+            return 0, True
         if not self._mark_seen(("bal", wallet, digest)):
-            return 0
+            return 0, True
         try:
             deltas = self.ch.tx_balance_deltas(wallet, digest)
         except Exception as exc:
             log.warning("tracker bal deltas %s %s: %s", wallet, digest, exc)
-            return 0
+            return 0, False
         if not deltas:
-            return 0
+            return 0, True
         # aggregate per coin type
         agg: dict[str, int] = {}
         for d in deltas:
             t = d.get("coinType") or ""
             agg[t] = agg.get(t, 0) + int(d.get("amount") or 0)
         if not any(agg.values()):
-            return 0
+            return 0, True
         fired = 0
+        consumed = True
         for row in self._rows:
             if (row.get("wallet") or "").lower() != wallet:
                 continue
             # eligibility: ignores pure-gas dust and honors buys/sells preference.
             if not self._balance_eligible(row, agg):
                 continue
-            if self._fire_balance(row, wallet, agg, digest, len(deltas)):
+            result = self._fire_balance(row, wallet, agg, digest, len(deltas))
+            if result == "sent":
                 fired += 1
-        return fired
+            elif result == "failed":
+                consumed = False
+        return fired, consumed
 
     def _balance_eligible(self, row: dict, agg: dict) -> bool:
         """Honor `buys` (1=buys, 2=sells, 3=both) and `min_sui`. For a generic
@@ -269,12 +288,16 @@ class WalletTracker:
         return f"{sign}{abs(val):,.4f} {label}"
 
     def _fire_balance(self, row: dict, wallet: str, agg: dict, digest: str,
-                      n_sources: int) -> bool:
+                      n_sources: int) -> str:
+        """Send one balance alert. Returns "sent", "cooldown" or "failed".
+
+        Tri-state matters: only "failed" may keep the digest above the cursor for
+        retry. "cooldown" is a deliberate suppression and counts as consumed.
+        """
         ck = (row["tg_uid"], wallet, "balance")
         now = time.time()
         if ck in self._cooldown and now - self._cooldown[ck] < WALLET_COOLDOWN_S:
-            return False
-        self._cooldown[ck] = now
+            return "cooldown"
         tag = f'<a href="tg://user?id={int(row["tg_uid"])}">@{esc_html(row.get("username") or "you")}</a>'
         lines = [self._fmt_balance(t, a) for t, a in sorted(agg.items())]
         head = "received" if sum(agg.values()) > 0 else "sent"
@@ -286,13 +309,18 @@ class WalletTracker:
         )
         try:
             ok = self.notifier._send(None, int(row["chat_id"]), text)
-            if ok:
-                log.info("tracker bal alert chat=%s wallet=%s n=%s coins=%s",
-                         row["chat_id"], wallet, n_sources, len(agg))
-            return bool(ok)
         except Exception as exc:
             log.warning("tracker bal send failed chat=%s: %s", row["chat_id"], exc)
-            return False
+            return "failed"
+        if not ok:
+            log.warning("tracker bal send not delivered chat=%s wallet=%s", row["chat_id"], wallet)
+            return "failed"
+        # Cooldown only after a confirmed delivery, so a failed send is retried
+        # instead of being swallowed as "recently fired".
+        self._cooldown[ck] = now
+        log.info("tracker bal alert chat=%s wallet=%s n=%s coins=%s",
+                 row["chat_id"], wallet, n_sources, len(agg))
+        return "sent"
 
     def _handle(self, node: dict, ev_name: str) -> bool:
         j = node.get("json") or {}

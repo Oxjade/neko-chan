@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(_HERE, "..", "..", "service", "tg_bot"))
 import chattrack  # noqa: E402
 from degen.db import DegenLedger  # noqa: E402
 from degen import constants as K  # noqa: E402
+from tg_bot import tracker as tracker_mod  # noqa: E402
+
+tracker = tracker_mod
 
 W = "0x" + "ab" * 32
 W2 = "0x" + "cd" * 32
@@ -271,6 +274,130 @@ def test_balance_new_digest_alerts():
     assert "+120.0000 pump:TEST" in text
     assert "−7.0000 SUI" in text
     assert f"https://suiscan.xyz/mainnet/tx/{D2}" in text
+
+
+def test_wallet_txs_queries_with_last_not_first():
+    """Regression: the connection is oldest-first, so `first: N` hides new txs.
+
+    `first: N` returned the N OLDEST transactions, which is how a same-day trade
+    stayed invisible: it sat past the end of the page. The query must use `last: N`
+    so the newest N come back.
+    """
+    from degen.chain import Chain
+
+    seen = {}
+
+    def fake_query(q, variables=None):
+        seen["q"] = q
+        return {"address": {"transactions": {"nodes": []}}}
+
+    ch = Chain.__new__(Chain)
+    ch.query = fake_query
+    ch.wallet_txs(W, first=15)
+    assert "transactions(last: 15)" in seen["q"], "must page from the newest end"
+    assert "transactions(first:" not in seen["q"]
+
+
+def test_wallet_txs_sorts_ascending_api_order_to_newest_first():
+    """Real address.transactions returns OLDEST-first; wallet_txs must reorder.
+
+    Regression: the poll treats index 0 as newest and breaks at the cursor. If the
+    upstream order is not normalized, the cursor lands on the OLDEST digest and
+    every subsequent poll breaks immediately, so alerts never fire again.
+    """
+    from degen.chain import Chain
+
+    ascending = [
+        {"digest": "old", "effects": {"checkpoint": {"sequenceNumber": "100"}}},
+        {"digest": "mid", "effects": {"checkpoint": {"sequenceNumber": "200"}}},
+        {"digest": "new", "effects": {"checkpoint": {"sequenceNumber": "300"}}},
+    ]
+    ch = Chain.__new__(Chain)
+    ch.query = lambda q, variables=None: {"address": {"transactions": {"nodes": ascending}}}
+    assert ch.wallet_txs(W, first=3) == ["new", "mid", "old"]
+
+
+def test_wallet_txs_puts_newest_first_even_when_api_returns_oldest_first():
+    """End-to-end shape check on the real Chain.wallet_txs ordering guarantee."""
+    from degen.chain import Chain
+
+    nodes = [{"digest": f"d{i}", "effects": {"checkpoint": {"sequenceNumber": str(i)}}} for i in range(1, 6)]
+    ch = Chain.__new__(Chain)
+    ch.query = lambda q, variables=None: {"address": {"transactions": {"nodes": nodes}}}
+    out = ch.wallet_txs(W, first=5)
+    assert out[0] == "d5", "newest digest must be first, not the oldest"
+    assert out == ["d5", "d4", "d3", "d2", "d1"]
+
+
+def test_balance_poll_alerts_when_chain_returns_oldest_first_order():
+    """Tracker must still detect a new tx when the chain hands back oldest-first.
+
+    The poll walks newest-first and stops at the cursor. With a correctly sorted
+    chain this alerts; with the raw ascending order it would silently miss it.
+    """
+    led, ch, nf, tr = _bal_tracker()
+    ch.tx_pages[W] = [[D1]]                      # baseline: only the old digest
+    assert tr.poll_once() == 0
+    assert led.get_cursor(f"tx:track:{W}") == D1
+    # A new trade arrives; chain returns it newest-first after sorting.
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [{"coinType": K.SUI_COIN_TYPE, "amount": 5 * 10**9}]
+    assert tr.poll_once() == 1
+    assert len(nf.sent) == 1
+    assert "+5.0000 SUI" in nf.sent[0]["text"]
+
+
+def test_balance_cursor_does_not_advance_when_send_fails():
+    """A failed Telegram send must leave the cursor behind so it is retried."""
+    led, ch, nf, tr = _bal_tracker()
+    led.set_cursor(f"tx:track:{W}", D1)
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [{"coinType": K.SUI_COIN_TYPE, "amount": 9 * 10**9}]
+
+    nf._send = lambda *a, **k: False            # simulate a send failure
+    assert tr.poll_once() == 0
+    assert led.get_cursor(f"tx:track:{W}") == D1, "cursor advanced despite failed send"
+
+
+def test_balance_cursor_advances_after_success():
+    """On a successful alert the cursor moves to the newest processed digest."""
+    led, ch, nf, tr = _bal_tracker()
+    led.set_cursor(f"tx:track:{W}", D1)
+    ch.tx_pages[W] = [[D2, D1]]
+    ch.tx_deltas[D2] = [{"coinType": K.SUI_COIN_TYPE, "amount": 9 * 10**9}]
+    assert tr.poll_once() == 1
+    assert led.get_cursor(f"tx:track:{W}") == D2
+
+
+def test_balance_catchup_burst_does_not_flood():
+    """A stale cursor on the oldest digest must not dump years of history.
+
+    The poll examines at most CATCHUP_MAX digests, and the per-wallet cooldown
+    collapses the burst into a single message rather than spamming the chat.
+    """
+    led, ch, nf, tr = _bal_tracker()
+    digests = ["d%d" % i for i in range(12)]
+    led.set_cursor(f"tx:track:{W}", digests[0])     # cursor stuck on the OLDEST digest
+    ch.tx_pages[W] = [list(reversed(digests))]    # newest-first from the chain
+    for i, d in enumerate(digests):
+        ch.tx_deltas[d] = [{"coinType": K.SUI_COIN_TYPE, "amount": (i + 1) * 10**9}]
+    assert tr.poll_once() == 1, "cooldown must collapse the catch-up burst"
+    assert len(nf.sent) == 1
+    assert led.get_cursor(f"tx:track:{W}") == "d11"
+
+
+def test_balance_catchup_examines_only_capped_digests():
+    """Only CATCHUP_MAX digests are consumed, so older ones stay unprocessed."""
+    led, ch, nf, tr = _bal_tracker()
+    digests = ["d%d" % i for i in range(12)]
+    led.set_cursor(f"tx:track:{W}", digests[0])
+    ch.tx_pages[W] = [list(reversed(digests))]
+    for i, d in enumerate(digests):
+        ch.tx_deltas[d] = [{"coinType": K.SUI_COIN_TYPE, "amount": (i + 1) * 10**9}]
+    tr.poll_once()
+    examined = [d for d in digests if ("bal", W, d) in tr._seen]
+    assert len(examined) == tracker.CATCHUP_MAX
+    assert max(examined, key=lambda d: int(d[1:])) == "d11"
 
 
 def test_balance_multi_subscriber_same_wallet():

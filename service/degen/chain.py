@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 from typing import Any
 
 import requests
 
 from . import constants as K
+
+log = logging.getLogger(__name__)
 
 
 _B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -362,18 +365,43 @@ class Chain:
             return []
 
     def wallet_txs(self, owner: str, first: int = 12) -> list[str]:
-        """Most recent transaction digests involving `owner` (newest-first)."""
+        """Most recent transaction digests involving `owner` (newest-first).
+
+        Two upstream quirks are handled here:
+
+        1. The connection is ordered OLDEST-first, so `first: N` returns the N
+           OLDEST transactions and hides everything recent. `last: N` is used to
+           pull the newest N instead.
+        2. Ordering is still normalized by checkpoint (strictly increasing with
+           time) so callers can rely on index 0 being the newest digest. A poll
+           that treated the raw order as newest-first would park its cursor on the
+           oldest digest and then never alert again.
+        """
         owner = safe_addr(owner)
         if owner is None:
             return []
         first = max(1, min(int(first), 50))
-        q = ('{ address(address: "' + owner + '") { transactions(first: ' + str(first)
-             + ') { nodes { digest } } } }')
+        q = ('{ address(address: "' + owner + '") { transactions(last: ' + str(first)
+             + ') { nodes { digest effects { checkpoint { sequenceNumber } } } } } }')
         try:
             a = (self.query(q) or {}).get("address") or {}
-            return [n.get("digest", "") for n in a.get("transactions", {}).get("nodes", [])
-                    if n.get("digest")]
-        except (GqlError, TypeError, KeyError):
+            nodes = a.get("transactions", {}).get("nodes", [])
+            rows = []
+            for n in nodes:
+                d = n.get("digest") or ""
+                if not d:
+                    continue
+                try:
+                    cp = int(((n.get("effects") or {}).get("checkpoint") or {})
+                             .get("sequenceNumber") or 0)
+                except (TypeError, ValueError):
+                    cp = 0
+                rows.append((cp, d))
+            # Stable newest-first: checkpoint desc, keeping input order for ties.
+            rows.sort(key=lambda r: r[0], reverse=True)
+            return [d for _cp, d in rows]
+        except (GqlError, TypeError, KeyError) as exc:
+            log.warning("wallet_txs %s: %s", owner, exc)
             return []
 
     def coin_decimals(self, coin_type: str) -> int:
