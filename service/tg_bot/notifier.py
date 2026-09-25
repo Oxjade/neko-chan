@@ -74,9 +74,23 @@ class SendBudget:
         self._sleep(min(float(retry_after or 1.0), 30.0))
 
 
+# Group chats (supergroups/groups) keep messages: the chat is the shared record,
+# so trading alerts must stay visible instead of self-destructing.
+PERSISTENT_CHAT_IDS = {
+    int(x) for x in os.getenv("TG_PERSISTENT_CHAT_IDS", "").replace(",", " ").split() if x
+}
+
+
 def _schedule_delete(bot_token: str, chat_id: int, message_id: int,
                      ttl: int = MSG_TTL_SECONDS) -> None:
-    """Delete a sent message after ttl seconds, in a background thread."""
+    """Delete a sent message after ttl seconds, in a background thread.
+
+    Skipped entirely for chats in PERSISTENT_CHAT_IDS (the GC) so alerts there
+    stay in the chat as the shared record."""
+    if chat_id in PERSISTENT_CHAT_IDS:
+        return
+    if ttl <= 0:
+        return
 
     def _delete():
         time.sleep(ttl)
