@@ -155,11 +155,82 @@ class ConsoleAccessTests(unittest.TestCase):
         detail = c.get(f"/api/web/console/bots/{bot['id']}").json()
         self.assertAlmostEqual(detail["report"]["account"]["equity"], 1000.0)
 
+    def test_goal_bot_and_report_text(self):
+        import web_email
+        c = self.client
+        c.post("/api/web/login", json={"password": "correct horse"})
+        bad = c.post("/api/web/console/bots",
+                     json={"name": "G", "watchlist": ["BTC"], "start_usd": 10, "goal_usd": 5,
+                           "goal_days": 14})
+        self.assertEqual(bad.status_code, 422)
+        made = c.post("/api/web/console/bots",
+                      json={"name": "Ten to forty", "watchlist": ["BTC"], "start_usd": 10,
+                            "goal_usd": 40, "goal_days": 14})
+        self.assertEqual(made.status_code, 200, made.text)
+        detail = c.get(f"/api/web/console/bots/{made.json()['id']}").json()
+        self.assertAlmostEqual(detail["report"]["account"]["equity"], 10.0)
+        self.assertAlmostEqual(detail["goal"]["target_usd"], 40.0)
+        self.assertGreater(detail["goal"]["needed_daily_pct"], 10.0)
+        subject, body = web_email.build_report(web_core.list_bots(), self.routes_web._goals())
+        self.assertIn("Ten to forty", body)
+        self.assertIn("$40.00", body)
+        self.assertIn("growth per day", body)
+        self.assertEqual(c.post("/api/web/console/report/send", json={}).status_code, 409)
+
     def test_waitlist_validates_email(self):
         c = self.client
         self.assertEqual(c.post("/api/web/public/waitlist", json={"email": "nope"}).status_code, 422)
         self.assertEqual(c.post("/api/web/public/waitlist",
                                 json={"email": "a@example.com"}).status_code, 200)
+
+
+class GoalAndEmailTests(unittest.TestCase):
+    def _goal(self, days=14):
+        from datetime import datetime, timedelta, timezone
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return now, {"target_usd": 40.0, "created_at": now.isoformat(),
+                     "deadline": (now + timedelta(days=days)).isoformat()}
+
+    def test_needed_daily_growth_for_ten_to_forty_in_two_weeks(self):
+        import web_email
+        now, goal = self._goal()
+        p = web_email.goal_progress(goal, 10.0, 10.0, now)
+        self.assertAlmostEqual(p["needed_daily_pct"], (4 ** (1 / 14) - 1) * 100, places=6)
+        self.assertGreater(p["needed_daily_pct"], 10.0)
+        self.assertAlmostEqual(p["progress"], 0.0)
+
+    def test_status_reached_missed_and_behind(self):
+        from datetime import timedelta
+        import web_email
+        now, goal = self._goal()
+        self.assertEqual(web_email.goal_progress(goal, 10.0, 41.0, now)["status"], "reached")
+        late = now + timedelta(days=15)
+        self.assertEqual(web_email.goal_progress(goal, 10.0, 12.0, late)["status"], "missed")
+        mid = now + timedelta(days=7)
+        self.assertEqual(web_email.goal_progress(goal, 10.0, 11.0, mid)["status"], "behind")
+        self.assertEqual(web_email.goal_progress(goal, 10.0, 30.0, mid)["status"], "on pace")
+
+    def test_send_email_uses_configured_server(self):
+        from unittest import mock
+        import web_email
+        env = {"REPORT_EMAIL_TO": "me@example.com", "SMTP_HOST": "smtp.example.com",
+               "SMTP_USER": "bot@example.com", "SMTP_PASSWORD": "pw", "SMTP_PORT": "587"}
+        with mock.patch.dict(os.environ, env), mock.patch("web_email.smtplib.SMTP") as smtp:
+            web_email.send_email("subject", "body")
+        server = smtp.return_value
+        smtp.assert_called_once_with("smtp.example.com", 587, timeout=30)
+        server.starttls.assert_called_once()
+        server.login.assert_called_once_with("bot@example.com", "pw")
+        sent = server.send_message.call_args[0][0]
+        self.assertEqual((sent["To"], sent["From"], sent["Subject"]),
+                         ("me@example.com", "bot@example.com", "subject"))
+
+    def test_send_email_refuses_when_not_set_up(self):
+        from unittest import mock
+        import web_email
+        with mock.patch.dict(os.environ, {"REPORT_EMAIL_TO": "", "SMTP_HOST": ""}):
+            with self.assertRaises(RuntimeError):
+                web_email.send_email("s", "b")
 
 
 if __name__ == "__main__":

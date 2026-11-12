@@ -7,7 +7,7 @@ const app = document.getElementById("app");
 const signout = document.getElementById("signout");
 
 const state = { bots: [], aiKey: null, selected: null, detail: null, managesAgents: true,
-                setupMissing: [], waitlist: 0, timer: null, flash: null };
+                setupMissing: [], waitlist: 0, timer: null, flash: null, email: null };
 
 const MARKETS = ["BTC", "ETH", "SOL", "SUI", "HYPE"];
 const STYLES = [["scalp", "Scalp (minutes to hours)"], ["intraday", "Intraday (hours)"],
@@ -77,6 +77,7 @@ async function loadBots() {
   state.aiKey = data.ai_key;
   state.managesAgents = data.manages_agents;
   state.setupMissing = data.setup_missing;
+  state.email = data.email;
   if (!state.bots.some((b) => b.id === state.selected)) {
     state.selected = state.bots.length ? state.bots[0].id : null;
   }
@@ -152,6 +153,9 @@ function newBotForm() {
   const style = select(STYLES, "scalp", "style");
   const risk = select(RISKS, "balanced", "risk");
   const interval = select(INTERVALS, 120, "interval");
+  const startUsd = h("input", { type: "text", name: "start_usd", inputmode: "decimal", value: "10" });
+  const goalUsd = h("input", { type: "text", name: "goal_usd", inputmode: "decimal" });
+  const goalDays = h("input", { type: "text", name: "goal_days", inputmode: "numeric" });
   const button = h("button", { class: "button", type: "submit" }, "Create paper bot");
   return h("form", { class: "panel stack", novalidate: true,
     onsubmit: async (event) => {
@@ -167,11 +171,33 @@ function newBotForm() {
         error.textContent = "Choose at least one market.";
         return;
       }
+      const start = Number(startUsd.value);
+      if (!(start >= 1)) {
+        error.textContent = "Enter a starting amount of at least 1 USD.";
+        startUsd.focus();
+        return;
+      }
+      const payload = { name: name.value.trim(), watchlist, trader_type: style.value,
+        risk_profile: risk.value, interval_sec: Number(interval.value), start_usd: start };
+      if (goalUsd.value.trim() || goalDays.value.trim()) {
+        const target = Number(goalUsd.value);
+        const days = Number(goalDays.value);
+        if (!(target > start)) {
+          error.textContent = "The goal must be more than the starting amount.";
+          goalUsd.focus();
+          return;
+        }
+        if (!Number.isInteger(days) || days < 1) {
+          error.textContent = "Enter the number of days as a whole number.";
+          goalDays.focus();
+          return;
+        }
+        payload.goal_usd = target;
+        payload.goal_days = days;
+      }
       button.disabled = true;
       try {
-        const bot = await api("/api/web/console/bots", {
-          name: name.value.trim(), watchlist, trader_type: style.value,
-          risk_profile: risk.value, interval_sec: Number(interval.value) });
+        const bot = await api("/api/web/console/bots", payload);
         state.selected = bot.id;
         state.flash = { bad: false, text: "Paper bot created. It starts paused." };
         await refresh();
@@ -181,8 +207,11 @@ function newBotForm() {
       }
     } },
     h("h2", { style: "font-size:var(--t-h3)" }, "New paper bot"),
-    h("p", { class: "soft small" }, "Starts with 1,000 USD of simulated money."),
+    h("p", { class: "soft small" }, "Trades simulated money at real prices."),
     h("label", { class: "field" }, h("span", null, "Name"), name),
+    h("label", { class: "field" }, h("span", null, "Starting amount (USD)"), startUsd),
+    h("label", { class: "field" }, h("span", null, "Goal amount (USD, optional)"), goalUsd),
+    h("label", { class: "field" }, h("span", null, "Days to reach the goal"), goalDays),
     h("fieldset", { class: "checks" }, h("legend", null, "Markets"),
       MARKETS.map((m, i) => h("label", null, boxes[i], m))),
     h("label", { class: "field" }, h("span", null, "Trading style"), style),
@@ -223,6 +252,52 @@ function aiKeyForm() {
     h("label", { class: "field" }, h("span", null, "Provider"), provider),
     h("label", { class: "field" }, h("span", null, "API key"), key),
     error, button);
+}
+
+function emailPanel() {
+  const email = state.email || { missing: [], to: "", hour_utc: 8 };
+  if (email.missing.length) {
+    return h("section", { class: "panel stack" },
+      h("h2", { style: "font-size:var(--t-h3)" }, "Daily email"),
+      h("p", { class: "soft small" },
+        "Off. To get a progress email every day, set these on the server and restart:"),
+      h("ul", { class: "small" }, email.missing.map((name) => h("li", null, h("code", null, name)))));
+  }
+  return h("section", { class: "panel stack" },
+    h("h2", { style: "font-size:var(--t-h3)" }, "Daily email"),
+    h("p", { class: "soft small" },
+      `A progress report goes to ${email.to} every day at ${String(email.hour_utc).padStart(2, "0")}:00 UTC.`),
+    h("button", { class: "button quiet", type: "button",
+      onclick: () => act("/api/web/console/report/send", {}, `Report sent to ${email.to}.`) },
+      "Send report now"));
+}
+
+const GOAL_STATUS = {
+  reached: "Goal reached.",
+  missed: "The deadline passed before the goal was reached.",
+  "wiped out": "The account is empty.",
+  "on pace": "On pace so far.",
+  behind: "Behind the pace the goal needs.",
+};
+
+function goalPanel(goal) {
+  if (!goal) return null;
+  return h("section", { class: "panel stack" },
+    h("h2", { style: "font-size:var(--t-h3)" },
+      `Goal: ${fmt.usd(goal.target_usd)} by ${fmt.when(goal.deadline).split(",").slice(0, 1).join("")}`),
+    h("p", { class: "verdict" }, GOAL_STATUS[goal.status] || goal.status),
+    figures([
+      ["Account now", fmt.usd(goal.equity)],
+      ["Started at", fmt.usd(goal.starting)],
+      ["Of the way there", fmt.pct(goal.progress, 0), tone(goal.progress)],
+      ["Days left", goal.days_left.toFixed(0)],
+      ["Growth still needed per day", goal.needed_daily_pct === null ? "–" : `${goal.needed_daily_pct.toFixed(1)}%`],
+    ]),
+    goal.needed_daily_pct !== null && goal.needed_daily_pct > 2
+      ? h("p", { class: "notice" },
+          `Reaching this needs ${goal.needed_daily_pct.toFixed(1)}% growth every single day. ` +
+          `Professional funds aim for that much in a month or more, so treat this goal as a long shot.`)
+      : null);
 }
 
 // ---- right column ----------------------------------------------------------
@@ -277,7 +352,7 @@ function botView() {
       h("h1", { style: "font-size:var(--t-h2)" }, "No bot selected"),
       h("p", { class: "soft" }, "Create a paper bot to start building a record."));
   }
-  const { bot, report, decisions } = state.detail;
+  const { bot, report, decisions, goal } = state.detail;
   const running = bot.state === "running";
   const head = h("div", { class: "bothead" },
     h("div", null,
@@ -310,6 +385,7 @@ function botView() {
     bot.last_error ? h("p", { class: "notice bad" }, `Last error: ${bot.last_error}`) : null,
     !state.managesAgents ? h("p", { class: "notice" },
       "Agent processes are run by another supervisor, so Start and Pause only change the bot's flag.") : null,
+    goalPanel(goal),
     h("section", { class: "panel" }, gaugeFromPerformance(report.performance)),
     h("section", { class: "panel stack" },
       h("h2", { style: "font-size:var(--t-h3)" },
@@ -357,6 +433,7 @@ function render() {
           h("h2", { style: "font-size:var(--t-h3)" }, "Bots"), botList()),
         newBotForm(),
         aiKeyForm(),
+        emailPanel(),
         h("p", { class: "soft small" },
           `${state.waitlist} ${state.waitlist === 1 ? "person" : "people"} on the notify list.`)),
       h("main", null, botView())));

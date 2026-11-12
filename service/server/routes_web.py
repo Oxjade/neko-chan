@@ -32,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import web_core
+import web_email
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_DIR = REPO_ROOT / "web"
@@ -117,6 +118,10 @@ def _write_conn() -> sqlite3.Connection:
         " bot_id INTEGER PRIMARY KEY, is_public INTEGER NOT NULL DEFAULT 0);"
         "CREATE TABLE IF NOT EXISTS web_waitlist ("
         " email TEXT PRIMARY KEY, created_at TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS web_goals ("
+        " bot_id INTEGER PRIMARY KEY, target_usd REAL NOT NULL,"
+        " deadline TEXT NOT NULL, created_at TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS web_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
     )
     return conn
 
@@ -129,6 +134,47 @@ def _public_bot_ids() -> list[int]:
         conn.close()
     paper = {b["id"] for b in web_core.list_bots() if (b.get("trading_mode") or "paper") == "paper"}
     return sorted(r["bot_id"] for r in rows if r["bot_id"] in paper)
+
+
+def _goals() -> dict[int, dict]:
+    conn = _write_conn()
+    try:
+        return {r["bot_id"]: dict(r) for r in conn.execute("SELECT * FROM web_goals").fetchall()}
+    finally:
+        conn.close()
+
+
+def _send_daily_report() -> None:
+    subject, body = web_email.build_report(web_core.list_bots(), _goals())
+    web_email.send_email(subject, body)
+
+
+def _report_loop() -> None:
+    """Send the report once a day, at or after REPORT_HOUR_UTC."""
+    from datetime import datetime, timezone
+    while True:
+        time.sleep(60)
+        try:
+            if web_email.email_missing():
+                continue
+            now = datetime.now(timezone.utc)
+            if now.hour < web_email.email_settings()["hour"]:
+                continue
+            today = now.date().isoformat()
+            conn = _write_conn()
+            try:
+                row = conn.execute("SELECT value FROM web_kv WHERE key='report_sent'").fetchone()
+                if row and row["value"] == today:
+                    continue
+                # Mark first: a mail server that accepts then errors must not cause repeats.
+                conn.execute("INSERT INTO web_kv (key, value) VALUES ('report_sent', ?) "
+                             "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (today,))
+                conn.commit()
+            finally:
+                conn.close()
+            _send_daily_report()
+        except Exception as exc:  # keep the loop alive; surface the reason in the log
+            sys.stderr.write(f"[web] daily report failed: {exc}\n")
 
 
 # -------------------------------------------- registry / agent pool (lazy)
@@ -237,6 +283,9 @@ class NewBotBody(BaseModel):
     trader_type: str = "scalp"
     risk_profile: str = "balanced"
     interval_sec: int = 120
+    start_usd: float = Field(default=1000.0, ge=1.0, le=1_000_000.0)
+    goal_usd: float | None = Field(default=None, gt=0, le=100_000_000.0)
+    goal_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class PublicBody(BaseModel):
@@ -360,6 +409,9 @@ def register_web_routes(app: FastAPI) -> None:
             "ai_key": key,
             "manages_agents": _manages_agents(),
             "setup_missing": _setup_missing(),
+            "email": {"missing": web_email.email_missing(),
+                      "to": web_email.email_settings()["to"],
+                      "hour_utc": web_email.email_settings()["hour"]},
         }
 
     @app.post("/api/web/console/bots")
@@ -376,6 +428,13 @@ def register_web_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="Unknown risk profile.")
         if body.interval_sec not in INTERVALS:
             raise HTTPException(status_code=422, detail="Unknown decision interval.")
+        has_goal = body.goal_usd is not None or body.goal_days is not None
+        if has_goal and (body.goal_usd is None or body.goal_days is None):
+            raise HTTPException(status_code=422,
+                                detail="A goal needs both a target amount and a number of days.")
+        if has_goal and body.goal_usd <= body.start_usd:
+            raise HTTPException(status_code=422,
+                                detail="The goal must be more than the starting amount.")
         svc = _svc()
         registry = svc["registry"]
         owner = _operator_id()
@@ -391,6 +450,21 @@ def register_web_routes(app: FastAPI) -> None:
             watchlist=",".join(dict.fromkeys(watch)), chain="sui", network="mainnet",
             onboarding_complete=1, paused=1, is_running=0)
         svc["paper"].ensure_portfolio(bot["id"])
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        conn = _write_conn()
+        try:
+            conn.execute("UPDATE paper_portfolios SET cash = ?, starting = ? WHERE bot_id = ?",
+                         (body.start_usd, body.start_usd, bot["id"]))
+            if has_goal:
+                conn.execute(
+                    "INSERT OR REPLACE INTO web_goals (bot_id, target_usd, deadline, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (bot["id"], body.goal_usd,
+                     (now + timedelta(days=body.goal_days)).isoformat(), now.isoformat()))
+            conn.commit()
+        finally:
+            conn.close()
         return _bot_summary(web_core.get_bot(bot["id"]), set())
 
     @app.get("/api/web/console/bots/{bot_id}")
@@ -400,9 +474,12 @@ def register_web_routes(app: FastAPI) -> None:
         summary = _bot_summary(bot, set(_public_bot_ids()))
         if summary["mode"] != "paper":
             return {"bot": summary, "report": None, "decisions": []}
+        report = web_core.bot_report(bot_id)
         return {
             "bot": summary,
-            "report": web_core.bot_report(bot_id),
+            "goal": web_email.goal_progress(_goals().get(bot_id), report["account"]["starting"],
+                                            report["account"]["equity"]),
+            "report": report,
             "decisions": web_core.recent_decisions(bot_id, 40),
         }
 
@@ -473,6 +550,19 @@ def register_web_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=409, detail=str(exc))
         return {"provider": provider, "model": model}
 
+    @app.post("/api/web/console/report/send")
+    async def send_report_now(request: Request):
+        _require_operator(request)
+        _require_json(request)
+        if web_email.email_missing():
+            raise HTTPException(status_code=409, detail="Email is not set up. Missing: "
+                                + ", ".join(web_email.email_missing()))
+        try:
+            _send_daily_report()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"The mail server refused: {exc}")
+        return {"sent_to": web_email.email_settings()["to"]}
+
     @app.get("/api/web/console/waitlist")
     async def console_waitlist(request: Request):
         _require_operator(request)
@@ -485,6 +575,8 @@ def register_web_routes(app: FastAPI) -> None:
         finally:
             conn.close()
         return {"total": total, "entries": [dict(r) for r in rows]}
+
+    threading.Thread(target=_report_loop, daemon=True, name="web-daily-report").start()
 
     # ---- pages ------------------------------------------------------------
 

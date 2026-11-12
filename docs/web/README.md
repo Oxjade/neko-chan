@@ -28,6 +28,23 @@ variables above and a volume on `/data`. Put it behind HTTPS before exposing it.
 Do not run it next to the Telegram master bot unless `WEB_MANAGE_AGENTS=0`:
 each has its own agent pool and two pools start two agents per bot.
 
+## Goals and the daily email
+
+When you create a bot you can give it a starting amount, a goal amount and a
+number of days ("start with 10 USD, reach 40 USD in 14 days"). The console
+then shows progress and the growth per day still needed.
+
+A progress email goes out once a day when these are set (see `.env.example`):
+
+```bash
+export REPORT_EMAIL_TO='you@example.com'
+export SMTP_HOST='smtp.gmail.com' SMTP_PORT=587
+export SMTP_USER='you@gmail.com' SMTP_PASSWORD='an app password'
+```
+
+"Send report now" in the console sends one immediately, which is the way to
+check the mail settings.
+
 ## The go-live checks
 
 A bot's record passes only when all four hold (`service/server/web_core.py`):
@@ -55,4 +72,5 @@ random-direction baseline. The public page shows the result.
 - `web/` static pages, no build step (`assets/neko.css` holds the design tokens)
 - `service/server/routes_web.py` routes, sign-in, bot control
 - `service/server/web_core.py` trade pairing, statistics, go-live checks
+- `service/server/web_email.py` goals and the daily email
 - `service/server/tests/test_web.py` tests

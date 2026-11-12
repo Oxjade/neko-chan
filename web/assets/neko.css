@@ -725,3 +725,8 @@ footer.site {
 .console main section {
   min-width: 0;
 }
+
+/* figures reset their own margin; give them the stack gap back */
+.stack > * + .figures {
+  margin-top: var(--s4);
+}
