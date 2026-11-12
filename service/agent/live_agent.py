@@ -1593,9 +1593,12 @@ def log_decision(row: dict):
                         g.write(LOG_HEADER)
                         g.write(body)  # keep all existing rows
             ts = datetime.now(timezone.utc).isoformat()
+            # Built outside the f-string: Python 3.11 (the Docker image) rejects
+            # a backslash inside an f-string expression.
+            _reason_csv = str(row.get('reasoning', '')).replace('"', '""')
             f.write(f"{ts},{row.get('symbol')},{row.get('direction')},{row.get('action')},{row.get('price')},"
                     f"{row.get('quantity')},{row.get('stop_pct')},{row.get('take_pct')},"
-                    f"{row.get('fill_ok')},\"{str(row.get('reasoning','')).replace('\"','\"\"')}\","
+                    f"{row.get('fill_ok')},\"{_reason_csv}\","
                     f"{str(row.get('error','')).replace(',',';')},{row.get('leverage')}\n")
     except Exception as exc:
         print(f"[agent log] failed to append decision row: {exc}", file=sys.stderr)
@@ -1916,11 +1919,12 @@ def run_cycle(token: str, dry: bool = False) -> None:
     except Exception:
         carry_txt = ""
 
+    _carry_line = ("Funding-carry: " + carry_txt + "\n") if carry_txt else ""
     prompt = (
         f"Live trading decision - {now_iso} UTC.\n"
         f"Universe: {', '.join(f'{s} [{m}]' for s, m in UNIVERSE)}\n"
         f"Prices + 5m trend + sentiment: {', '.join(price_txt)}\n"
-        f"{('Funding-carry: ' + carry_txt + '\n') if carry_txt else ''}"
+        f"{_carry_line}"
         f"Cash: ${portfolio.get('cash', 0):,.2f} | Total equity: ${eq:,.2f}\n"
         f"Open positions: {pos_txt}\n"
         f"Trades executed today: {used}/{MAX_DAILY_TRADES}\n"

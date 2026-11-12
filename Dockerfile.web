@@ -1,0 +1,22 @@
+# Web deployment: public track-record page + operator console + paper agents.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY service/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY service/ ./service/
+COPY web/ ./web/
+COPY skills/ ./skills/
+COPY research/exports/tables/live_engine_replay.json ./research/exports/tables/live_engine_replay.json
+
+# Persist this directory: it holds the registry (bots, paper trades, encrypted keys).
+ENV TG_REGISTRY_PATH=/data/registry.db
+VOLUME /data
+
+EXPOSE 8000
+CMD ["python", "service/start_web.py"]

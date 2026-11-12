@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Neko console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/web/neko.css">
+</head>
+<body>
+
+<header class="wrap masthead">
+  <a class="wordmark" href="/console" aria-label="Neko console home">
+    <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 3l6 5h8l6-5v13a10 10 0 0 1-20 0z" fill="#131c33"/><circle cx="10.5" cy="15" r="1.8" fill="#f6ecd8"/><circle cx="17.5" cy="15" r="1.8" fill="#f6ecd8"/></svg>
+    Neko console
+  </a>
+  <nav aria-label="Console">
+    <a href="/">Public page</a>
+    <button class="button quiet" id="signout" type="button" hidden>Sign out</button>
+  </nav>
+</header>
+
+<div class="wrap" id="app" aria-live="polite">
+  <p class="soft">Loading…</p>
+</div>
+
+<script type="module" src="/web/console.js"></script>
+</body>
+</html>

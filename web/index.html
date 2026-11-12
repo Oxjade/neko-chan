@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neko: an AI trading agent with a public record</title>
+<meta name="description" content="Neko trades crypto perpetuals on paper with real prices and real fees, and publishes every result, including the losses.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/web/neko.css">
+</head>
+<body>
+
+<header class="wrap masthead">
+  <a class="wordmark" href="/" aria-label="Neko home">
+    <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 3l6 5h8l6-5v13a10 10 0 0 1-20 0z" fill="#131c33"/><circle cx="10.5" cy="15" r="1.8" fill="#f6ecd8"/><circle cx="17.5" cy="15" r="1.8" fill="#f6ecd8"/></svg>
+    Neko
+  </a>
+  <nav aria-label="Sections">
+    <a href="#record">Record</a>
+    <a href="#gate">Going live</a>
+    <a href="#how">How it works</a>
+    <a href="#risks">Risks</a>
+    <a href="/console">Operator sign in</a>
+  </nav>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <h1>An AI trading agent that shows its working.</h1>
+    <p class="lead">Neko trades crypto perpetuals on paper, at real prices and with real fees charged. Every closed trade lands on this page, the losing ones included.</p>
+    <div class="panel" id="hero-gauge" aria-live="polite">
+      <p class="soft">Loading the record…</p>
+    </div>
+  </section>
+
+  <section class="band" id="record">
+    <div class="wrap">
+      <h2>The paper record</h2>
+      <div class="stack" id="record-body">
+        <p class="soft">Loading…</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="gate">
+    <div class="wrap">
+      <h2>What has to be true before real money</h2>
+      <div class="split">
+        <div class="stack">
+          <p>A high win rate over a few trades is luck. Neko moves from paper to live trading only when all four of these checks pass, and the win-rate check uses the low end of the likely range, so a short streak cannot pass it.</p>
+          <p class="soft">A win rate also means nothing without the payoff beside it. Winning 70% of trades loses money if the losses are three times the size of the wins. That is why this page shows the break-even line and not a single headline percentage.</p>
+        </div>
+        <div class="panel" id="gate-body"><p class="soft">Loading…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="replay" hidden>
+    <div class="wrap">
+      <h2>Replaying the engine on past prices</h2>
+      <div class="stack" id="replay-body"></div>
+    </div>
+  </section>
+
+  <section class="band" id="how">
+    <div class="wrap">
+      <h2>How a trade happens</h2>
+      <ol class="steps">
+        <li>
+          <h3>Read the market</h3>
+          <p class="soft">Every few minutes the agent takes recent five-minute prices for each market and scores a long and a short setup, each with a stop and a target.</p>
+        </li>
+        <li>
+          <h3>Pick one, or none</h3>
+          <p class="soft">A language model chooses among the scored setups. Position size, leverage, the stop and the target are set by fixed rules it cannot override.</p>
+        </li>
+        <li>
+          <h3>Fill and record</h3>
+          <p class="soft">The order fills at the live price with venue and platform fees deducted. When the stop or target is hit, the result is added to the record above.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="band" id="risks">
+    <div class="wrap">
+      <h2>Risks, plainly</h2>
+      <div class="split">
+        <div class="stack">
+          <p>Everything on this page is paper trading: real prices, simulated money. Paper results leave out things that cost real money, such as funding payments, slipped stops and liquidation.</p>
+          <p>Leveraged perpetuals can lose the whole position quickly. Past results, on paper or live, do not predict future results. Nothing here is financial advice.</p>
+        </div>
+        <div class="stack">
+          <h3>Hear when the checks pass</h3>
+          <form class="inline-form" id="waitlist" novalidate>
+            <label class="field">
+              <span>Email address</span>
+              <input type="email" name="email" autocomplete="email" required>
+            </label>
+            <button class="button" type="submit">Notify me</button>
+          </form>
+          <p class="small" id="waitlist-note" role="status"></p>
+          <p class="soft small">One email when the record passes all four checks. Nothing else.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap soft small">Neko. Paper trading record; not an offer to manage money.</div>
+</footer>
+
+<script type="module" src="/web/public.js"></script>
+</body>
+</html>
