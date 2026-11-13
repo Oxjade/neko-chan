@@ -1,0 +1,252 @@
+{
+ "generated_at": "2026-11-13T00:30:32+00:00",
+ "start_usd": 10.0,
+ "target_usd": 30.0,
+ "days": 7,
+ "fair_game_ceiling": 0.3333333333333333,
+ "coins": [
+  "BTC",
+  "ETH",
+  "SOL",
+  "SUI",
+  "HYPE"
+ ],
+ "costs_pct_round_trip": {
+  "venue_only": 0.13,
+  "with_platform_fee": 1.13
+ },
+ "results": {
+  "venue_only": [
+   {
+    "leverage": 1,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.0,
+     "lost_everything": 0.0,
+     "lost_half_or_more": 0.0019342359767891683,
+     "median_final_usd": 9.998241669120205,
+     "average_final_usd": 10.0362152504969
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.0,
+     "lost_everything": 0.0,
+     "lost_half_or_more": 0.0019342359767891683,
+     "median_final_usd": 9.987,
+     "average_final_usd": 9.987
+    }
+   },
+   {
+    "leverage": 3,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.0019342359767891683,
+     "lost_everything": 0.015473887814313346,
+     "lost_half_or_more": 0.05415860735009671,
+     "median_final_usd": 9.994725007360612,
+     "average_final_usd": 10.171969713691599
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.0019342359767891683,
+     "lost_everything": 0.014506769825918761,
+     "lost_half_or_more": 0.06673114119922631,
+     "median_final_usd": 9.961,
+     "average_final_usd": 9.99353333686464
+    }
+   },
+   {
+    "leverage": 5,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.007736943907156673,
+     "lost_everything": 0.07736943907156674,
+     "lost_half_or_more": 0.1528046421663443,
+     "median_final_usd": 9.748815968528097,
+     "average_final_usd": 9.798611905436124
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.01160541586073501,
+     "lost_everything": 0.086073500967118,
+     "lost_half_or_more": 0.17408123791102514,
+     "median_final_usd": 9.789103300247682,
+     "average_final_usd": 9.693214660759068
+    }
+   },
+   {
+    "leverage": 10,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.06576402321083172,
+     "lost_everything": 0.2901353965183752,
+     "lost_half_or_more": 0.3733075435203095,
+     "median_final_usd": 7.771448402239111,
+     "average_final_usd": 8.852823543046162
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.04932301740812379,
+     "lost_everything": 0.32011605415860733,
+     "lost_half_or_more": 0.390715667311412,
+     "median_final_usd": 7.617011103820463,
+     "average_final_usd": 8.347887246317532
+    }
+   },
+   {
+    "leverage": 20,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.15087040618955513,
+     "lost_everything": 0.5589941972920697,
+     "lost_half_or_more": 0.6189555125725339,
+     "median_final_usd": 0.0,
+     "average_final_usd": 7.547838568984528
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.1470019342359768,
+     "lost_everything": 0.5454545454545454,
+     "lost_half_or_more": 0.6063829787234043,
+     "median_final_usd": 0.0,
+     "average_final_usd": 7.750687052002671
+    }
+   },
+   {
+    "leverage": 40,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.28239845261121854,
+     "lost_everything": 0.6266924564796905,
+     "lost_half_or_more": 0.6460348162475822,
+     "median_final_usd": 0.0,
+     "average_final_usd": 9.43628553764443
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.293036750483559,
+     "lost_everything": 0.6189555125725339,
+     "lost_half_or_more": 0.6382978723404256,
+     "median_final_usd": 0.0,
+     "average_final_usd": 9.737494946433822
+    }
+   }
+  ],
+  "with_platform_fee": [
+   {
+    "leverage": 1,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.0,
+     "lost_everything": 0.0,
+     "lost_half_or_more": 0.0019342359767891683,
+     "median_final_usd": 9.898241669120205,
+     "average_final_usd": 9.936215250496902
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.0,
+     "lost_everything": 0.0,
+     "lost_half_or_more": 0.0019342359767891683,
+     "median_final_usd": 9.887,
+     "average_final_usd": 9.887
+    }
+   },
+   {
+    "leverage": 3,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.0019342359767891683,
+     "lost_everything": 0.015473887814313346,
+     "lost_half_or_more": 0.06382978723404255,
+     "median_final_usd": 9.694725007360613,
+     "average_final_usd": 9.87719215082893
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.0019342359767891683,
+     "lost_everything": 0.014506769825918761,
+     "lost_half_or_more": 0.0735009671179884,
+     "median_final_usd": 9.661,
+     "average_final_usd": 9.698465638605452
+    }
+   },
+   {
+    "leverage": 5,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.007736943907156673,
+     "lost_everything": 0.07736943907156674,
+     "lost_half_or_more": 0.1760154738878143,
+     "median_final_usd": 9.248815968528097,
+     "average_final_usd": 9.341165096925486
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.01160541586073501,
+     "lost_everything": 0.08800773694390715,
+     "lost_half_or_more": 0.19342359767891681,
+     "median_final_usd": 9.289103300247682,
+     "average_final_usd": 9.24245221095844
+    }
+   },
+   {
+    "leverage": 10,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.06382978723404255,
+     "lost_everything": 0.30174081237911027,
+     "lost_half_or_more": 0.4197292069632495,
+     "median_final_usd": 6.771448402239111,
+     "average_final_usd": 8.194763368201496
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.047388781431334626,
+     "lost_everything": 0.32978723404255317,
+     "lost_half_or_more": 0.43133462282398455,
+     "median_final_usd": 6.617011103820464,
+     "average_final_usd": 7.708312256054862
+    }
+   },
+   {
+    "leverage": 20,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.1218568665377176,
+     "lost_everything": 0.6034816247582205,
+     "lost_half_or_more": 0.6692456479690522,
+     "median_final_usd": 0.0,
+     "average_final_usd": 6.3337277755863255
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.12282398452611218,
+     "lost_everything": 0.5831721470019342,
+     "lost_half_or_more": 0.648936170212766,
+     "median_final_usd": 0.0,
+     "average_final_usd": 6.596003960066016
+    }
+   },
+   {
+    "leverage": 40,
+    "trend": {
+     "weeks": 517,
+     "hit_target": 0.195357833655706,
+     "lost_everything": 0.7176015473887815,
+     "lost_half_or_more": 0.7388781431334622,
+     "median_final_usd": 0.0,
+     "average_final_usd": 6.757999745814089
+    },
+    "random": {
+     "weeks": 1034,
+     "hit_target": 0.20502901353965183,
+     "lost_everything": 0.7079303675048356,
+     "lost_half_or_more": 0.7321083172147002,
+     "median_final_usd": 0.0,
+     "average_final_usd": 7.014288817334333
+    }
+   }
+  ]
+ }
+}
