@@ -1,0 +1,2732 @@
+{
+ "generated_at": "2026-11-13T00:25:59+00:00",
+ "coins": [
+  "BTC",
+  "ETH",
+  "SOL",
+  "SUI",
+  "HYPE"
+ ],
+ "split": 0.6,
+ "costs_pct_round_trip": {
+  "venue_only": 0.13,
+  "with_platform_fee": 1.13
+ },
+ "variants_tried": 72,
+ "passed": {
+  "venue_only": 17,
+  "with_platform_fee": 4
+ },
+ "buy_and_hold_pct": {
+  "1h": {
+   "BTC": {
+    "choose": 1.766775141302479,
+    "check": -7.807842681841059
+   },
+   "ETH": {
+    "choose": 1.4538210486161107,
+    "check": -16.124475466367528
+   },
+   "SOL": {
+    "choose": 5.4572101181683985,
+    "check": -10.884457631555977
+   },
+   "SUI": {
+    "choose": -15.052822404200795,
+    "check": -0.7017240954048765
+   },
+   "HYPE": {
+    "choose": 73.36965121273087,
+    "check": -4.989607707290277
+   }
+  },
+  "4h": {
+   "BTC": {
+    "choose": 40.120948691297365,
+    "check": -19.36619718309859
+   },
+   "ETH": {
+    "choose": -1.5569664677918538,
+    "check": -34.751131221719454
+   },
+   "SOL": {
+    "choose": -19.608567208271776,
+    "check": -37.2742628992629
+   },
+   "SUI": {
+    "choose": 127.8208131530159,
+    "check": -48.479012029690296
+   },
+   "HYPE": {
+    "choose": 140.3877460411425,
+    "check": 118.26426426426431
+   }
+  }
+ },
+ "rows": [
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 2-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 218,
+     "win_rate": 0.2889908256880734,
+     "avg_net": 0.37355821399619427,
+     "total_net": 81.43569065117035,
+     "t": 0.8930881715344713
+    },
+    "check": {
+     "trades": 142,
+     "win_rate": 0.2676056338028169,
+     "avg_net": -0.7448526395307964,
+     "total_net": -105.7690748133731,
+     "t": -2.1445416696448003
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 218,
+     "win_rate": 0.21100917431192662,
+     "avg_net": -0.6264417860038057,
+     "total_net": -136.56430934882965,
+     "t": -1.4976721921061198
+    },
+    "check": {
+     "trades": 142,
+     "win_rate": 0.176056338028169,
+     "avg_net": -1.7448526395307964,
+     "total_net": -247.7690748133731,
+     "t": -5.023690585591057
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 2-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 112,
+     "win_rate": 0.29464285714285715,
+     "avg_net": 0.8150726680257543,
+     "total_net": 91.28813881888448,
+     "t": 1.230285777793261
+    },
+    "check": {
+     "trades": 71,
+     "win_rate": 0.19718309859154928,
+     "avg_net": -0.637050890632938,
+     "total_net": -45.230613234938595,
+     "t": -1.0345777006902486
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 112,
+     "win_rate": 0.21428571428571427,
+     "avg_net": -0.1849273319742458,
+     "total_net": -20.71186118111553,
+     "t": -0.2791327391755684
+    },
+    "check": {
+     "trades": 71,
+     "win_rate": 0.1267605633802817,
+     "avg_net": -1.637050890632938,
+     "total_net": -116.2306132349386,
+     "t": -2.6585887740636025
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 5-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 104,
+     "win_rate": 0.2692307692307692,
+     "avg_net": 1.0156061548026023,
+     "total_net": 105.62304009947064,
+     "t": 1.2584710506861407
+    },
+    "check": {
+     "trades": 60,
+     "win_rate": 0.2,
+     "avg_net": -0.5312870313987165,
+     "total_net": -31.877221883922985,
+     "t": -0.5636835085027805
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 104,
+     "win_rate": 0.20192307692307693,
+     "avg_net": 0.015606154802602403,
+     "total_net": 1.62304009947065,
+     "t": 0.01933810063943429
+    },
+    "check": {
+     "trades": 60,
+     "win_rate": 0.15,
+     "avg_net": -1.5312870313987164,
+     "total_net": -91.87722188392299,
+     "t": -1.624660861966075
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 5-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 48,
+     "win_rate": 0.3125,
+     "avg_net": 2.6446869714461294,
+     "total_net": 126.94497462941422,
+     "t": 1.7690037821351992
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.20833333333333334,
+     "avg_net": 1.0295154024897488,
+     "total_net": 24.70836965975397,
+     "t": 0.45348119736790077
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 48,
+     "win_rate": 0.2708333333333333,
+     "avg_net": 1.6446869714461296,
+     "total_net": 78.94497462941422,
+     "t": 1.1001141172203766
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.16666666666666666,
+     "avg_net": 0.029515402489748748,
+     "total_net": 0.7083696597539699,
+     "t": 0.013000951738534147
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 10-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 68,
+     "win_rate": 0.22058823529411764,
+     "avg_net": 1.3145192915937276,
+     "total_net": 89.38731182837348,
+     "t": 1.1113551895102924
+    },
+    "check": {
+     "trades": 33,
+     "win_rate": 0.21212121212121213,
+     "avg_net": -0.8244227705634614,
+     "total_net": -27.205951428594226,
+     "t": -0.7169560604552889
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 68,
+     "win_rate": 0.20588235294117646,
+     "avg_net": 0.3145192915937276,
+     "total_net": 21.387311828373477,
+     "t": 0.2659091039204175
+    },
+    "check": {
+     "trades": 33,
+     "win_rate": 0.21212121212121213,
+     "avg_net": -1.8244227705634615,
+     "total_net": -60.205951428594226,
+     "t": -1.5866021765678717
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 10-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 30,
+     "win_rate": 0.3333333333333333,
+     "avg_net": 3.9135797725257246,
+     "total_net": 117.40739317577174,
+     "t": 1.779640242246548
+    },
+    "check": {
+     "trades": 11,
+     "win_rate": 0.36363636363636365,
+     "avg_net": 2.0532217885383526,
+     "total_net": 22.58543967392188,
+     "t": 0.6502259501954311
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 30,
+     "win_rate": 0.3,
+     "avg_net": 2.9135797725257246,
+     "total_net": 87.40739317577174,
+     "t": 1.3249056141855458
+    },
+    "check": {
+     "trades": 11,
+     "win_rate": 0.36363636363636365,
+     "avg_net": 1.0532217885383526,
+     "total_net": 11.58543967392188,
+     "t": 0.33354026439900575
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 20-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 32,
+     "win_rate": 0.28125,
+     "avg_net": 3.726726936931927,
+     "total_net": 119.25526198182166,
+     "t": 1.615020341897728
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.041666666666666664,
+     "avg_net": -2.666788503458985,
+     "total_net": -64.00292408301564,
+     "t": -3.930442231652351
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 32,
+     "win_rate": 0.28125,
+     "avg_net": 2.726726936931927,
+     "total_net": 87.25526198182166,
+     "t": 1.1816587435759274
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.041666666666666664,
+     "avg_net": -3.666788503458985,
+     "total_net": -88.00292408301564,
+     "t": -5.404290730156949
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Breakout of the 20-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 15,
+     "win_rate": 0.3333333333333333,
+     "avg_net": 6.884321066780151,
+     "total_net": 103.26481600170227,
+     "t": 1.6157284863482897
+    },
+    "check": {
+     "trades": 7,
+     "win_rate": 0.14285714285714285,
+     "avg_net": -1.3458381271236648,
+     "total_net": -9.420866889865653,
+     "t": -0.5868422270562934
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 15,
+     "win_rate": 0.3333333333333333,
+     "avg_net": 5.88432106678015,
+     "total_net": 88.26481600170226,
+     "t": 1.3810316337937387
+    },
+    "check": {
+     "trades": 7,
+     "win_rate": 0.14285714285714285,
+     "avg_net": -2.345838127123664,
+     "total_net": -16.42086688986565,
+     "t": -1.022884433937812
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 1d/4d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 207,
+     "win_rate": 0.2463768115942029,
+     "avg_net": 0.5195885259533063,
+     "total_net": 107.5548248723344,
+     "t": 1.0749817994954145
+    },
+    "check": {
+     "trades": 134,
+     "win_rate": 0.208955223880597,
+     "avg_net": -0.5441449221760688,
+     "total_net": -72.91541957159322,
+     "t": -1.022129461145314
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 207,
+     "win_rate": 0.1932367149758454,
+     "avg_net": -0.48041147404669354,
+     "total_net": -99.44517512766556,
+     "t": -0.9939280124045108
+    },
+    "check": {
+     "trades": 134,
+     "win_rate": 0.14925373134328357,
+     "avg_net": -1.5441449221760688,
+     "total_net": -206.91541957159322,
+     "t": -2.900543500290908
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 1d/4d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 106,
+     "win_rate": 0.24528301886792453,
+     "avg_net": 0.9793650523897812,
+     "total_net": 103.81269555331681,
+     "t": 1.1950675097638574
+    },
+    "check": {
+     "trades": 67,
+     "win_rate": 0.11940298507462686,
+     "avg_net": -0.39869723703396637,
+     "total_net": -26.712714881275748,
+     "t": -0.39912600130300296
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 106,
+     "win_rate": 0.18867924528301888,
+     "avg_net": -0.020634947610218664,
+     "total_net": -2.1873044466831786,
+     "t": -0.02517973802973428
+    },
+    "check": {
+     "trades": 67,
+     "win_rate": 0.08955223880597014,
+     "avg_net": -1.3986972370339663,
+     "total_net": -93.71271488127574,
+     "t": -1.4002014144967996
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 2d/8d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 99,
+     "win_rate": 0.26262626262626265,
+     "avg_net": 1.1460832297013468,
+     "total_net": 113.46223974043333,
+     "t": 1.300874061396318
+    },
+    "check": {
+     "trades": 42,
+     "win_rate": 0.30952380952380953,
+     "avg_net": 0.15506580172949128,
+     "total_net": 6.512763672638633,
+     "t": 0.12467825030184977
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 99,
+     "win_rate": 0.20202020202020202,
+     "avg_net": 0.14608322970134677,
+     "total_net": 14.46223974043333,
+     "t": 0.1658133365872589
+    },
+    "check": {
+     "trades": 42,
+     "win_rate": 0.23809523809523808,
+     "avg_net": -0.8449341982705089,
+     "total_net": -35.48723632736137,
+     "t": -0.6793562235233211
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 2d/8d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 52,
+     "win_rate": 0.28846153846153844,
+     "avg_net": 1.607857790490606,
+     "total_net": 83.60860510551151,
+     "t": 1.194070770660638
+    },
+    "check": {
+     "trades": 21,
+     "win_rate": 0.2857142857142857,
+     "avg_net": 0.8338030847476274,
+     "total_net": 17.509864779700177,
+     "t": 0.35873706347104045
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 52,
+     "win_rate": 0.23076923076923078,
+     "avg_net": 0.6078577904906061,
+     "total_net": 31.608605105511515,
+     "t": 0.4514237668504995
+    },
+    "check": {
+     "trades": 21,
+     "win_rate": 0.23809523809523808,
+     "avg_net": -0.1661969152523724,
+     "total_net": -3.4901352202998206,
+     "t": -0.07150488457790645
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 5d/20d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 45,
+     "win_rate": 0.15555555555555556,
+     "avg_net": 0.4865285433252723,
+     "total_net": 21.893784449637252,
+     "t": 0.3173622974238702
+    },
+    "check": {
+     "trades": 13,
+     "win_rate": 0.15384615384615385,
+     "avg_net": -1.7254634870173318,
+     "total_net": -22.431025331225314,
+     "t": -0.6929718410988328
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 45,
+     "win_rate": 0.15555555555555556,
+     "avg_net": -0.5134714566747273,
+     "total_net": -23.106215550362727,
+     "t": -0.33493714477287495
+    },
+    "check": {
+     "trades": 13,
+     "win_rate": 0.07692307692307693,
+     "avg_net": -2.7254634870173318,
+     "total_net": -35.431025331225314,
+     "t": -1.0945867383788193
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 5d/20d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 25,
+     "win_rate": 0.16,
+     "avg_net": 0.6616974179753586,
+     "total_net": 16.542435449383966,
+     "t": 0.3062780225988699
+    },
+    "check": {
+     "trades": 6,
+     "win_rate": 0.3333333333333333,
+     "avg_net": 0.5013691266068161,
+     "total_net": 3.0082147596408966,
+     "t": 0.09141896489357842
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 25,
+     "win_rate": 0.16,
+     "avg_net": -0.3383025820246411,
+     "total_net": -8.457564550616027,
+     "t": -0.15658916454538382
+    },
+    "check": {
+     "trades": 6,
+     "win_rate": 0.16666666666666666,
+     "avg_net": -0.4986308733931836,
+     "total_net": -2.9917852403591016,
+     "t": -0.09091967552548155
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 10d/40d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 18,
+     "win_rate": 0.2777777777777778,
+     "avg_net": 2.151528837014497,
+     "total_net": 38.727519066260946,
+     "t": 0.9412889752754828
+    },
+    "check": {
+     "trades": 8,
+     "win_rate": 0.125,
+     "avg_net": -2.9600169756458095,
+     "total_net": -23.680135805166476,
+     "t": -1.211229641909695
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 18,
+     "win_rate": 0.2777777777777778,
+     "avg_net": 1.151528837014498,
+     "total_net": 20.727519066260964,
+     "t": 0.5037912485047681
+    },
+    "check": {
+     "trades": 8,
+     "win_rate": 0.125,
+     "avg_net": -3.960016975645809,
+     "total_net": -31.680135805166472,
+     "t": -1.6204264985072587
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Moving-average trend 10d/40d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 11,
+     "win_rate": 0.2727272727272727,
+     "avg_net": 3.8400998418543875,
+     "total_net": 42.24109826039826,
+     "t": 1.0530392870353908
+    },
+    "check": {
+     "trades": 3,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -0.9382821927937165,
+     "total_net": -2.8148465783811494,
+     "t": -0.1309183011243874
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 11,
+     "win_rate": 0.2727272727272727,
+     "avg_net": 2.840099841854388,
+     "total_net": 31.241098260398267,
+     "t": 0.7788174359371451
+    },
+    "check": {
+     "trades": 3,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -1.9382821927937153,
+     "total_net": -5.814846578381146,
+     "t": -0.27044807386213976
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 3 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 178,
+     "win_rate": 0.25280898876404495,
+     "avg_net": 0.25576747939967964,
+     "total_net": 45.52661133314298,
+     "t": 0.41995737590406684
+    },
+    "check": {
+     "trades": 126,
+     "win_rate": 0.2698412698412698,
+     "avg_net": -0.8369252273959712,
+     "total_net": -105.45257865189237,
+     "t": -1.7756465875642369
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 178,
+     "win_rate": 0.19662921348314608,
+     "avg_net": -0.7442325206003203,
+     "total_net": -132.473388666857,
+     "t": -1.2219924798389807
+    },
+    "check": {
+     "trades": 126,
+     "win_rate": 0.19047619047619047,
+     "avg_net": -1.8369252273959709,
+     "total_net": -231.45257865189234,
+     "t": -3.8972776836766396
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 3 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 89,
+     "win_rate": 0.2808988764044944,
+     "avg_net": 1.0286973662931187,
+     "total_net": 91.55406560008757,
+     "t": 0.9694539999848835
+    },
+    "check": {
+     "trades": 63,
+     "win_rate": 0.20634920634920634,
+     "avg_net": -0.8005871850451699,
+     "total_net": -50.43699265784571,
+     "t": -0.9600161678333693
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 89,
+     "win_rate": 0.20224719101123595,
+     "avg_net": 0.028697366293118906,
+     "total_net": 2.5540656000875828,
+     "t": 0.0270446658594518
+    },
+    "check": {
+     "trades": 63,
+     "win_rate": 0.15873015873015872,
+     "avg_net": -1.80058718504517,
+     "total_net": -113.4369926578457,
+     "t": -2.1591562312347143
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 7 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 113,
+     "win_rate": 0.35398230088495575,
+     "avg_net": 1.5765418793351085,
+     "total_net": 178.14923236486726,
+     "t": 1.7980561129002477
+    },
+    "check": {
+     "trades": 72,
+     "win_rate": 0.25,
+     "avg_net": -1.0338262048000795,
+     "total_net": -74.43548674560573,
+     "t": -1.116096757259922
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 113,
+     "win_rate": 0.2743362831858407,
+     "avg_net": 0.5765418793351084,
+     "total_net": 65.14923236486725,
+     "t": 0.6575497067789203
+    },
+    "check": {
+     "trades": 72,
+     "win_rate": 0.18055555555555555,
+     "avg_net": -2.0338262048000795,
+     "total_net": -146.43548674560571,
+     "t": -2.195675464084975
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 7 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 57,
+     "win_rate": 0.38596491228070173,
+     "avg_net": 2.6449881865675797,
+     "total_net": 150.76432663435205,
+     "t": 1.7854061408064927
+    },
+    "check": {
+     "trades": 36,
+     "win_rate": 0.19444444444444445,
+     "avg_net": -0.8456438318276721,
+     "total_net": -30.443177945796197,
+     "t": -0.5021328322424474
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 57,
+     "win_rate": 0.3157894736842105,
+     "avg_net": 1.6449881865675797,
+     "total_net": 93.76432663435205,
+     "t": 1.1103913525085432
+    },
+    "check": {
+     "trades": 36,
+     "win_rate": 0.16666666666666666,
+     "avg_net": -1.8456438318276716,
+     "total_net": -66.44317794579618,
+     "t": -1.0959204451162954
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 14 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 75,
+     "win_rate": 0.32,
+     "avg_net": 0.9721064615009706,
+     "total_net": 72.90798461257279,
+     "t": 0.7315994553287469
+    },
+    "check": {
+     "trades": 36,
+     "win_rate": 0.25,
+     "avg_net": -2.0488550114479325,
+     "total_net": -73.75878041212557,
+     "t": -1.8117087016986406
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 75,
+     "win_rate": 0.25333333333333335,
+     "avg_net": -0.027893538499029185,
+     "total_net": -2.092015387427189,
+     "t": -0.020992451322226716
+    },
+    "check": {
+     "trades": 36,
+     "win_rate": 0.19444444444444445,
+     "avg_net": -3.0488550114479325,
+     "total_net": -109.75878041212557,
+     "t": -2.695962927388481
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 14 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 38,
+     "win_rate": 0.3157894736842105,
+     "avg_net": 2.460424635889737,
+     "total_net": 93.49613616381001,
+     "t": 1.1802544124289167
+    },
+    "check": {
+     "trades": 18,
+     "win_rate": 0.2222222222222222,
+     "avg_net": -0.5509628283612074,
+     "total_net": -9.917330910501732,
+     "t": -0.3300835050240519
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 38,
+     "win_rate": 0.2894736842105263,
+     "avg_net": 1.460424635889737,
+     "total_net": 55.49613616381001,
+     "t": 0.7005589992011452
+    },
+    "check": {
+     "trades": 18,
+     "win_rate": 0.2222222222222222,
+     "avg_net": -1.5509628283612071,
+     "total_net": -27.91733091050173,
+     "t": -0.9291865443449758
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 30 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 50,
+     "win_rate": 0.38,
+     "avg_net": 1.642977868584807,
+     "total_net": 82.14889342924036,
+     "t": 1.0270448152339868
+    },
+    "check": {
+     "trades": 15,
+     "win_rate": 0.26666666666666666,
+     "avg_net": -2.497876817427511,
+     "total_net": -37.46815226141267,
+     "t": -1.1272730678002811
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 50,
+     "win_rate": 0.26,
+     "avg_net": 0.6429778685848074,
+     "total_net": 32.148893429240374,
+     "t": 0.40193303809322706
+    },
+    "check": {
+     "trades": 15,
+     "win_rate": 0.2,
+     "avg_net": -3.497876817427511,
+     "total_net": -52.46815226141267,
+     "t": -1.5785655654668498
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Momentum over 30 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 26,
+     "win_rate": 0.38461538461538464,
+     "avg_net": 3.6684824636323494,
+     "total_net": 95.38054405444109,
+     "t": 1.3658974097781096
+    },
+    "check": {
+     "trades": 8,
+     "win_rate": 0.25,
+     "avg_net": -0.9554699807002232,
+     "total_net": -7.643759845601785,
+     "t": -0.30208123837553535
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 26,
+     "win_rate": 0.23076923076923078,
+     "avg_net": 2.6684824636323494,
+     "total_net": 69.38054405444109,
+     "t": 0.9935643201916144
+    },
+    "check": {
+     "trades": 8,
+     "win_rate": 0.25,
+     "avg_net": -1.9554699807002232,
+     "total_net": -15.643759845601785,
+     "t": -0.6182410806284054
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Buy dips in an uptrend (RSI<20)",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Buy dips in an uptrend (RSI<20)",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Buy dips in an uptrend (RSI<25)",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 1,
+     "win_rate": 1.0,
+     "avg_net": 2.503683873738102,
+     "total_net": 2.503683873738102,
+     "t": null
+    },
+    "check": {
+     "trades": 2,
+     "win_rate": 0.5,
+     "avg_net": -0.6000096989402435,
+     "total_net": -1.200019397880487,
+     "t": -0.47108125524321925
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 1,
+     "win_rate": 1.0,
+     "avg_net": 1.503683873738102,
+     "total_net": 1.503683873738102,
+     "t": null
+    },
+    "check": {
+     "trades": 2,
+     "win_rate": 0.0,
+     "avg_net": -1.6000096989402435,
+     "total_net": -3.200019397880487,
+     "t": -1.2562039892177836
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Buy dips in an uptrend (RSI<25)",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 1,
+     "win_rate": 0.0,
+     "avg_net": -1.8736959096778336,
+     "total_net": -1.8736959096778336,
+     "t": null
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 1,
+     "win_rate": 0.0,
+     "avg_net": -2.8736959096778336,
+     "total_net": -2.8736959096778336,
+     "t": null
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Buy dips in an uptrend (RSI<30)",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 13,
+     "win_rate": 0.6153846153846154,
+     "avg_net": 0.15100649869949787,
+     "total_net": 1.9630844830934722,
+     "t": 0.30561541456528474
+    },
+    "check": {
+     "trades": 18,
+     "win_rate": 0.8888888888888888,
+     "avg_net": 1.3310369940791513,
+     "total_net": 23.958665893424723,
+     "t": 4.249147727526253
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 13,
+     "win_rate": 0.38461538461538464,
+     "avg_net": -0.8489935013005019,
+     "total_net": -11.036915516906525,
+     "t": -1.7182406260509389
+    },
+    "check": {
+     "trades": 18,
+     "win_rate": 0.7222222222222222,
+     "avg_net": 0.3310369940791513,
+     "total_net": 5.958665893424723,
+     "t": 1.0567888776763041
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Buy dips in an uptrend (RSI<30)",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 3,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -0.25355709181481867,
+     "total_net": -0.760671275444456,
+     "t": -0.1581036488446797
+    },
+    "check": {
+     "trades": 11,
+     "win_rate": 0.9090909090909091,
+     "avg_net": 1.465490836381531,
+     "total_net": 16.120399200196843,
+     "t": 3.182574019419244
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 3,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -1.2535570918148187,
+     "total_net": -3.760671275444456,
+     "t": -0.7816462510770328
+    },
+    "check": {
+     "trades": 11,
+     "win_rate": 0.7272727272727273,
+     "avg_net": 0.46549083638153116,
+     "total_net": 5.120399200196843,
+     "t": 1.0108961484900796
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Fade moves beyond 2.0 bands",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 796,
+     "win_rate": 0.5326633165829145,
+     "avg_net": -0.2990517530721287,
+     "total_net": -238.04519544541446,
+     "t": -4.05231218469664
+    },
+    "check": {
+     "trades": 556,
+     "win_rate": 0.5107913669064749,
+     "avg_net": -0.32100038447445983,
+     "total_net": -178.47621376779966,
+     "t": -3.5489421665125906
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 796,
+     "win_rate": 0.2701005025125628,
+     "avg_net": -1.299051753072129,
+     "total_net": -1034.0451954454147,
+     "t": -17.602850320880908
+    },
+    "check": {
+     "trades": 556,
+     "win_rate": 0.28597122302158273,
+     "avg_net": -1.3210003844744598,
+     "total_net": -734.4762137677997,
+     "t": -14.604823524171712
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Fade moves beyond 2.0 bands",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 375,
+     "win_rate": 0.5866666666666667,
+     "avg_net": -0.042397680996062566,
+     "total_net": -15.899130373523462,
+     "t": -0.4027044296743566
+    },
+    "check": {
+     "trades": 297,
+     "win_rate": 0.531986531986532,
+     "avg_net": -0.1677096547793683,
+     "total_net": -49.80976746947239,
+     "t": -1.3688821340016861
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 375,
+     "win_rate": 0.30933333333333335,
+     "avg_net": -1.0423976809960627,
+     "total_net": -390.89913037352346,
+     "t": -9.900969905839325
+    },
+    "check": {
+     "trades": 297,
+     "win_rate": 0.31313131313131315,
+     "avg_net": -1.1677096547793682,
+     "total_net": -346.8097674694724,
+     "t": -9.53109638339913
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Fade moves beyond 2.5 bands",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 424,
+     "win_rate": 0.5023584905660378,
+     "avg_net": -0.4049914023837526,
+     "total_net": -171.7163546107111,
+     "t": -3.812189668740945
+    },
+    "check": {
+     "trades": 301,
+     "win_rate": 0.5614617940199336,
+     "avg_net": -0.16852302058278093,
+     "total_net": -50.725429195417064,
+     "t": -1.2927689050750395
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 424,
+     "win_rate": 0.2759433962264151,
+     "avg_net": -1.4049914023837524,
+     "total_net": -595.716354610711,
+     "t": -13.225203491510136
+    },
+    "check": {
+     "trades": 301,
+     "win_rate": 0.3488372093023256,
+     "avg_net": -1.168523020582781,
+     "total_net": -351.72542919541706,
+     "t": -8.963939885778016
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Fade moves beyond 2.5 bands",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 201,
+     "win_rate": 0.6019900497512438,
+     "avg_net": 0.02169989910809812,
+     "total_net": 4.361679720727722,
+     "t": 0.1360617580258044
+    },
+    "check": {
+     "trades": 159,
+     "win_rate": 0.5786163522012578,
+     "avg_net": -0.1093993436439897,
+     "total_net": -17.394495639394364,
+     "t": -0.6378548612096067
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 201,
+     "win_rate": 0.3582089552238806,
+     "avg_net": -0.9783001008919019,
+     "total_net": -196.63832027927228,
+     "t": -6.13409449237943
+    },
+    "check": {
+     "trades": 159,
+     "win_rate": 0.3584905660377358,
+     "avg_net": -1.10939934364399,
+     "total_net": -176.3944956393944,
+     "t": -6.468373034018132
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Fade moves beyond 3.0 bands",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 145,
+     "win_rate": 0.4896551724137931,
+     "avg_net": -0.503403529320806,
+     "total_net": -72.99351175151688,
+     "t": -2.803864664301277
+    },
+    "check": {
+     "trades": 122,
+     "win_rate": 0.5983606557377049,
+     "avg_net": -0.005143891347980368,
+     "total_net": -0.6275547444536049,
+     "t": -0.02428875693567491
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 145,
+     "win_rate": 0.2827586206896552,
+     "avg_net": -1.5034035293208061,
+     "total_net": -217.99351175151688,
+     "t": -8.373679933741805
+    },
+    "check": {
+     "trades": 122,
+     "win_rate": 0.38524590163934425,
+     "avg_net": -1.0051438913479804,
+     "total_net": -122.6275547444536,
+     "t": -4.746153060156493
+    }
+   }
+  },
+  {
+   "interval": "1h",
+   "rule": "Fade moves beyond 3.0 bands",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 67,
+     "win_rate": 0.5522388059701493,
+     "avg_net": -0.19273661556205077,
+     "total_net": -12.9133532426574,
+     "t": -0.6994909466361989
+    },
+    "check": {
+     "trades": 61,
+     "win_rate": 0.5573770491803278,
+     "avg_net": -0.23638125943950333,
+     "total_net": -14.419256825809704,
+     "t": -0.8229502647205214
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 67,
+     "win_rate": 0.34328358208955223,
+     "avg_net": -1.1927366155620507,
+     "total_net": -79.9133532426574,
+     "t": -4.328749168258341
+    },
+    "check": {
+     "trades": 61,
+     "win_rate": 0.36065573770491804,
+     "avg_net": -1.2363812594395034,
+     "total_net": -75.41925682580971,
+     "t": -4.304403348911139
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 2-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 628,
+     "win_rate": 0.35987261146496813,
+     "avg_net": -0.1786746962769373,
+     "total_net": -112.20770926191662,
+     "t": -0.5503107420667446
+    },
+    "check": {
+     "trades": 421,
+     "win_rate": 0.30403800475059384,
+     "avg_net": -0.15317572701667997,
+     "total_net": -64.48698107402227,
+     "t": -0.5082291528816536
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 628,
+     "win_rate": 0.304140127388535,
+     "avg_net": -1.1786746962769372,
+     "total_net": -740.2077092619165,
+     "t": -3.6302697599558194
+    },
+    "check": {
+     "trades": 421,
+     "win_rate": 0.2327790973871734,
+     "avg_net": -1.1531757270166798,
+     "total_net": -485.4869810740222,
+     "t": -3.8261775170262564
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 2-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 320,
+     "win_rate": 0.34375,
+     "avg_net": 0.22909439170220897,
+     "total_net": 73.31020534470687,
+     "t": 0.44211202098389185
+    },
+    "check": {
+     "trades": 208,
+     "win_rate": 0.27884615384615385,
+     "avg_net": -0.08065575345791791,
+     "total_net": -16.776396719246925,
+     "t": -0.16856701601699053
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 320,
+     "win_rate": 0.30625,
+     "avg_net": -0.770905608297791,
+     "total_net": -246.6897946552931,
+     "t": -1.4877127019127574
+    },
+    "check": {
+     "trades": 208,
+     "win_rate": 0.21153846153846154,
+     "avg_net": -1.080655753457918,
+     "total_net": -224.77639671924692,
+     "t": -2.258523513725989
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 5-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 294,
+     "win_rate": 0.35034013605442177,
+     "avg_net": 0.2890494721846964,
+     "total_net": 84.98054482230074,
+     "t": 0.39772493158201455
+    },
+    "check": {
+     "trades": 204,
+     "win_rate": 0.28431372549019607,
+     "avg_net": -0.11483621792080102,
+     "total_net": -23.426588455843408,
+     "t": -0.18467984207843363
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 294,
+     "win_rate": 0.3163265306122449,
+     "avg_net": -0.7109505278153031,
+     "total_net": -209.01945517769911,
+     "t": -0.9782503593463033
+    },
+    "check": {
+     "trades": 204,
+     "win_rate": 0.24019607843137256,
+     "avg_net": -1.114836217920801,
+     "total_net": -227.4265884558434,
+     "t": -1.7928819008209251
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 5-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 150,
+     "win_rate": 0.38,
+     "avg_net": 2.054291757777426,
+     "total_net": 308.1437636666139,
+     "t": 1.6201356101347706
+    },
+    "check": {
+     "trades": 100,
+     "win_rate": 0.27,
+     "avg_net": 0.12500789356345407,
+     "total_net": 12.500789356345408,
+     "t": 0.1303253276330571
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 150,
+     "win_rate": 0.34,
+     "avg_net": 1.0542917577774258,
+     "total_net": 158.14376366661386,
+     "t": 0.8314766457977751
+    },
+    "check": {
+     "trades": 100,
+     "win_rate": 0.23,
+     "avg_net": -0.8749921064365459,
+     "total_net": -87.49921064365459,
+     "t": -0.912211458789185
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 10-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 175,
+     "win_rate": 0.28,
+     "avg_net": -0.5924909073008485,
+     "total_net": -103.68590877764849,
+     "t": -0.5470287698158253
+    },
+    "check": {
+     "trades": 119,
+     "win_rate": 0.2857142857142857,
+     "avg_net": 0.17991905867506097,
+     "total_net": 21.410367982332257,
+     "t": 0.19112345557115765
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 175,
+     "win_rate": 0.25142857142857145,
+     "avg_net": -1.5924909073008477,
+     "total_net": -278.68590877764836,
+     "t": -1.4702982463177838
+    },
+    "check": {
+     "trades": 119,
+     "win_rate": 0.2605042016806723,
+     "avg_net": -0.8200809413249384,
+     "total_net": -97.58963201766767,
+     "t": -0.8711511971454954
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 10-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 91,
+     "win_rate": 0.3516483516483517,
+     "avg_net": 1.8041965876755939,
+     "total_net": 164.18188947847904,
+     "t": 0.9784070590195608
+    },
+    "check": {
+     "trades": 59,
+     "win_rate": 0.3220338983050847,
+     "avg_net": 0.442723145009665,
+     "total_net": 26.120665555570234,
+     "t": 0.35153053767263565
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 91,
+     "win_rate": 0.3076923076923077,
+     "avg_net": 0.8041965876755941,
+     "total_net": 73.18188947847906,
+     "t": 0.4361119090879922
+    },
+    "check": {
+     "trades": 59,
+     "win_rate": 0.288135593220339,
+     "avg_net": -0.5572768549903352,
+     "total_net": -32.87933444442977,
+     "t": -0.4424883466686416
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 20-day high/low",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 101,
+     "win_rate": 0.24752475247524752,
+     "avg_net": -0.06763031419791267,
+     "total_net": -6.83066173398918,
+     "t": -0.03673268578684946
+    },
+    "check": {
+     "trades": 65,
+     "win_rate": 0.2923076923076923,
+     "avg_net": 0.5704688790909699,
+     "total_net": 37.08047714091304,
+     "t": 0.42736503434319145
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 101,
+     "win_rate": 0.21782178217821782,
+     "avg_net": -1.0676303141979127,
+     "total_net": -107.83066173398917,
+     "t": -0.5798720489924573
+    },
+    "check": {
+     "trades": 65,
+     "win_rate": 0.2923076923076923,
+     "avg_net": -0.42953112090902984,
+     "total_net": -27.91952285908694,
+     "t": -0.321781939325536
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Breakout of the 20-day high/low",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 49,
+     "win_rate": 0.3469387755102041,
+     "avg_net": 3.602674212426697,
+     "total_net": 176.53103640890816,
+     "t": 1.0869019586860615
+    },
+    "check": {
+     "trades": 37,
+     "win_rate": 0.2702702702702703,
+     "avg_net": -0.010646514979734165,
+     "total_net": -0.3939210542501641,
+     "t": -0.006584063910893341
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 49,
+     "win_rate": 0.2857142857142857,
+     "avg_net": 2.602674212426697,
+     "total_net": 127.53103640890815,
+     "t": 0.7852088566739471
+    },
+    "check": {
+     "trades": 37,
+     "win_rate": 0.2702702702702703,
+     "avg_net": -1.010646514979734,
+     "total_net": -37.39392105425016,
+     "t": -0.6250083955749379
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 1d/4d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 801,
+     "win_rate": 0.2671660424469413,
+     "avg_net": -0.3902551202218826,
+     "total_net": -312.59435129772794,
+     "t": -1.3390735380822438
+    },
+    "check": {
+     "trades": 531,
+     "win_rate": 0.2391713747645951,
+     "avg_net": -0.1737259378678992,
+     "total_net": -92.24847300785447,
+     "t": -0.6005920576341036
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 801,
+     "win_rate": 0.22971285892634208,
+     "avg_net": -1.3902551202218825,
+     "total_net": -1113.5943512977278,
+     "t": -4.770350845400859
+    },
+    "check": {
+     "trades": 531,
+     "win_rate": 0.18832391713747645,
+     "avg_net": -1.1737259378678992,
+     "total_net": -623.2484730078545,
+     "t": -4.057715760663369
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 1d/4d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 401,
+     "win_rate": 0.26932668329177056,
+     "avg_net": 0.1772141348102985,
+     "total_net": 71.0628680589297,
+     "t": 0.35358795646097807
+    },
+    "check": {
+     "trades": 267,
+     "win_rate": 0.21348314606741572,
+     "avg_net": 0.007433494260416229,
+     "total_net": 1.9847429675311332,
+     "t": 0.0163083324552043
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 401,
+     "win_rate": 0.23940149625935161,
+     "avg_net": -0.8227858651897015,
+     "total_net": -329.93713194107033,
+     "t": -1.6416702481934167
+    },
+    "check": {
+     "trades": 267,
+     "win_rate": 0.1760299625468165,
+     "avg_net": -0.9925665057395836,
+     "total_net": -265.0152570324688,
+     "t": -2.1775902412004013
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 2d/8d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 389,
+     "win_rate": 0.2930591259640103,
+     "avg_net": -0.013620281018148387,
+     "total_net": -5.298289316059723,
+     "t": -0.022128303726768432
+    },
+    "check": {
+     "trades": 241,
+     "win_rate": 0.27800829875518673,
+     "avg_net": 0.020050290034970414,
+     "total_net": 4.8321198984278695,
+     "t": 0.035766802824243236
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 389,
+     "win_rate": 0.2622107969151671,
+     "avg_net": -1.0136202810181478,
+     "total_net": -394.29828931605954,
+     "t": -1.646786686126037
+    },
+    "check": {
+     "trades": 241,
+     "win_rate": 0.22821576763485477,
+     "avg_net": -0.9799497099650293,
+     "total_net": -236.16788010157205,
+     "t": -1.7480878327875655
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 2d/8d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 195,
+     "win_rate": 0.2717948717948718,
+     "avg_net": 1.0566647996462244,
+     "total_net": 206.04963593101377,
+     "t": 0.9783601310248125
+    },
+    "check": {
+     "trades": 122,
+     "win_rate": 0.3114754098360656,
+     "avg_net": 0.12637215707669353,
+     "total_net": 15.41740316335661,
+     "t": 0.15934063156062575
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 195,
+     "win_rate": 0.24102564102564103,
+     "avg_net": 0.05666479964622489,
+     "total_net": 11.049635931013853,
+     "t": 0.05246562658748203
+    },
+    "check": {
+     "trades": 122,
+     "win_rate": 0.2540983606557377,
+     "avg_net": -0.8736278429233064,
+     "total_net": -106.58259683664339,
+     "t": -1.1015433736393812
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 5d/20d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 125,
+     "win_rate": 0.272,
+     "avg_net": 2.8057226969503075,
+     "total_net": 350.71533711878845,
+     "t": 1.4726723361250917
+    },
+    "check": {
+     "trades": 85,
+     "win_rate": 0.23529411764705882,
+     "avg_net": 0.42326038971764873,
+     "total_net": 35.97713312600014,
+     "t": 0.31495736491345155
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 125,
+     "win_rate": 0.24,
+     "avg_net": 1.8057226969503088,
+     "total_net": 225.7153371187886,
+     "t": 0.947790694141792
+    },
+    "check": {
+     "trades": 85,
+     "win_rate": 0.2235294117647059,
+     "avg_net": -0.5767396102823511,
+     "total_net": -49.022866873999845,
+     "t": -0.42916462846172654
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 5d/20d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 63,
+     "win_rate": 0.31746031746031744,
+     "avg_net": 5.647668256937527,
+     "total_net": 355.80310018706416,
+     "t": 1.7328429794644875
+    },
+    "check": {
+     "trades": 44,
+     "win_rate": 0.2727272727272727,
+     "avg_net": 0.911084768645176,
+     "total_net": 40.08772982038774,
+     "t": 0.4993616929158508
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 63,
+     "win_rate": 0.2857142857142857,
+     "avg_net": 4.647668256937527,
+     "total_net": 292.80310018706416,
+     "t": 1.4260184811707208
+    },
+    "check": {
+     "trades": 44,
+     "win_rate": 0.25,
+     "avg_net": -0.08891523135482365,
+     "total_net": -3.912270179612241,
+     "t": -0.048734060740994886
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 10d/40d",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 70,
+     "win_rate": 0.3,
+     "avg_net": 8.102193621382487,
+     "total_net": 567.1535534967741,
+     "t": 1.3456432624919739
+    },
+    "check": {
+     "trades": 44,
+     "win_rate": 0.3409090909090909,
+     "avg_net": 3.9630412201138028,
+     "total_net": 174.37381368500732,
+     "t": 1.417398799964998
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 70,
+     "win_rate": 0.3,
+     "avg_net": 7.102193621382486,
+     "total_net": 497.153553496774,
+     "t": 1.1795594430506944
+    },
+    "check": {
+     "trades": 44,
+     "win_rate": 0.3409090909090909,
+     "avg_net": 2.9630412201138028,
+     "total_net": 130.37381368500732,
+     "t": 1.0597444831814102
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Moving-average trend 10d/40d",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 35,
+     "win_rate": 0.3142857142857143,
+     "avg_net": 15.566652601460627,
+     "total_net": 544.8328410511219,
+     "t": 1.335704356557265
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.2916666666666667,
+     "avg_net": 3.999845952556052,
+     "total_net": 95.99630286134524,
+     "t": 0.8968704543732392
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 35,
+     "win_rate": 0.3142857142857143,
+     "avg_net": 14.566652601460625,
+     "total_net": 509.8328410511219,
+     "t": 1.2498988599772272
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.2916666666666667,
+     "avg_net": 2.999845952556053,
+     "total_net": 71.99630286134527,
+     "t": 0.6726442054097999
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 3 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 721,
+     "win_rate": 0.3120665742024965,
+     "avg_net": -0.6286587260350777,
+     "total_net": -453.26294147129096,
+     "t": -1.9207451701887353
+    },
+    "check": {
+     "trades": 447,
+     "win_rate": 0.28859060402684567,
+     "avg_net": -0.18965122265528778,
+     "total_net": -84.77409652691364,
+     "t": -0.5703231448685231
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 721,
+     "win_rate": 0.2552011095700416,
+     "avg_net": -1.6286587260350773,
+     "total_net": -1174.2629414712908,
+     "t": -4.976051794663333
+    },
+    "check": {
+     "trades": 447,
+     "win_rate": 0.232662192393736,
+     "avg_net": -1.1896512226552876,
+     "total_net": -531.7740965269136,
+     "t": -3.577544173467684
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 3 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 359,
+     "win_rate": 0.3064066852367688,
+     "avg_net": 0.011795620699485804,
+     "total_net": 4.234627831115404,
+     "t": 0.021563330645568955
+    },
+    "check": {
+     "trades": 225,
+     "win_rate": 0.24888888888888888,
+     "avg_net": -0.04331384862437864,
+     "total_net": -9.745615940485195,
+     "t": -0.08143706914886745
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 359,
+     "win_rate": 0.25069637883008355,
+     "avg_net": -0.9882043793005139,
+     "total_net": -354.7653721688845,
+     "t": -1.8065160214235374
+    },
+    "check": {
+     "trades": 225,
+     "win_rate": 0.2088888888888889,
+     "avg_net": -1.0433138486243785,
+     "total_net": -234.74561594048515,
+     "t": -1.9615994591294157
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 7 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 422,
+     "win_rate": 0.36255924170616116,
+     "avg_net": 0.37615070570296516,
+     "total_net": 158.7355978066513,
+     "t": 0.6326723593252863
+    },
+    "check": {
+     "trades": 280,
+     "win_rate": 0.325,
+     "avg_net": 0.46135061789294074,
+     "total_net": 129.17817301002341,
+     "t": 0.8503158483731644
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 422,
+     "win_rate": 0.3033175355450237,
+     "avg_net": -0.6238492942970347,
+     "total_net": -263.26440219334864,
+     "t": -1.049292740654849
+    },
+    "check": {
+     "trades": 280,
+     "win_rate": 0.2785714285714286,
+     "avg_net": -0.538649382107059,
+     "total_net": -150.82182698997653,
+     "t": -0.9927852885813877
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 7 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 212,
+     "win_rate": 0.3443396226415094,
+     "avg_net": 1.3371091662048544,
+     "total_net": 283.46714323542915,
+     "t": 1.2742049302190885
+    },
+    "check": {
+     "trades": 140,
+     "win_rate": 0.36428571428571427,
+     "avg_net": 0.8075991483005786,
+     "total_net": 113.063880762081,
+     "t": 1.0098452670536358
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 212,
+     "win_rate": 0.29245283018867924,
+     "avg_net": 0.3371091662048545,
+     "total_net": 71.46714323542915,
+     "t": 0.32124988180244235
+    },
+    "check": {
+     "trades": 140,
+     "win_rate": 0.32857142857142857,
+     "avg_net": -0.19240085169942145,
+     "total_net": -26.936119237919,
+     "t": -0.2405835740102031
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 14 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 280,
+     "win_rate": 0.3464285714285714,
+     "avg_net": 0.9235036157798119,
+     "total_net": 258.5810124183473,
+     "t": 0.9499099697770561
+    },
+    "check": {
+     "trades": 184,
+     "win_rate": 0.375,
+     "avg_net": 0.30552778677095155,
+     "total_net": 56.217112765855084,
+     "t": 0.3867263164652729
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 280,
+     "win_rate": 0.2892857142857143,
+     "avg_net": -0.07649638422018788,
+     "total_net": -21.41898758165261,
+     "t": -0.07868369628557897
+    },
+    "check": {
+     "trades": 184,
+     "win_rate": 0.2717391304347826,
+     "avg_net": -0.6944722132290483,
+     "total_net": -127.7828872341449,
+     "t": -0.8790384787845755
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 14 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 140,
+     "win_rate": 0.32142857142857145,
+     "avg_net": 2.33896290273692,
+     "total_net": 327.4548063831688,
+     "t": 1.3567691933815154
+    },
+    "check": {
+     "trades": 93,
+     "win_rate": 0.44086021505376344,
+     "avg_net": 1.0520495733096045,
+     "total_net": 97.8406103177932,
+     "t": 0.9871561426590659
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 140,
+     "win_rate": 0.2714285714285714,
+     "avg_net": 1.3389629027369203,
+     "total_net": 187.45480638316886,
+     "t": 0.7766962081307013
+    },
+    "check": {
+     "trades": 93,
+     "win_rate": 0.3548387096774194,
+     "avg_net": 0.05204957330960487,
+     "total_net": 4.840610317793253,
+     "t": 0.0488390065628961
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 30 days",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 180,
+     "win_rate": 0.32222222222222224,
+     "avg_net": 3.2908321015817616,
+     "total_net": 592.3497782847171,
+     "t": 1.4112100103145657
+    },
+    "check": {
+     "trades": 156,
+     "win_rate": 0.33974358974358976,
+     "avg_net": -0.0539050392375326,
+     "total_net": -8.409186121055086,
+     "t": -0.07018450760104855
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 180,
+     "win_rate": 0.2777777777777778,
+     "avg_net": 2.290832101581761,
+     "total_net": 412.34977828471705,
+     "t": 0.9823792566470485
+    },
+    "check": {
+     "trades": 156,
+     "win_rate": 0.22435897435897437,
+     "avg_net": -1.0539050392375324,
+     "total_net": -164.40918612105506,
+     "t": -1.372187225598905
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Momentum over 30 days",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 89,
+     "win_rate": 0.33707865168539325,
+     "avg_net": 6.5023415204789945,
+     "total_net": 578.7083953226305,
+     "t": 1.4586413759534556
+    },
+    "check": {
+     "trades": 80,
+     "win_rate": 0.3625,
+     "avg_net": 0.5399043277173916,
+     "total_net": 43.19234621739133,
+     "t": 0.5236884215052579
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 89,
+     "win_rate": 0.29213483146067415,
+     "avg_net": 5.502341520478994,
+     "total_net": 489.70839532263045,
+     "t": 1.2343158200964623
+    },
+    "check": {
+     "trades": 80,
+     "win_rate": 0.25,
+     "avg_net": -0.4600956722826083,
+     "total_net": -36.80765378260866,
+     "t": -0.44627680125802055
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Buy dips in an uptrend (RSI<20)",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 1,
+     "win_rate": 1.0,
+     "avg_net": 2.6234156442311387,
+     "total_net": 2.6234156442311387,
+     "t": null
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 1,
+     "win_rate": 1.0,
+     "avg_net": 1.6234156442311387,
+     "total_net": 1.6234156442311387,
+     "t": null
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Buy dips in an uptrend (RSI<20)",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Buy dips in an uptrend (RSI<25)",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 4,
+     "win_rate": 0.75,
+     "avg_net": 4.282994571691423,
+     "total_net": 17.13197828676569,
+     "t": 1.4668765365923482
+    },
+    "check": {
+     "trades": 2,
+     "win_rate": 1.0,
+     "avg_net": 2.9834717627560314,
+     "total_net": 5.966943525512063,
+     "t": 8.286129881583351
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 4,
+     "win_rate": 0.75,
+     "avg_net": 3.2829945716914226,
+     "total_net": 13.13197828676569,
+     "t": 1.1243880015174472
+    },
+    "check": {
+     "trades": 2,
+     "win_rate": 1.0,
+     "avg_net": 1.9834717627560317,
+     "total_net": 3.9669435255120633,
+     "t": 5.508785049625263
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Buy dips in an uptrend (RSI<25)",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 2,
+     "win_rate": 0.5,
+     "avg_net": 0.416146757813304,
+     "total_net": 0.832293515626608,
+     "t": 0.09036361816063897
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 2,
+     "win_rate": 0.5,
+     "avg_net": -0.583853242186696,
+     "total_net": -1.167706484373392,
+     "t": -0.1267800131762146
+    },
+    "check": {
+     "trades": 0,
+     "win_rate": null,
+     "avg_net": null,
+     "total_net": 0.0,
+     "t": null
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Buy dips in an uptrend (RSI<30)",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 20,
+     "win_rate": 0.55,
+     "avg_net": 0.7968125652053275,
+     "total_net": 15.93625130410655,
+     "t": 0.7257675692611775
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.7083333333333334,
+     "avg_net": 1.9074778843037752,
+     "total_net": 45.779469223290604,
+     "t": 2.218251361883845
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 20,
+     "win_rate": 0.55,
+     "avg_net": -0.2031874347946721,
+     "total_net": -4.063748695893442,
+     "t": -0.18507094026227236
+    },
+    "check": {
+     "trades": 24,
+     "win_rate": 0.7083333333333334,
+     "avg_net": 0.9074778843037752,
+     "total_net": 21.779469223290604,
+     "t": 1.0553275974001999
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Buy dips in an uptrend (RSI<30)",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 9,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -1.241016602332831,
+     "total_net": -11.16914942099548,
+     "t": -0.7839967777059681
+    },
+    "check": {
+     "trades": 10,
+     "win_rate": 0.6,
+     "avg_net": 1.9601037276742006,
+     "total_net": 19.601037276742005,
+     "t": 1.1681423870834058
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 9,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -2.241016602332831,
+     "total_net": -20.169149420995478,
+     "t": -1.4157343195182461
+    },
+    "check": {
+     "trades": 10,
+     "win_rate": 0.6,
+     "avg_net": 0.9601037276742008,
+     "total_net": 9.601037276742009,
+     "t": 0.5721829128011504
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Fade moves beyond 2.0 bands",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 880,
+     "win_rate": 0.46704545454545454,
+     "avg_net": -0.7719293765411812,
+     "total_net": -679.2978513562394,
+     "t": -4.089389231296381
+    },
+    "check": {
+     "trades": 549,
+     "win_rate": 0.5191256830601093,
+     "avg_net": -0.26100182588524834,
+     "total_net": -143.29000241100135,
+     "t": -1.4263711798800003
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 880,
+     "win_rate": 0.41363636363636364,
+     "avg_net": -1.771929376541181,
+     "total_net": -1559.2978513562393,
+     "t": -9.387010173797481
+    },
+    "check": {
+     "trades": 549,
+     "win_rate": 0.45719489981785066,
+     "avg_net": -1.2610018258852482,
+     "total_net": -692.2900024110013,
+     "t": -6.891356626024413
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Fade moves beyond 2.0 bands",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 426,
+     "win_rate": 0.4859154929577465,
+     "avg_net": -0.46239840504352087,
+     "total_net": -196.9817205485399,
+     "t": -1.5838735437120208
+    },
+    "check": {
+     "trades": 269,
+     "win_rate": 0.49814126394052044,
+     "avg_net": -0.38570754017091624,
+     "total_net": -103.75532830597646,
+     "t": -1.4263621994646403
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 426,
+     "win_rate": 0.42488262910798125,
+     "avg_net": -1.4623984050435204,
+     "total_net": -622.9817205485397,
+     "t": -5.009217416952557
+    },
+    "check": {
+     "trades": 269,
+     "win_rate": 0.41263940520446096,
+     "avg_net": -1.385707540170916,
+     "total_net": -372.75532830597643,
+     "t": -5.124402945135789
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Fade moves beyond 2.5 bands",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 423,
+     "win_rate": 0.42080378250591016,
+     "avg_net": -0.842895889184101,
+     "total_net": -356.5449611248747,
+     "t": -2.9168139200121663
+    },
+    "check": {
+     "trades": 277,
+     "win_rate": 0.5487364620938628,
+     "avg_net": -0.07764020849637743,
+     "total_net": -21.50633775349655,
+     "t": -0.29085155426200315
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 423,
+     "win_rate": 0.36879432624113473,
+     "avg_net": -1.8428958891841007,
+     "total_net": -779.5449611248746,
+     "t": -6.377281526320649
+    },
+    "check": {
+     "trades": 277,
+     "win_rate": 0.4693140794223827,
+     "avg_net": -1.0776402084963772,
+     "total_net": -298.5063377534965,
+     "t": -4.036997525464203
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Fade moves beyond 2.5 bands",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 200,
+     "win_rate": 0.47,
+     "avg_net": -0.33294173638391,
+     "total_net": -66.588347276782,
+     "t": -0.7299385430339114
+    },
+    "check": {
+     "trades": 127,
+     "win_rate": 0.5275590551181102,
+     "avg_net": -0.31897965019454394,
+     "total_net": -40.51041557470708,
+     "t": -0.8355465038853046
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 200,
+     "win_rate": 0.41,
+     "avg_net": -1.3329417363839098,
+     "total_net": -266.588347276782,
+     "t": -2.9223297732887756
+    },
+    "check": {
+     "trades": 127,
+     "win_rate": 0.4330708661417323,
+     "avg_net": -1.3189796501945437,
+     "total_net": -167.51041557470705,
+     "t": -3.454981641442541
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Fade moves beyond 3.0 bands",
+   "sides": "long and short",
+   "venue_only": {
+    "choose": {
+     "trades": 114,
+     "win_rate": 0.42105263157894735,
+     "avg_net": -0.5295218506389519,
+     "total_net": -60.36549097284051,
+     "t": -1.003055030380124
+    },
+    "check": {
+     "trades": 90,
+     "win_rate": 0.4666666666666667,
+     "avg_net": -0.2767757391859709,
+     "total_net": -24.909816526737384,
+     "t": -0.6156649586603158
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 114,
+     "win_rate": 0.39473684210526316,
+     "avg_net": -1.5295218506389514,
+     "total_net": -174.36549097284046,
+     "t": -2.897320638437241
+    },
+    "check": {
+     "trades": 90,
+     "win_rate": 0.4,
+     "avg_net": -1.2767757391859709,
+     "total_net": -114.90981652673739,
+     "t": -2.840083039779191
+    }
+   }
+  },
+  {
+   "interval": "4h",
+   "rule": "Fade moves beyond 3.0 bands",
+   "sides": "long only",
+   "venue_only": {
+    "choose": {
+     "trades": 57,
+     "win_rate": 0.47368421052631576,
+     "avg_net": 0.10411081504731495,
+     "total_net": 5.934316457696952,
+     "t": 0.1431317710919118
+    },
+    "check": {
+     "trades": 36,
+     "win_rate": 0.4166666666666667,
+     "avg_net": -0.839367649209025,
+     "total_net": -30.2172353715249,
+     "t": -1.343174730904472
+    }
+   },
+   "with_platform_fee": {
+    "choose": {
+     "trades": 57,
+     "win_rate": 0.43859649122807015,
+     "avg_net": -0.8958891849526848,
+     "total_net": -51.065683542303034,
+     "t": -1.231670366676994
+    },
+    "check": {
+     "trades": 36,
+     "win_rate": 0.3333333333333333,
+     "avg_net": -1.8393676492090252,
+     "total_net": -66.21723537152491,
+     "t": -2.9433969126507042
+    }
+   }
+  }
+ ]
+}

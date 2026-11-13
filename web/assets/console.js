@@ -10,7 +10,8 @@ const state = { bots: [], aiKey: null, selected: null, detail: null, managesAgen
                 setupMissing: [], waitlist: 0, timer: null, flash: null, email: null };
 
 const MARKETS = ["BTC", "ETH", "SOL", "SUI", "HYPE"];
-const STYLES = [["scalp", "Scalp (minutes to hours)"], ["intraday", "Intraday (hours)"],
+const STYLES = [["trend", "Slow trend (tested rule, no AI key needed)"],
+                ["scalp", "Scalp (minutes to hours)"], ["intraday", "Intraday (hours)"],
                 ["auto", "Both"]];
 const RISKS = [["conservative", "Conservative"], ["balanced", "Balanced"],
                ["aggressive", "Aggressive"]];
@@ -150,7 +151,7 @@ function newBotForm() {
   const name = h("input", { type: "text", name: "name", maxlength: "40", required: true });
   const boxes = MARKETS.map((m) => h("input", {
     type: "checkbox", name: "market", value: m, checked: m === "BTC" || m === "ETH" }));
-  const style = select(STYLES, "scalp", "style");
+  const style = select(STYLES, "trend", "style");
   const risk = select(RISKS, "balanced", "risk");
   const interval = select(INTERVALS, 120, "interval");
   const startUsd = h("input", { type: "text", name: "start_usd", inputmode: "decimal", value: "10" });

@@ -44,7 +44,7 @@ LOGIN_WINDOW = 15 * 60
 LOGIN_MAX_FAILS = 5
 
 TRADABLE = ("BTC", "ETH", "SOL", "SUI", "HYPE")
-TRADER_TYPES = ("scalp", "intraday", "auto")
+TRADER_TYPES = ("trend", "scalp", "intraday", "auto")
 RISK_PROFILES = ("conservative", "balanced", "aggressive")
 INTERVALS = (60, 120, 300, 600)
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
@@ -280,7 +280,7 @@ class LoginBody(BaseModel):
 class NewBotBody(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     watchlist: list[str] = Field(default_factory=lambda: ["BTC", "ETH"])
-    trader_type: str = "scalp"
+    trader_type: str = "trend"
     risk_profile: str = "balanced"
     interval_sec: int = 120
     start_usd: float = Field(default=1000.0, ge=1.0, le=1_000_000.0)

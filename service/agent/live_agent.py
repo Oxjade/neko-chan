@@ -32,6 +32,13 @@ import subprocess
 import sys
 import threading
 import time
+
+# A bot whose style is "trend" runs the slow trend-following agent instead of
+# the scenario engine below. Same launcher, same paper store, no AI model.
+if __name__ == "__main__" and os.getenv("LIVE_AGENT_TRADER_TYPE", "").strip().lower() == "trend":
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import trend_agent
+    raise SystemExit(trend_agent.main())
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -306,7 +313,7 @@ def _request_paper_approval(decision_key: str, symbol: str, direction: str,
         time.sleep(5)
         try:
             from paper_store import PaperStore
-            db_path = os.path.join(_tg, "registry.db")
+            db_path = os.getenv("TG_REGISTRY_PATH") or os.path.join(_tg, "registry.db")
             row = PaperStore(db_path).get_decision(decision_key)
             if row and row.get("status") == "rejected":
                 return "rejected"
@@ -325,7 +332,7 @@ def _clear_priority(bot_id: int) -> None:
     import sqlite3 as _sq
     for attempt in range(3):
         try:
-            con = _sq.connect(os.path.join(_tg, "registry.db"), timeout=5)
+            con = _sq.connect(os.getenv("TG_REGISTRY_PATH") or os.path.join(_tg, "registry.db"), timeout=5)
             con.execute("PRAGMA busy_timeout=30000")
             con.execute("UPDATE bots SET priority_watch='' WHERE id=?", (bot_id,))
             con.commit()
@@ -346,7 +353,7 @@ def _paper_gateway():
             sys.path.insert(0, _tg)
         from paper_gateway import PaperGateway
         from paper_store import PaperStore
-        db_path = os.path.join(_tg, "registry.db")
+        db_path = os.getenv("TG_REGISTRY_PATH") or os.path.join(_tg, "registry.db")
         _paper_gw_instance = PaperGateway(PaperStore(db_path))
     return _paper_gw_instance
 _exec_gateway = None

@@ -28,6 +28,20 @@ variables above and a volume on `/data`. Put it behind HTTPS before exposing it.
 Do not run it next to the Telegram master bot unless `WEB_MANAGE_AGENTS=0`:
 each has its own agent pool and two pools start two agents per bot.
 
+## Trading styles
+
+- **Slow trend** (default, no AI key needed): on 4-hour bars, long when the
+  10-day average crosses above the 40-day average, short on the opposite
+  cross, 4-ATR stop, no leverage. It is the only rule that was profitable
+  after costs in both halves of `research/scripts/strategy_search.py`. It
+  trades about once per coin every three to four weeks and wins roughly a
+  third of its trades; the profit comes from a few large winners. The check
+  period result is not statistically significant, so treat it as the best
+  candidate, not a proven edge.
+- **Scalp / intraday / both**: the original scenario engine with an AI model
+  choosing the trade. In testing it won about 35% of trades against a 52%
+  break-even (`research/exports/tables/llm_decision_test_*.json`).
+
 ## Goals and the daily email
 
 When you create a bot you can give it a starting amount, a goal amount and a
@@ -67,10 +81,19 @@ resolves each entry against its stop and target, and reports the win rate with
 its interval, the break-even win rate at three cost levels, and a
 random-direction baseline. The public page shows the result.
 
+## Research scripts
+
+```bash
+python research/scripts/strategy_search.py        # rule search, choose/check split
+python research/scripts/test_llm_decisions.py     # does the AI model add anything
+python research/scripts/replay_live_engine.py     # the scenario engine with costs
+```
+
 ## Files
 
 - `web/` static pages, no build step (`assets/neko.css` holds the design tokens)
 - `service/server/routes_web.py` routes, sign-in, bot control
 - `service/server/web_core.py` trade pairing, statistics, go-live checks
 - `service/server/web_email.py` goals and the daily email
+- `service/agent/trend_agent.py` the slow trend agent
 - `service/server/tests/test_web.py` tests
