@@ -86,7 +86,8 @@ def ask(base_url: str, api_key: str, model: str, user: str, retries: int = 3) ->
         resp = requests.post(
             f"{base_url.rstrip('/')}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "temperature": 0.2,
+            # A reply cap keeps the call affordable on low-credit accounts.
+            json={"model": model, "temperature": 0.2, "max_tokens": 200,
                   "messages": [{"role": "system", "content": SYSTEM},
                                {"role": "user", "content": user}]},
             timeout=90)

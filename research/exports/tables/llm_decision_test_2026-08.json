@@ -1,0 +1,321 @@
+{
+  "generated_at": "2026-11-13T00:17:52+00:00",
+  "model": "openai/gpt-4o-mini",
+  "data": {
+    "symbols": [
+      "BTC",
+      "ETH"
+    ],
+    "from": "2026-08-09 18:50:00+00:00",
+    "to": "2026-08-27 04:20:00+00:00"
+  },
+  "decision_points": 45,
+  "round_trip_cost_pct": 1.13,
+  "note": "Decisions overlap in time, so trades are not independent; treat the intervals as optimistic. Funding, liquidation and stop slippage are not modelled.",
+  "model_result": {
+    "trades": 41,
+    "wins": 14,
+    "win_rate": 0.34146341463414637,
+    "win_rate_ci95": [
+      0.2155861736664346,
+      0.4945044564627312
+    ],
+    "avg_net_pct_after_costs": -1.0812195121951218,
+    "total_net_pct_after_costs": -44.33,
+    "holds": 1,
+    "unusable_replies": 0
+  },
+  "engine_only_result": {
+    "trades": 40,
+    "wins": 14,
+    "win_rate": 0.35,
+    "win_rate_ci95": [
+      0.2213433317104915,
+      0.5049440300646263
+    ],
+    "avg_net_pct_after_costs": -1.0299999999999998,
+    "total_net_pct_after_costs": -41.199999999999996
+  },
+  "coin_flip_result": {
+    "trades": 42,
+    "wins": 15,
+    "win_rate": 0.35714285714285715,
+    "win_rate_ci95": [
+      0.22988992501626865,
+      0.5083391071292063
+    ],
+    "avg_net_pct_after_costs": -0.987142857142857,
+    "total_net_pct_after_costs": -41.459999999999994
+  },
+  "decisions": [
+    {
+      "t": "2026-08-10 00:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"short\",\"reasoning\":\"The confirmed short setup has a positive expected value and a reasonable probability of winning.\"}",
+      "result": "short BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-10 09:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a favorable expected value and a high probability of winning.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-10 18:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup has a confirmed status with a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-11 03:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long scalp has a high P(win) of 75% and a positive expected value, making it the best trade option.\"}",
+      "result": "long BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-11 12:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a reasonable probability of winning.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-11 21:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"long\",\"reasoning\":\"The ETH long setup is confirmed with a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "long ETH -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-12 06:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup has a confirmed status with a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-12 15:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a reasonable probability of winning.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-13 00:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long scalp has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-13 09:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup is confirmed with a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-13 18:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"long\",\"reasoning\":\"The ETH long trade is confirmed with a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "long ETH -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-14 03:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable win probability.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-14 12:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable probability of winning.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-14 21:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup has a high probability of winning and a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-15 06:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"short\",\"reasoning\":\"The confirmed BTC short setup has a high probability of winning and a positive expected value.\"}",
+      "result": "short BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-15 15:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long trade has a high probability of winning and a favorable expected value, making it the best choice.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-16 00:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup has a high probability of winning and a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-16 09:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"short\",\"reasoning\":\"The confirmed BTC short setup has a high probability of winning and a positive expected value, making it the best trade option.\"}",
+      "result": "short BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-16 18:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"short\",\"reasoning\":\"The confirmed BTC short setup has a high probability of winning and a positive expected value.\"}",
+      "result": "short BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-17 03:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long setup has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-17 12:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup is confirmed with a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-17 21:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup is confirmed with a positive expected value, making it the best trade despite the low probability of winning.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-18 06:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long setup has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-18 15:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long trade has a positive expected value and is confirmed, making it the best option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-19 00:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable win probability.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-19 09:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long setup has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-19 18:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long trade has a positive expected value and is confirmed, making it the best option despite the costs.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-20 03:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable risk/reward ratio.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-20 12:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-20 21:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long scalp has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-21 06:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long setup has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-21 15:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long scalp has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-22 00:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"short\",\"reasoning\":\"The confirmed BTC short setup has a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "short BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-22 09:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-22 18:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"long\",\"reasoning\":\"The ETH long scalp has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-23 03:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"short\",\"reasoning\":\"The confirmed BTC short setup has a positive expected value and a higher probability of winning compared to the other options.\"}",
+      "result": "short BTC -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-23 12:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long trade has a positive expected value and is confirmed, making it the best option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-23 21:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long scalp has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-24 06:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long scalp has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> win",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-24 15:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup is confirmed with a positive expected value, making it the best trade option.\"}",
+      "result": "short ETH -> open",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-25 00:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"long\",\"reasoning\":\"The ETH long setup has the highest expected value and is confirmed, making it the best trade opportunity.\"}",
+      "result": "long ETH -> loss",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-25 09:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The ETH short setup is confirmed with a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "short ETH -> open",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-25 18:50:00+00:00",
+      "reply": "{\"action\":\"hold\",\"reasoning\":\"Both confirmed trades have negative expected values, making them unworthy of the cost.\"}",
+      "result": "hold"
+    },
+    {
+      "t": "2026-08-26 03:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"BTC\",\"direction\":\"long\",\"reasoning\":\"The BTC long setup has a positive expected value and is confirmed, making it the best trade option.\"}",
+      "result": "long BTC -> open",
+      "confirmed_row": true
+    },
+    {
+      "t": "2026-08-26 12:50:00+00:00",
+      "reply": "{\"action\":\"trade\",\"symbol\":\"ETH\",\"direction\":\"short\",\"reasoning\":\"The confirmed ETH short setup has a positive expected value and a favorable reward/risk ratio.\"}",
+      "result": "short ETH -> loss",
+      "confirmed_row": true
+    }
+  ]
+}
