@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 import crypto_mood
 import desk
 import forex_weekly
-import in_or_out
+import weekly_calls
 import market_data
 import web_core
 import web_email
@@ -154,7 +154,7 @@ def _goals() -> dict[int, dict]:
 def _send_daily_report() -> None:
     subject, body = web_email.build_report(web_core.list_bots(), _goals())
     try:
-        body = in_or_out.one_line() + "\n\n" + body
+        body = weekly_calls.one_line() + "\n\n" + body
     except Exception:
         pass                                  # the report still goes out without the weekly line
     web_email.send_email(subject, body)
@@ -748,19 +748,19 @@ def register_web_routes(app: FastAPI) -> None:
     def week_answer(request: Request):
         _require_operator(request)
         try:
-            return in_or_out.this_week()
+            return weekly_calls.this_week()
         except market_data.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 
     @app.get("/api/web/week/scoreboard")
-    def week_scoreboard(request: Request, stake: float = 18.0, leverage: float = 1.0):
+    def week_scoreboard(request: Request, stake: float = 18.0, leverage: float = 0.0):
         _require_operator(request)
         if not (0 < stake <= 1_000_000_000):
             raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
-        if leverage not in in_or_out.LEVERAGES:
+        if leverage not in weekly_calls.LEVERAGES:
             raise HTTPException(status_code=422, detail="Choose one of the listed leverage levels.")
         try:
-            return in_or_out.scoreboard(stake, leverage)
+            return weekly_calls.scoreboard(stake, leverage)
         except market_data.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 

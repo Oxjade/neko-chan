@@ -16,6 +16,7 @@ COPY research/exports/tables/live_engine_replay.json ./research/exports/tables/l
 COPY research/exports/tables/crypto_weekly_search.json ./research/exports/tables/crypto_weekly_search.json
 COPY research/exports/tables/crypto_in_or_out.json ./research/exports/tables/crypto_in_or_out.json
 COPY research/exports/tables/leverage_on_rule.json ./research/exports/tables/leverage_on_rule.json
+COPY research/exports/tables/crypto_long_short.json ./research/exports/tables/crypto_long_short.json
 
 # Persist this directory: it holds the registry (bots, paper trades, encrypted keys).
 ENV TG_REGISTRY_PATH=/data/registry.db

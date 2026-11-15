@@ -38,6 +38,10 @@ import crypto_weekly_search as cws  # noqa: E402
 OUT = cws.fws.REPO / "research" / "exports" / "tables" / "crypto_long_short.json"
 MAX_LEVERAGE = {"BTC": 40, "ETH": 25}
 FEE_PER_SIDE = 0.00045
+FUNDING_PER_DAY = 0.0003          # typical cost of a leveraged long; shorts usually receive it
+LEVELS = (1, 2, 3, 5, 7, 10, 20, 30)
+MAX_LIQUIDATED = 0.02             # suggested leverage: stake lost in at most 1 week in 50
+LONG, SHORT = "Long: greedy mood and 4 weeks up", "Short: fearful mood and 4 weeks down"
 
 
 def ohlc(coin: str, refresh: bool) -> pd.DataFrame:
@@ -92,7 +96,8 @@ def by_half(close: pd.DataFrame, position: pd.DataFrame, coins: list[str], split
 
 def leveraged(coin: str, position: pd.Series, daily: pd.DataFrame, leverage: float) -> dict:
     """Fresh stake of 1 each traded week; result per week as a share of the stake."""
-    wipe = 1.0 / leverage - 1.0 / (2 * MAX_LEVERAGE[coin])
+    leverage = min(leverage, MAX_LEVERAGE[coin])           # the exchange's own limit
+    wipe = (1.0 / leverage - 1.0 / (2 * MAX_LEVERAGE[coin])) if leverage > 1 else 1.0
     results = []
     for sunday, side in position.items():
         if side == 0:
@@ -103,7 +108,8 @@ def leveraged(coin: str, position: pd.Series, daily: pd.DataFrame, leverage: flo
         entry = week["open"].iloc[0]
         against = (1 - week["low"].min() / entry) if side > 0 else (week["high"].max() / entry - 1)
         move = (week["close"].iloc[-1] / entry - 1) * side
-        res = leverage * (move - 2 * FEE_PER_SIDE)
+        funding = 7 * FUNDING_PER_DAY if (side > 0 and leverage > 1) else 0.0
+        res = leverage * (move - 2 * FEE_PER_SIDE - funding)
         results.append(-1.0 if against >= wipe else max(res, -1.0))
     r = np.array(results)
     return {"weeks": int(len(r)), "ahead": float((r > 0).mean()) if len(r) else None,
@@ -141,16 +147,39 @@ def main() -> int:
     print("\n=== With leverage, fresh stake each traded week (result as a multiple of the stake) ===")
     print(f"{'coin':<5} {'side':<40} {'lev':>4} {'weeks':>6} {'ahead':>6} {'liquidated':>11} "
           f"{'avg week':>9} {'total':>8}")
+    result["calls"] = {}
+    names = {"BTC": "Bitcoin", "ETH": "Ether"}
     for coin in ("BTC", "ETH"):
         daily = ohlc(coin, refresh)
         result["leveraged"][coin] = {}
-        for name in ("Long: greedy mood and 4 weeks up", "Short: fearful mood and 4 weeks down"):
+        result["calls"][coin] = {}
+        for side, name in (("long", LONG), ("short", SHORT)):
             result["leveraged"][coin][name] = {}
-            for lev in (1, 3, 5, 10):
+            for lev in LEVELS:
                 s = leveraged(coin, rules[name][coin], daily, lev)
                 result["leveraged"][coin][name][f"{lev}x"] = s
                 print(f"{coin:<5} {name:<40} {lev:>3}x {s['weeks']:>6} {s['ahead'] * 100:>5.0f}% "
                       f"{s['liquidated'] * 100:>10.0f}% {s['avg_per_week']:>+9.3f} {s['total']:>+8.1f}")
+            halves = result["unleveraged"][names[coin]][name]
+            # A side is only called if it was right more often than not AND
+            # made money in BOTH halves of the history.
+            allowed = all(halves[h]["right"] is not None and halves[h]["right"] > 0.5
+                          and halves[h]["avg_pct"] > 0 for h in ("first_half", "second_half"))
+            by = result["leveraged"][coin][name]
+            safe = [lev for lev in LEVELS if by[f"{lev}x"]["liquidated"] <= MAX_LIQUIDATED
+                    and by[f"{lev}x"]["avg_per_week"] > 0]
+            result["calls"][coin][side] = {
+                "allowed": bool(allowed and safe),
+                "suggested_leverage": max(safe) if safe else None,
+                "first_half": halves["first_half"], "second_half": halves["second_half"],
+                "by_leverage": by,
+            }
+    print("\n=== The calls the platform will make ===")
+    for coin, sides_ in result["calls"].items():
+        for side, c in sides_.items():
+            print(f"{coin} {side:<5} {'CALL' if c['allowed'] else 'skip'}  suggested leverage "
+                  f"{c['suggested_leverage']}x  right {c['first_half']['right'] * 100:.0f}% / "
+                  f"{c['second_half']['right'] * 100:.0f}%")
     OUT.write_text(json.dumps(result, indent=1) + "\n")
     print(f"\nwrote {OUT}")
     return 0

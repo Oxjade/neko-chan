@@ -4,16 +4,17 @@ const app = document.getElementById("app");
 const signout = document.getElementById("signout");
 
 const NAMES = { BTC: "Bitcoin", ETH: "Ether" };
-const LEVERAGES = [[1, "None (1x)"], [3, "3x"], [5, "5x"], [10, "10x"], [20, "20x"], [30, "30x"]];
-const state = { week: null, money: loadMoney(), board: null, boardError: null, plan: loadPlan() };
+const LEVERAGES = [[0, "Suggested"], [1, "None (1x)"], [2, "2x"], [3, "3x"], [5, "5x"],
+                   [10, "10x"], [20, "20x"], [30, "30x"]];
+const state = { week: null, board: null, boardError: null, plan: loadPlan() };
 
-// Weekly amount and leverage for the scoreboard: a per-browser convenience only.
+// Weekly amount and leverage: a per-browser convenience only.
 function loadPlan() {
   try {
     const saved = JSON.parse(localStorage.getItem("neko-week-plan") || "null");
     if (saved && saved.stake > 0 && LEVERAGES.some(([v]) => v === saved.leverage)) return saved;
   } catch { /* storage unavailable */ }
-  return { stake: 18, leverage: 1 };
+  return { stake: 18, leverage: 0 };
 }
 
 function savePlan() {
@@ -33,30 +34,22 @@ async function loadBoard() {
   }
 }
 
-// Shared with the desk and the weekly plan: a per-browser convenience only.
-function loadMoney() {
-  try {
-    const saved = JSON.parse(localStorage.getItem("neko-desk-sizing") || "null");
-    if (saved && saved.account > 0) return saved.account;
-  } catch { /* storage unavailable */ }
-  return 100;
+function name(coin) {
+  return NAMES[coin] || coin;
 }
 
-function saveMoney() {
-  try {
-    const saved = JSON.parse(localStorage.getItem("neko-desk-sizing") || "null") || { risk: 1 };
-    localStorage.setItem("neko-desk-sizing", JSON.stringify({ ...saved, account: state.money }));
-  } catch { /* storage unavailable */ }
-}
-
-function list(names) {
-  return names.length > 1
-    ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
-    : names[0] || "";
+function list(items) {
+  return items.length > 1
+    ? `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`
+    : items[0] || "";
 }
 
 function signed(v, digits = 1) {
   return `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
+}
+
+function share(v) {
+  return v === null || v === undefined ? "–" : `${(v * 100).toFixed(0)}%`;
 }
 
 function longDate(iso) {
@@ -64,87 +57,102 @@ function longDate(iso) {
   return date.toLocaleDateString(undefined, { month: "long", day: "numeric", timeZone: "UTC" });
 }
 
+function callWords(call) {
+  return `${call.side} ${name(call.coin)} at ${Number(call.leverage)}x`;
+}
+
 // ---- the answer ------------------------------------------------------------
 
 function answerPanel() {
   const w = state.week;
-  const holding = w.hold.map((c) => NAMES[c] || c);
+  const out = w.coins.filter((c) => !c.side).map((c) => name(c.coin));
+  let headline;
+  if (!w.calls.length) headline = "This week: stay out.";
+  else {
+    headline = `This week: ${list(w.calls.map(callWords))}.`;
+    if (out.length) headline += ` Stay out of ${list(out)}.`;
+  }
   return h("section", { class: "panel stack" },
-    h("h1", null, w.answer === "hold" ? `This week: hold ${list(holding)}.` : "This week: stay in cash."),
+    h("h1", { style: "max-width:22ch" }, headline),
     h("p", { class: "lead" },
-      w.answer === "hold"
-        ? "Both checks pass for the coins named. Own them this week, with no leverage."
-        : "The checks below do not both pass, so the tested rule holds no coins this week."),
+      w.calls.length
+        ? "These are the trades the tested rule makes this week, on perps, at the leverage that almost never got liquidated in testing."
+        : "The tested rule has no trade this week. Staying out is part of the plan."),
     h("p", { class: "soft small" },
-      `Decided from the week that ended ${longDate(w.mood.date)}. The answer changes at most once a week, on Monday.`));
+      `Decided from the week that ended ${longDate(w.mood.date)}. The calls change at most once a week, on Monday.`));
 }
 
 function whyPanel() {
   const w = state.week;
-  const moodOk = w.mood.value >= 50;
+  const greedy = w.mood.value >= 50;
   const checks = [{
-    passed: moodOk, label: "The market's mood is greedy",
-    detail: `The Fear & Greed index was ${w.mood.value} of 100 (${w.mood.label.toLowerCase()}). It needs to be 50 or more.`,
-  }, ...w.coins.map((c) => ({
-    passed: c.rose, label: `${NAMES[c.coin] || c.coin} rose over the last four weeks`,
-    detail: `It moved ${signed(c.four_week_change_pct)}.`,
-  }))];
+    passed: true,
+    label: greedy ? "The market's mood is greedy, which favours longs"
+                  : "The market's mood is fearful, which favours shorts",
+    detail: `The Fear & Greed index was ${w.mood.value} of 100 (${w.mood.label.toLowerCase()}). 50 or more is greedy.`,
+  }];
+  for (const c of w.coins) {
+    const moved = `${name(c.coin)} moved ${signed(c.four_week_change_pct)} over the last four weeks`;
+    if (c.side) {
+      checks.push({ passed: true, label: `${moved}, so the call is ${c.side}`,
+        detail: `Going ${c.side} on ${name(c.coin)} ${recordWords(c)}` });
+    } else if (c.skipped) {
+      checks.push({ passed: false, label: `${moved}, but there is no call`,
+        detail: `The rule points ${c.signal}, but that did not hold up in testing: going ${c.signal} on ${name(c.coin)} ${recordWords(c)}` });
+    } else {
+      checks.push({ passed: false, label: `${moved}, against the mood, so there is no call`,
+        detail: "A call needs the mood and the coin's last four weeks to point the same way." });
+    }
+  }
   return h("section", { class: "panel stack" },
     h("h2", { style: "font-size:var(--t-h3)" }, "Why"),
     h("ul", { class: "gate" }, checks.map((check) =>
       h("li", { "data-passed": String(check.passed) },
         h("span", { class: "tick", "aria-hidden": "true" }, check.passed ? "✓" : ""),
-        h("div", null,
-          h("div", null, check.label, h("span", { class: "soft" }, check.passed ? " (yes)" : " (no)")),
-          h("div", { class: "soft small" }, check.detail))))),
-    h("p", { class: "soft small" },
-      "A coin is held only when the mood check and that coin's own check both pass."));
+        h("div", null, h("div", null, check.label), h("div", { class: "soft small" }, check.detail))))));
+}
+
+function recordWords(c) {
+  const r = c.record;
+  if (!r) return "";
+  return `was right in ${share(r.first_half.right)} of weeks up to 2023 and ${share(r.second_half.right)} since.`;
 }
 
 function stepsPanel() {
   const w = state.week;
-  const each = state.money / w.coins.length;
-  const parts = w.coins.map((c) =>
-    `${fmt.usd(each)} in ${c.hold ? (NAMES[c.coin] || c.coin) : "cash"}`);
-  const steps = w.answer === "hold" ? [
-    ["Buy on a spot exchange",
-     `Buy ${list(w.hold.map((c) => NAMES[c] || c))} so that you own the coins. Do not use futures, margin or leverage.`],
-    ["Split the money equally", `With ${fmt.usd(state.money)}: ${list(parts)}.`],
-    ["Check again next Monday", "Follow the new answer. Sell any coin the page no longer says to hold."],
-  ] : [
-    ["Hold no coins", "If you bought Bitcoin or Ether in an earlier week, sell them."],
-    ["Keep the money in cash", `Leave all ${fmt.usd(state.money)} in dollars or a dollar stablecoin.`],
-    ["Check again next Monday", "Buy only when this page says to hold."],
-  ];
-  const money = h("input", { type: "text", name: "money", inputmode: "decimal",
-                             value: String(state.money) });
-  const error = h("p", { class: "loss small", role: "alert" });
+  const each = state.plan.stake / w.coins.length;
+  const called = w.coins.filter((c) => c.side);
+  let steps;
+  if (called.length) {
+    const open = called.map((c) => {
+      const stop = c.liquidation_price
+        ? ` The exchange closes it if ${name(c.coin)} ${c.side === "long" ? "falls" : "rises"} to about ` +
+          `${fmt.price(c.liquidation_price)} (${c.liquidation_move_pct.toFixed(0)}% away), and that share is lost.`
+        : "";
+      return `${c.side === "long" ? "Long" : "Short"} ${name(c.coin)} with ${fmt.usd(each)} at ${c.leverage}x: ` +
+        `a ${fmt.usd(each * c.leverage)} position.${stop}`;
+    });
+    const idle = w.coins.length - called.length;
+    steps = [
+      ["Open the trade on perps", open.join(" ")],
+      ["Leave it for the week",
+       `Do not add to it or raise the leverage.${idle ? ` Keep the other ${fmt.usd(each * idle)} in cash.` : ""}`],
+      ["Close it next Monday", "Then follow the new answer on this page."],
+    ];
+  } else {
+    steps = [
+      ["Open nothing", "Close any trade left from an earlier week."],
+      ["Keep the money in cash", `Leave all ${fmt.usd(state.plan.stake)} in dollars or a dollar stablecoin.`],
+      ["Check again next Monday", "Trade only when this page makes a call."],
+    ];
+  }
   return h("section", { class: "stack" },
     h("h2", { style: "font-size:var(--t-h3)" }, "What to do"),
     h("ol", { class: "steps" }, steps.map(([title, text]) =>
-      h("li", null, h("h3", null, title), h("p", { class: "soft" }, text)))),
-    h("form", { class: "inline-form", novalidate: true,
-      onsubmit: (event) => {
-        event.preventDefault();
-        error.textContent = "";
-        const value = Number(money.value);
-        if (!(value > 0)) {
-          error.textContent = "Enter the amount in USD.";
-          money.focus();
-          return;
-        }
-        state.money = value;
-        saveMoney();
-        render();
-      } },
-      h("label", { class: "field" }, h("span", null, "Your money for this plan (USD)"), money),
-      h("button", { class: "button quiet", type: "submit" }, "Update amounts")),
-    error);
+      h("li", null, h("h3", null, title), h("p", { class: "soft" }, text)))));
 }
 
-function share(v) {
-  return `${(v * 100).toFixed(0)}%`;
-}
+// ---- week by week ----------------------------------------------------------
 
 function boardPanel() {
   const stake = h("input", { type: "text", name: "stake", inputmode: "decimal",
@@ -175,7 +183,7 @@ function boardPanel() {
   const head = [
     h("h2", { style: "font-size:var(--t-h3)" }, "Week by week"),
     h("p", { class: "soft" },
-      "What a fresh amount would have made in each finished week, following this page's answer on perps. Weeks in cash make nothing and lose nothing."),
+      "What a fresh weekly amount would have made in each finished week, following this page's calls. The amount is split equally between the two coins; a coin with no call stays in cash."),
     form, error,
   ];
   if (state.boardError) {
@@ -184,72 +192,80 @@ function boardPanel() {
   }
   const b = state.board;
   if (!b) return h("section", { class: "stack" }, ...head);
-  const e = b.expect;
   const capped = Object.entries(b.capped || {});
+  const risky = b.expect.filter((e) => e.liquidated >= 0.1);
   return h("section", { class: "stack" }, ...head,
     h("p", { class: "verdict" },
       `Last ${b.rows.length} weeks: ${b.ahead} ahead, ${b.behind} behind, ${b.no_trade} with no trade. ` +
       `Total ${fmt.signedUsd(b.total)}.`),
     table([
       { label: "Week of", cell: (r) => longDate(r.week_of) },
-      { label: "Answer", cell: (r) => (r.held.length ? `Hold ${list(r.held)}` : "Cash") },
+      { label: "Call", cell: (r) => (r.calls.length
+          ? list(r.calls.map((c) => `${c.side === "long" ? "Long" : "Short"} ${c.coin} ${Number(c.leverage)}x`))
+          : "Stay out") },
       { label: "Mood", num: true, cell: (r) => String(r.mood) },
       { label: "Result", num: true,
-        cell: (r) => (r.held.length
+        cell: (r) => (r.calls.length
           ? `${fmt.signedUsd(r.result)}${r.wiped.length ? ` (${list(r.wiped)} liquidated)` : ""}`
           : "No trade"),
-        cls: (r) => (r.held.length ? tone(r.result) : "") },
+        cls: (r) => (r.calls.length ? tone(r.result) : "") },
       { label: "Running total", num: true, cell: (r) => fmt.signedUsd(r.running_total),
         cls: (r) => tone(r.running_total) },
     ], b.rows, "No finished weeks to show yet."),
     capped.length ? h("p", { class: "soft small" },
-      `${list(capped.map(([coin, max]) => `${NAMES[coin] || coin} allows at most ${max}x`))}, ` +
+      `${list(capped.map(([coin, max]) => `${name(coin)} allows at most ${max}x`))}, ` +
       `so that part is traded at its limit.`) : null,
-    e ? h("p", { class: "soft small" },
-      `What to expect at this leverage, from six years of Bitcoin: ${share(e.weeks_ahead)} of weeks ended ahead, ` +
-      `${share(e.weeks_behind)} behind and ${share(e.weeks_no_trade)} had no trade. A month ended ahead ` +
-      `${share(e.months_ahead)} of the time and behind ${share(e.months_behind)}; three months, ` +
-      `${share(e.quarters_ahead)} and ${share(e.quarters_behind)}. The longest run of losing trades was ` +
-      `${e.longest_losing_run_weeks} weeks.`) : null,
-    e && e.lost_whole_stake >= 0.1 ? h("p", { class: "notice bad" },
-      `At ${b.leverage}x the whole weekly amount was lost in ${share(e.lost_whole_stake)} of the weeks traded, ` +
-      `because a small dip during the week closes the position even when the week ends higher.`) : null,
+    b.expect.length ? h("div", { class: "stack" },
+      h("h3", null, "What to expect at this leverage"),
+      table([
+        { label: "Call", cell: (e) => `${e.side === "long" ? "Long" : "Short"} ${name(e.coin)} at ${e.leverage}x` },
+        { label: "Weeks traded", num: true, cell: (e) => String(e.weeks) },
+        { label: "Ended ahead", num: true, cell: (e) => share(e.ahead) },
+        { label: "Liquidated", num: true, cell: (e) => share(e.liquidated),
+          cls: (e) => (e.liquidated >= 0.1 ? "loss" : "") },
+        { label: "Average week, per 1 USD put in", num: true, cell: (e) => fmt.signedUsd(e.avg_per_week),
+          cls: (e) => tone(e.avg_per_week) },
+      ], b.expect, "")) : null,
+    risky.length ? h("p", { class: "notice bad" },
+      `At this leverage ${list(risky.map((e) => `${e.side} ${name(e.coin)}`))} lost the whole weekly share in ` +
+      `${list(risky.map((e) => share(e.liquidated)))} of the weeks traded. A small move against the trade ` +
+      `during the week closes it, even when the week ends in its favour.`) : null,
     h("p", { class: "soft small" },
-      "No rule tested made a profit every week. Results include exchange fees and a typical funding cost; liquidation is checked against each day's low."));
+      "Six years of prices, with exchange fees and a typical funding cost on longs. No rule tested made a profit every week: roughly half the traded weeks end ahead, and the gains come from the winning weeks being larger than the losing ones."));
 }
 
+// ---- record and lessons ----------------------------------------------------
+
 function recordPanel() {
-  const rec = state.week.record;
-  if (!rec) return null;
-  const rows = [{ name: "Following this rule", ...rec.rule }, { name: "Always holding", ...rec.hold }];
-  const year = (iso) => iso.slice(0, 4);
+  const w = state.week;
+  const rec = w.spot_record;
+  const rows = w.coins.filter((c) => c.record);
   return h("section", { class: "stack" },
-    h("h2", { style: "font-size:var(--t-h3)" }, "How this rule has done"),
-    table([
-      { label: `Bitcoin and Ether, ${year(rec.from)} to ${year(rec.to)}`, cell: (r) => r.name },
-      { label: "1 USD became", num: true, cell: (r) => fmt.usd(r.all.grew_to) },
-      { label: "Worst fall on the way", num: true, cell: (r) => `${r.all.worst_fall_pct.toFixed(0)}%`,
-        cls: () => "loss" },
-      { label: "Worst single week", num: true, cell: (r) => `${r.all.worst_week_pct.toFixed(0)}%`,
-        cls: () => "loss" },
-      { label: "Weeks in the market", num: true, cell: (r) => `${(r.all.time_invested * 100).toFixed(0)}%` },
-    ], rows, ""),
-    h("p", { class: "soft small" },
-      `It held up in each half: 1 USD became ${fmt.usd(rec.rule.first_half.grew_to)} against ` +
-      `${fmt.usd(rec.hold.first_half.grew_to)} up to ${year(rec.split)}, and ` +
-      `${fmt.usd(rec.rule.second_half.grew_to)} against ${fmt.usd(rec.hold.second_half.grew_to)} since. ` +
-      `The answer changed about ${Math.round(rec.rule.all.switches_per_year)} times a year for each coin, ` +
-      `and ${(rec.rule.all.weeks_up_when_in * 100).toFixed(0)}% of the weeks it was in were up.`),
+    h("h2", { style: "font-size:var(--t-h3)" }, "How far to trust it"),
     h("p", { class: "notice" },
-      "This is six years of one market, tested on past prices. Following the rule still meant a fall of " +
-      `${Math.abs(rec.rule.all.worst_fall_pct).toFixed(0)}% at one point, and long stretches in cash. ` +
-      "Past results do not promise future ones. Only use money you can afford to lose."));
+      "These calls come from six years of past prices. They have been right a little more than half the time, there will be losing weeks in a row, and past results do not promise future ones. Only use money you can afford to lose."),
+    rec ? h("p", { class: "soft small" },
+      `Without leverage or shorting, holding Bitcoin and Ether only in "long" weeks turned 1 USD into ` +
+      `${fmt.usd(rec.rule.all.grew_to)} since ${rec.from.slice(0, 4)}, against ${fmt.usd(rec.hold.all.grew_to)} ` +
+      `for holding all the time, with a worst fall of ${Math.abs(rec.rule.all.worst_fall_pct).toFixed(0)}% ` +
+      `against ${Math.abs(rec.hold.all.worst_fall_pct).toFixed(0)}%.`) : null,
+    rows.length ? table([
+      { label: "This week's direction", cell: (c) => `${c.signal === "long" ? "Long" : "Short"} ${name(c.coin)}` },
+      { label: "Weeks right, to 2023", num: true, cell: (c) => share(c.record.first_half.right) },
+      { label: "Average week", num: true, cell: (c) => signed(c.record.first_half.avg_pct, 2),
+        cls: (c) => tone(c.record.first_half.avg_pct) },
+      { label: "Weeks right, since 2023", num: true, cell: (c) => share(c.record.second_half.right) },
+      { label: "Average week", num: true, cell: (c) => signed(c.record.second_half.avg_pct, 2),
+        cls: (c) => tone(c.record.second_half.avg_pct) },
+      { label: "Called", cell: (c) => (c.side ? "Yes" : "No, skipped") },
+    ], rows, "") : null);
 }
 
 function lessonsPanel() {
   const lessons = [
-    ["Leverage to get rich in a week", "At 20x, aiming to triple the money lost everything in 56% of the weeks tested."],
-    ["Buying because everyone is afraid", "Buying at extreme fear and selling at extreme greed was right in only 41 to 45% of weeks, the worst rule tested."],
+    ["High leverage", "At 30x the weekly amount was liquidated in about 70% of the weeks traded, and the total was a loss."],
+    ["Shorting Bitcoin", "It was right in 48% of weeks since 2023 and made nothing, so the platform skips it."],
+    ["Buying because everyone is afraid", "Buying at extreme fear and selling at extreme greed was the worst rule tested."],
     ["Guessing a forex direction", "23 rules were tested on 27 years of rates. None beat a coin flip."],
     ["Fast in-and-out trading", "With a 0.5% fee on each fill the trades needed to win 52% of the time and won 35%."],
   ];
@@ -302,7 +318,7 @@ async function start() {
       return;
     }
     replace(app, h("p", { class: "notice bad" },
-      `This week's answer could not be worked out. ${err.message}`));
+      `This week's calls could not be worked out. ${err.message}`));
     return;
   }
   await loadBoard();

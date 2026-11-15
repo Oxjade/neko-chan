@@ -5,7 +5,7 @@ The web app replaces Telegram as the interface. It has two sides:
 | Page | Who it is for | What it does |
 |---|---|---|
 | `/` | Clients and the public | Shows the paper-trading record: win rate against the break-even it needs, results after fees, equity line, recent trades, the four go-live checks, and the engine replay. Collects emails to notify. |
-| `/week` | Someone new to trading | One plain answer for the week: hold Bitcoin and Ether, or stay in cash. Shows the two checks behind it, the steps to take, the amounts for your money, and how the rule has done. No shorting, no leverage. |
+| `/week` | Someone new to trading | The week's calls on perps: long, short or stay out for Bitcoin and Ether, each with a suggested leverage. Shows why, the steps to take with your amount, a week-by-week scoreboard, and how far to trust it. |
 | `/desk` | You, in a second tab | Signals for a watchlist you choose across crypto, stocks, indices, forex and commodities. Each market shows the rule's past record there; every unmuted signal is paper-traded automatically; sides that have lost money on a market are muted. Works out the position size for your account and risk. |
 | `/weekly` | You, planning the week | For forex. You enter a pair, direction, stop and target; it shows what a plan of that shape has done in every week since 1999, the win rate it needs, the pair's normal weekly range, and the lot size for your risk. Includes a live TradingView chart. |
 | `/console` | You, the operator | Create, start and pause paper bots; see positions, decisions, closed trades and the go-live checks per bot; save the AI model key; choose which bots are public. |
@@ -88,31 +88,45 @@ and targets are checked on daily fixings, not intraday prices. The chart is
 TradingView's embeddable widget, loaded by the viewer's browser; no figures
 come from it.
 
-## This week: hold or cash
+## This week: long, short or stay out
 
-For someone who does not trade. Once a week, per coin (Bitcoin, Ether): hold
-it only if the Fear & Greed index is 50 or more **and** the coin rose over
-the last four weeks; otherwise hold cash. Spot only, no leverage, no
-shorting.
+For someone who does not trade. Once a week, per coin (Bitcoin, Ether), on
+perps:
 
-`research/scripts/crypto_in_or_out.py`, Aug 2020 to now, 0.1% per switch:
+- **long** when the Fear & Greed index is 50 or more and the coin rose over
+  the last four weeks;
+- **short** when the index is below 50 and the coin fell over the last four
+  weeks;
+- **stay out** otherwise.
 
-| Bitcoin and Ether | 1 USD became | Worst fall | Weeks invested |
+`research/scripts/crypto_long_short.py` scores each side on its own, per coin
+and per half of the history (Aug 2020 to now). A side is only called where it
+was right more often than not and profitable in **both** halves:
+
+| | Weeks right, to 2023 | Since 2023 | Called |
 |---|---|---|---|
-| Following the rule | 24.63 | -27% | 38% |
-| Always holding | 5.85 | -75% | 100% |
+| Long Bitcoin | 65% | 54% | yes |
+| Long Ether | 62% | 51% | yes |
+| Short Ether | 56% | 57% | yes |
+| Short Bitcoin | 52% | 48% | no: the platform says stay out |
 
-It beat holding in each half of the history (8.37 against 3.48, then 2.94
-against 1.68) and on Bitcoin alone and a ten-coin basket. The simpler
-versions (mood only, or four weeks only) also beat holding in both halves.
-It is six years of one market with a few large cycles, so treat the size of
-the gain as luck-prone; the dependable part is that it sat out most of the
-large falls. The daily email starts with the week's answer.
+The **suggested leverage** is the highest tested level at which the weekly
+stake was liquidated in at most one week in fifty: 3x for every called side.
+At 10x the stake was liquidated in 16 to 37% of weeks, at 30x in about 70%.
+
+The long side carries most of the edge (average traded week about +1.5 to
++4.6% unleveraged against +0.5 to +1.7% for shorting Ether). Without leverage
+or shorting, holding in "long" weeks only turned 1 USD into 24.63 against
+5.85 for always holding, with a worst fall of 27% against 75%
+(`research/scripts/crypto_in_or_out.py`). It is six years of one market, so
+treat the size of the gains as luck-prone. The daily email starts with the
+week's calls.
 
 ### Week by week
 
 The page also scores each finished week: what a fresh weekly amount would
-have made following the answer on perps, at 1x to 30x, with a running total.
+have made following the calls, at the suggested leverage or any level from 1x
+to 30x, with a running total and what to expect per call at that leverage.
 Liquidation is checked against each day's low using the exchange's
 maintenance margin; fees and a typical funding cost are included.
 
@@ -206,6 +220,7 @@ python research/scripts/forex_sentiment_search.py # positioning (sentiment) rule
 python research/scripts/crypto_weekly_search.py   # weekly crypto rules incl. mood and funding
 python research/scripts/crypto_in_or_out.py       # hold-or-cash rules against always holding
 python research/scripts/leverage_on_rule.py       # the weekly rule on perps with leverage
+python research/scripts/crypto_long_short.py      # long and short sides separately; calls and leverage
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```
@@ -220,5 +235,5 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/server/desk.py`, `market_data.py` desk signals, records, muting; market data
 - `service/server/forex_weekly.py` weekly forex planner
 - `service/server/crypto_mood.py` weekly crypto mood reading and its record
-- `service/server/in_or_out.py` the weekly hold-or-cash answer
+- `service/server/weekly_calls.py` the week's long, short or stay-out calls and the scoreboard
 - `service/server/tests/test_web.py` tests
