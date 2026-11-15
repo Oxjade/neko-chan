@@ -64,7 +64,10 @@ def main() -> int:
                           for w in ce.traded_weeks(coin, side, False) if w["monday"].year == year})
     new_year = pd.Timestamp(year=year, month=1, day=1)
     first_monday = new_year + pd.Timedelta(days=(7 - new_year.weekday()) % 7)
-    weeks_in_year = int((last - first_monday).days / 7) + 1         # Mondays of the year so far
+    # Mondays of the year that the price history covers, with or without a call
+    covered = max(w["monday"] for coin, side, _ in called for w in ce.traded_weeks(coin, side, False))
+    end = min(covered, pd.Timestamp(year=year, month=12, day=31))
+    weeks_in_year = int((end - first_monday).days / 7) + 1
 
     def line(name, sub):
         n = len(sub)
@@ -78,7 +81,8 @@ def main() -> int:
                 "stopped": int(sum(r["stopped"] for r in sub)),
                 "took_profit": int(sum(r["took_profit"] for r in sub))}
 
-    print(f"{year}: weeks starting {first_monday.date()} to {last.date()} ({weeks_in_year} weeks, "
+    print(f"{year}: weeks starting {first_monday.date()} to "
+          f"{(first_monday + pd.Timedelta(weeks=weeks_in_year - 1)).date()} ({weeks_in_year} weeks, "
           f"{len(all_mondays)} with at least one call). Percentages are of the money put on that one trade.")
     out = {"year": year, "from": str(first_monday.date()), "to": str(last.date()), "weeks": weeks_in_year,
            "by_call": {}, "by_side": {}, "portfolios": {}}
