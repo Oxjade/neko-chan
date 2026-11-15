@@ -19,7 +19,7 @@ or build the default `Dockerfile`, set `NEKO_PASSWORD`, and mount a volume at `/
 
 | Page | What it is for |
 |---|---|
-| `/terminal` | Live terminal: this week's positions, a chart with entry and stop, and a feed that says what to do now |
+| `/terminal` | Live terminal: this week's positions, a chart with entry and stop, and a feed that says what to do now. Basic screen, or an Advanced quant screen with a market heat map, order book, correlations and risk |
 | `/week` | The week's calls on perps for Bitcoin and Ether: long, short or stay out, with a suggested leverage, the steps to take and a week-by-week scoreboard |
 | `/desk` | Signals for a watchlist across crypto, stocks, forex and commodities, with each market's record |
 | `/weekly` | Weekly forex planner: the odds and size for your own trade idea |

@@ -100,6 +100,7 @@ def catalogue(max_age: float = MARKET_TTL) -> dict[str, dict]:
                     "funding_hourly": float(ctx.get("funding") or 0.0),
                     "max_leverage": int(asset.get("maxLeverage") or 1),
                     "day_volume_usd": float(ctx.get("dayNtlVlm") or 0.0),
+                    "open_interest_usd": float(ctx.get("openInterest") or 0.0) * price,
                 }
         return out
     return cached("catalogue", max_age, load)
@@ -121,6 +122,16 @@ def chart_candles(symbol: str, interval: str, bars: int) -> list[dict]:
         return [{"t": int(r["t"]), "o": float(r["o"]), "h": float(r["h"]), "l": float(r["l"]),
                  "c": float(r["c"]), "v": float(r["v"])} for r in rows]
     return cached(f"chart:{symbol}:{interval}:{bars}", 20, load)
+
+
+def order_book(symbol: str, depth: int = 12) -> dict:
+    """Best bids and asks with sizes, for the terminal's fallback when the stream is down."""
+    def load():
+        raw = _post({"type": "l2Book", "coin": symbol})
+        bids, asks = raw.get("levels", [[], []])[:2]
+        side = lambda rows: [{"px": float(r["px"]), "sz": float(r["sz"])} for r in rows[:depth]]
+        return {"symbol": symbol, "bids": side(bids), "asks": side(asks), "time": raw.get("time")}
+    return cached(f"book:{symbol}", 2, load)
 
 
 def candles(symbol: str) -> dict[str, np.ndarray]:

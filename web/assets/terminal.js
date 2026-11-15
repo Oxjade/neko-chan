@@ -4,6 +4,8 @@
 // numbers and the chart moving in between.
 
 import { api, h, replace, signInForm } from "/web/common.js";
+import { COLORS, px, pct, usd, tone } from "/web/terminal_util.js";
+import { buildAdvanced, paintAdvanced, paintSessions, paintBook } from "/web/terminal_adv.js";
 
 const app = document.getElementById("app");
 const POLL_MS = 5000;
@@ -12,14 +14,38 @@ const STREAM_URL = "wss://api.hyperliquid.xyz/ws";
 const INTERVALS = [["1h", "1H"], ["4h", "4H"], ["1d", "1D"]];
 const CLOCKS = [["UTC", "UTC"], ["New York", "America/New_York"], ["London", "Europe/London"],
                 ["Tokyo", "Asia/Tokyo"]];
-const COLORS = { up: "#22e07a", down: "#ff4d5e", amber: "#ffa028", cyan: "#35d6e6", grid: "#12262c",
-                 text: "#8296a3", ink: "#d9e4ea", bg: "#0a1016", violet: "#b48cff" };
+const ADV_MS = 20000;
+const BOOK_MS = 3000;
 
 const state = {
   snap: null, chart: null, selected: "ETH", interval: "4h", stake: loadStake(),
   prices: {}, stream: "connecting", lastPoll: 0, error: null,
   log: [], seen: new Set(), hover: null, frame: null,
+  mode: loadMode(), adv: null, book: null, tape: [], bookSymbol: null,
 };
+
+// Basic or advanced screen: a per-browser preference.
+function loadMode() {
+  try {
+    return localStorage.getItem("neko-terminal-mode") === "advanced" ? "advanced" : "basic";
+  } catch {
+    return "basic";
+  }
+}
+
+function setMode(mode) {
+  if (state.mode === mode) return;
+  state.mode = mode;
+  try {
+    localStorage.setItem("neko-terminal-mode", mode);
+  } catch { /* storage unavailable */ }
+  frame();
+  paint();
+  loadChart();
+  restartTimers();
+  watchBook();
+  if (mode === "advanced") pollAdvanced();
+}
 
 // Weekly amount: a per-browser convenience shared with the weekly page.
 function loadStake() {
@@ -37,26 +63,7 @@ function saveStake() {
   } catch { /* storage unavailable */ }
 }
 
-// ---- formatting --------------------------------------------------------------
-
-function px(v) {
-  if (v === null || v === undefined || Number.isNaN(v)) return "–";
-  const digits = v >= 1000 ? 1 : v >= 10 ? 2 : 4;
-  return v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-}
-
-function pct(v, digits = 2) {
-  return v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
-}
-
-function usd(v) {
-  if (v === null || v === undefined) return "–";
-  return `${v < 0 ? "-" : "+"}$${Math.abs(v).toFixed(2)}`;
-}
-
-function tone(v) {
-  return v > 0 ? "up" : v < 0 ? "down" : "";
-}
+// ---- helpers -----------------------------------------------------------------
 
 function live(symbol, fallback) {
   const v = state.prices[symbol];
@@ -86,6 +93,53 @@ async function poll() {
     }
     state.error = err.message;
     paintBar();
+  }
+}
+
+async function pollAdvanced() {
+  if (state.mode !== "advanced") return;
+  try {
+    state.adv = await api(`/api/web/terminal/advanced?stake=${encodeURIComponent(state.stake)}`);
+    paintAdvanced(el, state, helpers);
+  } catch (err) {
+    if (err.status === 401) return;
+    state.error = err.message;
+  }
+}
+
+// Order book without the stream: ask the server every few seconds.
+async function pollBook() {
+  if (state.mode !== "advanced" || state.stream === "live") return;
+  try {
+    const book = await api(`/api/web/terminal/book?symbol=${encodeURIComponent(state.selected)}`);
+    if (book.symbol === state.selected) {
+      state.book = book;
+      paintBook(el, state, helpers);
+    }
+  } catch { /* the next poll will try again */ }
+}
+
+function send(message) {
+  if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+// Follow the selected market's order book and trades on the stream.
+function watchBook() {
+  const want = state.mode === "advanced" ? state.selected : null;
+  if (state.bookSymbol && state.bookSymbol !== want) {
+    send({ method: "unsubscribe", subscription: { type: "l2Book", coin: state.bookSymbol } });
+    send({ method: "unsubscribe", subscription: { type: "trades", coin: state.bookSymbol } });
+  }
+  if (want !== state.bookSymbol) {
+    state.book = null;
+    state.tape = [];
+    if (want) {
+      send({ method: "subscribe", subscription: { type: "l2Book", coin: want } });
+      send({ method: "subscribe", subscription: { type: "trades", coin: want } });
+    }
+    state.bookSymbol = want;
+    paintBook(el, state, helpers);
+    pollBook();
   }
 }
 
@@ -127,12 +181,29 @@ function connect() {
     retry = 1000;
     socket.send(JSON.stringify({ method: "subscribe", subscription: { type: "allMids" } }));
     socket.send(JSON.stringify({ method: "subscribe", subscription: { type: "allMids", dex: "xyz" } }));
+    state.bookSymbol = null;                      // subscriptions do not survive a reconnect
+    watchBook();
   });
   socket.addEventListener("message", (event) => {
     let msg;
     try {
       msg = JSON.parse(event.data);
     } catch {
+      return;
+    }
+    if (msg.channel === "l2Book" && msg.data && msg.data.coin === state.bookSymbol) {
+      const side = (rows) => rows.slice(0, 12).map((r) => ({ px: Number(r.px), sz: Number(r.sz) }));
+      state.book = { symbol: msg.data.coin, bids: side(msg.data.levels[0]), asks: side(msg.data.levels[1]) };
+      scheduleBook();
+      return;
+    }
+    if (msg.channel === "trades" && Array.isArray(msg.data)) {
+      for (const t of msg.data) {
+        if (t.coin !== state.bookSymbol) continue;
+        state.tape.unshift({ time: t.time, px: Number(t.px), sz: Number(t.sz), buy: t.side === "B" });
+      }
+      state.tape = state.tape.slice(0, 16);
+      scheduleBook();
       return;
     }
     if (msg.channel !== "allMids" || !msg.data || !msg.data.mids) return;
@@ -151,6 +222,16 @@ function connect() {
   socket.addEventListener("error", () => socket.close());
 }
 
+let bookFrame = null;
+
+function scheduleBook() {
+  if (bookFrame) return;
+  bookFrame = requestAnimationFrame(() => {
+    bookFrame = null;
+    paintBook(el, state, helpers);
+  });
+}
+
 // Price ticks arrive many times a second; repaint the live numbers at most once per frame.
 function schedule() {
   if (state.frame) return;
@@ -165,19 +246,10 @@ function schedule() {
 
 const el = {};
 
-function frame() {
-  el.bar = h("header", { class: "t-panel t-bar" });
-  el.pos = h("div", { class: "t-body t-stack" });
-  el.chartHead = h("div", { class: "t-chart-head" });
-  el.readout = h("div", { class: "t-readout" });
-  el.canvas = h("canvas", { role: "img", "aria-label": "Price chart" });
-  el.canvasBox = h("div", { class: "t-canvas" }, el.canvas);
-  el.mkt = h("div", { class: "t-body t-stack" });
-  el.rec = h("div", { class: "t-body t-stack t-gauge" });
-  el.feed = h("div", { class: "t-body" });
+function stakeForm() {
   const stake = h("input", { type: "text", inputmode: "decimal", value: String(state.stake),
                              "aria-label": "Weekly amount in USD" });
-  const stakeForm = h("form", { class: "t-inline", novalidate: true,
+  return h("form", { class: "t-inline", novalidate: true,
     onsubmit: (event) => {
       event.preventDefault();
       const value = Number(stake.value);
@@ -189,41 +261,66 @@ function frame() {
       saveStake();
       stake.blur();
       poll();
+      pollAdvanced();
     } }, h("span", { class: "dim" }, "Weekly $"), stake, h("button", { class: "button quiet", type: "submit" }, "Set"));
+}
+
+function chartPanel() {
+  el.chartHead = h("div", { class: "t-chart-head" });
+  el.readout = h("div", { class: "t-readout" });
+  el.canvas = h("canvas", { role: "img", "aria-label": "Price chart" });
+  el.canvasBox = h("div", { class: "t-canvas" }, el.canvas);
+  el.canvas.addEventListener("pointermove", onHover);
+  el.canvas.addEventListener("pointerleave", () => { state.hover = null; paintReadout(); draw(); });
+  new ResizeObserver(draw).observe(el.canvasBox);
+  return h("section", { class: "t-panel t-chart" },
+    el.chartHead, el.readout, el.canvasBox,
+    h("div", { class: "t-legend" },
+      h("span", null, h("i", { style: `background:${COLORS.amber}` }), "10-day average"),
+      h("span", null, h("i", { style: `background:${COLORS.violet}` }), "40-day average"),
+      h("span", null, h("i", { style: `background:${COLORS.cyan}` }), "Entry"),
+      h("span", null, h("i", { style: `background:${COLORS.down}` }), "Stop loss"),
+      h("span", null, h("i", { style: `background:${COLORS.up}` }), "Optional far target")));
+}
+
+const FOOT = "Positions are model positions: what the weekly amount would be doing had this week's calls been followed from Monday's open. " +
+  "Calls come from six years of past prices and have been right a little over half the time. Prices: Hyperliquid.";
+
+function frame() {
+  for (const key of Object.keys(el)) delete el[key];
+  el.bar = h("header", { class: "t-panel t-bar" });
+  el.feed = h("div", { class: "t-body" });
+  if (state.mode === "advanced") {
+    replace(app, buildAdvanced(el, { chartPanel, stakeForm }), h("p", { class: "t-foot" }, FOOT));
+    return;
+  }
+  el.pos = h("div", { class: "t-body t-stack" });
+  el.mkt = h("div", { class: "t-body t-stack" });
+  el.rec = h("div", { class: "t-body t-stack t-gauge" });
   replace(app, h("div", { class: "t-frame" },
     el.bar,
     h("section", { class: "t-panel t-pos" },
-      h("div", { class: "t-title" }, "Position tracker", stakeForm), el.pos),
-    h("section", { class: "t-panel t-chart" },
-      el.chartHead, el.readout, el.canvasBox,
-      h("div", { class: "t-legend" },
-        h("span", null, h("i", { style: `background:${COLORS.amber}` }), "10-day average"),
-        h("span", null, h("i", { style: `background:${COLORS.violet}` }), "40-day average"),
-        h("span", null, h("i", { style: `background:${COLORS.cyan}` }), "Entry"),
-        h("span", null, h("i", { style: `background:${COLORS.down}` }), "Stop loss"),
-        h("span", null, h("i", { style: `background:${COLORS.up}` }), "Optional far target"))),
+      h("div", { class: "t-title" }, "Position tracker", stakeForm()), el.pos),
+    chartPanel(),
     h("section", { class: "t-panel t-mkt" },
       h("div", { class: "t-title" }, "Market dashboard"), el.mkt),
     h("section", { class: "t-panel t-rec" },
       h("div", { class: "t-title" }, "Recommendation"), el.rec),
     h("section", { class: "t-panel t-feed" },
       h("div", { class: "t-title" }, "Desk feed", h("span", { class: "dim" }, "what to do now")), el.feed)),
-    h("p", { class: "t-foot" },
-      "Positions are model positions: what the weekly amount would be doing had this week's calls been followed from Monday's open. " +
-      "Calls come from six years of past prices and have been right a little over half the time. Prices: Hyperliquid."));
-  el.canvas.addEventListener("pointermove", onHover);
-  el.canvas.addEventListener("pointerleave", () => { state.hover = null; paintReadout(); draw(); });
-  new ResizeObserver(draw).observe(el.canvasBox);
+    h("p", { class: "t-foot" }, FOOT));
 }
 
 function paint() {
+  if (!state.snap) return;
   paintBar();
-  paintPositions();
-  paintMarkets();
-  paintRecommendation();
+  if (el.pos) paintPositions();
+  if (el.mkt) paintMarkets();
+  if (el.rec) paintRecommendation();
   paintFeed();
   paintChartHead();
   draw();
+  if (state.mode === "advanced") paintAdvanced(el, state, helpers);
 }
 
 function paintLive() {
@@ -241,7 +338,7 @@ function paintLive() {
       node.classList.add(price > was ? "t-flash-up" : "t-flash-down");
     }
   }
-  paintPnl();
+  if (el.pos) paintPnl();
 }
 
 // ---- top bar -----------------------------------------------------------------
@@ -258,6 +355,7 @@ function countdown(target) {
 
 function paintBar() {
   if (!el.bar) return;
+  if (el.clk) paintSessions(el);
   const snap = state.snap;
   const now = new Date();
   const clocks = CLOCKS.map(([label, zone]) => h("div", { class: "t-clock" },
@@ -269,7 +367,10 @@ function paintBar() {
   const mood = snap && (snap.mood.today || snap.mood.week);
   replace(el.bar,
     h("span", { class: "t-brand" }, "Neko terminal"),
-    ...clocks,
+    h("span", { class: "t-tabs", role: "group", "aria-label": "Screen" },
+      [["basic", "Basic"], ["advanced", "Advanced"]].map(([mode, text]) => h("button", { type: "button",
+        "aria-pressed": String(state.mode === mode), onclick: () => setMode(mode) }, text))),
+    ...(state.mode === "advanced" ? [] : clocks),
     mood ? h("div", { class: "t-stat" },
       h("b", { class: mood.value >= 50 ? "up" : "down" }, `${mood.value} ${mood.label}`),
       h("span", null, "Market mood")) : null,
@@ -504,18 +605,23 @@ function select(symbol) {
   if (state.selected === symbol) return;
   state.selected = symbol;
   state.chart = null;
-  paintPositions();
-  paintMarkets();
-  paintRecommendation();
-  paintChartHead();
-  draw();
+  paint();
   loadChart();
+  watchBook();
+}
+
+// A market's label and day change, wherever it is listed.
+function marketInfo(symbol) {
+  const basic = state.snap && state.snap.markets.find((m) => m.symbol === symbol);
+  if (basic) return basic;
+  const row = state.adv && state.adv.worksheet.find((m) => m.symbol === symbol);
+  return row || null;
 }
 
 function paintChartHead() {
   if (!el.chartHead || !state.snap) return;
-  const market = state.snap.markets.find((m) => m.symbol === state.selected);
-  const label = market ? market.label : state.selected;
+  const market = marketInfo(state.selected);
+  const label = market ? market.label : state.selected.split(":").pop();
   const last = live(state.selected, market && market.price);
   replace(el.chartHead,
     h("span", { class: "t-symbol" }, `${label}/USD`),
@@ -611,8 +717,9 @@ function draw() {
     g.stroke();
     g.fillText(px(value), plotW + 6, y(value) + 4);
   }
-  for (let i = 0; i < 5; i += 1) {
-    const index = Math.floor(candles.length * (i + 0.5) / 5);
+  const dates = Math.max(2, Math.min(5, Math.floor(plotW / 120)));   // fewer dates on a narrow chart
+  for (let i = 0; i < dates; i += 1) {
+    const index = Math.floor(candles.length * (i + 0.5) / dates);
     const date = new Date(candles[index].t);
     const text = state.interval === "1d"
       ? date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })
@@ -704,7 +811,19 @@ function onHover(event) {
 
 // ---- start -------------------------------------------------------------------
 
-const timers = { poll: null, chart: null, clock: null };
+const timers = { poll: null, chart: null, clock: null, adv: null, book: null };
+const helpers = { select, live };
+
+function restartTimers() {
+  for (const key of ["adv", "book"]) {
+    if (timers[key]) clearInterval(timers[key]);
+    timers[key] = null;
+  }
+  if (state.mode === "advanced") {
+    timers.adv = setInterval(pollAdvanced, ADV_MS);
+    timers.book = setInterval(pollBook, BOOK_MS);
+  }
+}
 
 function stop() {
   for (const key of Object.keys(timers)) {
@@ -717,6 +836,7 @@ function stop() {
 function renderSignIn(missing) {
   for (const key of Object.keys(el)) delete el[key];
   replace(app, signInForm(missing, start));
+  app.firstElementChild.style.padding = "0 16px";
 }
 
 async function signOut() {
@@ -754,7 +874,9 @@ async function start() {
   timers.poll = setInterval(poll, POLL_MS);
   timers.chart = setInterval(loadChart, CHART_MS);
   timers.clock = setInterval(paintBar, 1000);
+  restartTimers();
   connect();
+  pollAdvanced();
 }
 
 start();

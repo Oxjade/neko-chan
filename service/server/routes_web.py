@@ -37,6 +37,7 @@ import forex_weekly
 import weekly_calls
 import market_data
 import terminal
+import terminal_adv
 import web_core
 import web_email
 
@@ -774,6 +775,26 @@ def register_web_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
         try:
             return terminal.snapshot(stake)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/terminal/advanced")
+    def terminal_advanced(request: Request, stake: float = 18.0):
+        _require_operator(request)
+        if not (0 < stake <= 1_000_000_000):
+            raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
+        try:
+            return terminal_adv.snapshot(stake)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/terminal/book")
+    def terminal_book(request: Request, symbol: str):
+        _require_operator(request)
+        try:
+            if symbol not in market_data.catalogue():
+                raise HTTPException(status_code=422, detail="That market is not available.")
+            return market_data.order_book(symbol)
         except market_data.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 

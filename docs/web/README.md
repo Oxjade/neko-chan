@@ -117,6 +117,35 @@ the stream cannot connect.
 - **Chart.** 1h, 4h or 1d candles with the two averages and this week's
   entry, stop and optional target.
 
+### Basic and Advanced
+
+The switch in the top bar chooses the screen; the choice is remembered in the
+browser. **Basic** is the five panels above. **Advanced** is a dense quant
+terminal on one black sheet (`service/server/terminal_adv.py`,
+`web/assets/terminal_adv.js`), refreshed every 20 seconds, with the same desk
+feed and chart plus:
+
+| Panel | What it shows | Source |
+|---|---|---|
+| Sessions | World clocks and whether New York, London, Tokyo and forex are open | the browser's clock (regular hours, no holidays) |
+| Movers | Most up and most down today per asset class, markets under $250k daily volume left out | Hyperliquid, about 130 markets |
+| Breadth | How many markets are up, down or flat today per class | same |
+| Market mood | Today's Fear & Greed reading over 120 days | alternative.me |
+| Market worksheet | 30 markets: price, day, 7-day and 30-day change as a heat map, trend, volatility, funding, open interest, the slow trend rule and its record. Selecting a row loads the chart and order book. | 4-hour candles |
+| Order book and trades | Live depth and the trade tape for the selected market | Hyperliquid stream, REST fallback every 3 seconds |
+| Signal matrix | Every coin and side: called or not, leverage, share of weeks right in each half of the history | `crypto_long_short.json` |
+| Positions and risk | Exposure, distance to the stop and to liquidation, loss if every stop is hit, and the stop rule against holding with no stop | model positions, `crypto_exits.json` |
+| Thirty days | Seven markets rebased to 100 | 4-hour candles |
+| Correlation | How closely eight markets moved together over 30 days | 4-hour candles |
+| Liquidation rate by leverage | Share of traded weeks wiped out, and the average week, from 1x to 30x; the suggested level is outlined | `crypto_long_short.json` |
+| Week by week | The last twelve finished weeks and the running total | daily candles |
+| Funding and open interest | Per coin | Hyperliquid |
+| Forex board | Last week, a normal week's range and trend for 14 pairs | ECB reference rates |
+
+Nothing is filled in for effect: there is no news or economic calendar because
+the platform has no source for one. Each panel fails on its own, so a source
+that is down empties its panel and leaves the rest of the screen working.
+
 ## This week: long, short or stay out
 
 For someone who does not trade. Once a week, per coin (Bitcoin, Ether, Solana,
@@ -295,5 +324,7 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/server/crypto_mood.py` weekly crypto mood reading and its record
 - `service/server/weekly_calls.py` the week's long, short or stay-out calls and the scoreboard
 - `service/server/terminal.py` live model positions, advice, recommendations and chart data
+- `service/server/terminal_adv.py` the Advanced screen's panels
 - `web/assets/terminal.css`, `terminal.js` the terminal's dark theme and live page
+- `web/assets/terminal_adv.js`, `terminal_util.js` the Advanced screen and shared formatting
 - `service/server/tests/test_web.py` tests
