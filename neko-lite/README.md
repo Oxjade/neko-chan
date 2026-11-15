@@ -166,12 +166,12 @@ request for most calls) and the five files of the site itself:
 | Week page, first visit | 17 | 0.35 MB |
 | Basic terminal, first visit, until the screen is drawn (about 2 seconds) | 19 | 0.37 MB |
 | ... then its chart and the dashboard's 8 price histories, in the background | 32 in all | 4.3 MB in all |
-| Advanced terminal, first visit, until all 30 worksheet markets are in (about 3 minutes) | 107 | 14 MB, of which 12.9 MB is price history downloaded once |
-| Advanced terminal, later visit | 13 | 0.2 MB |
+| Advanced terminal, first visit, until all 30 worksheet markets are in (2 to 3 minutes) | 80 to 110 | 14 MB, of which 12.9 MB is price history downloaded once |
+| Advanced terminal, later visit | 12 | 0.14 MB |
 
-The three minutes on a first Advanced visit are the exchange's rate limit, not
-the connection: thirty long histories cost about 2200 weight, and the screen
-is usable throughout.
+The two to three minutes on a first Advanced visit are the exchange's rate
+limit, not the connection: thirty long histories cost about 2200 weight, and
+the screen is usable throughout.
 
 While a terminal tab is open and visible it refreshes the market catalogue
 every ten seconds, which is most of its steady traffic (about 0.8 MB a
