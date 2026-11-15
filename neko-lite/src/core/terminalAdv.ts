@@ -267,7 +267,7 @@ export async function moodHistory(): Promise<MoodPoint[]> {
 export function exits(): AdvancedExits {
   const rule = wc.exitRule();
   return {
-    stop: rule.stop, optional_target: rule.optional_target, with: rule.with, holding: rule.holding,
+    stop: rule.stop, targets: rule.targets, take_profit: rule.take_profit, with: rule.with, holding: rule.holding,
     by_call: Object.fromEntries(Object.entries(rule.by_call ?? {}).map(([call, v]) => [call, v.all])),
   };
 }

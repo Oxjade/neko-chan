@@ -9,7 +9,9 @@
 //   in profit  hold to Monday. Moving the stop to break-even made no real
 //              difference in testing and trailing it closely made results
 //              worse, so the terminal never tells you to tighten a stop.
-//   target     none by default; a far one (three normal weeks) is optional
+//   target     shorts take profit one normal week from entry; longs have none
+//   too small  a call whose share is under the exchange's smallest order is
+//              flagged instead of followed
 //   exit       close at Monday 00:00 UTC and take the new call
 //
 // The "positions" are model positions: what the user's weekly amount would be
@@ -24,7 +26,7 @@ import { pyFixed, pyGrouped, pySum } from "./numeric";
 import { DataError, runtime } from "./runtime";
 import type {
   Advice, AdviceLevel, AssetClass, ChartData, ChartInterval, Position, PositionStatus, Recommendation, Side,
-  TerminalMarket, TerminalSnapshot, TrendDirection, Vote, Week, WeekCoin,
+  TerminalMarket, TerminalSnapshot, TooSmall, TrendDirection, Vote, Week, WeekCoin,
 } from "./types";
 import * as wc from "./weeklyCalls";
 
@@ -70,7 +72,7 @@ export function positionState(coinRow: CalledCoin, days: Array<{ high: number; l
   const liq = coinRow.liquidation_price ?? null;
   let status: PositionStatus = "open";
   let closedAt: number | null = null;
-  let targetSeen = false;
+  // Inside one day the order of events is unknown, so the stop is counted before the take profit.
   for (const day of days) {
     const worst = side === "long" ? day.low : day.high;
     const best = side === "long" ? day.high : day.low;
@@ -84,7 +86,11 @@ export function positionState(coinRow: CalledCoin, days: Array<{ high: number; l
       closedAt = stop;
       break;
     }
-    if (target && (best - target) * sign >= 0) targetSeen = true;
+    if (target && (best - target) * sign >= 0) {
+      status = "target";
+      closedAt = target;
+      break;
+    }
   }
   const mark = closedAt || price;
   const move = (mark / entry - 1) * sign;
@@ -94,8 +100,9 @@ export function positionState(coinRow: CalledCoin, days: Array<{ high: number; l
     share, position_usd: share * lev, entry, last: price,
     stop, target, liquidation: liq, status,
     move_pct: move * 100, pnl_usd: Math.max(pnl, -share), pnl_pct: Math.max(pnl, -share) / share * 100,
-    target_seen: targetSeen, normal_week_pct: coinRow.normal_week_pct ?? null,
+    normal_week_pct: coinRow.normal_week_pct ?? null,
   };
+  if (target && status === "open") out.target_distance_pct = (target - price) * sign / price * 100;
   if (stop && status === "open") {
     const total = Math.abs(stop - entry);
     const left = (stop - price) * -sign;          // positive while the stop has not been reached
@@ -112,7 +119,7 @@ export type AdviceWeek = Pick<Week, "week_of" | "next_call"> & {
 };
 
 /** What to do right now, most urgent first. `now` is in milliseconds. */
-export function advice(positions: Position[], week: AdviceWeek, now: number): Advice[] {
+export function advice(positions: Position[], week: AdviceWeek, now: number, tooSmall: TooSmall[] = []): Advice[] {
   const items: Advice[] = [];
   const add = (level: AdviceLevel, key: string, title: string, text: string, symbol: string | null = null) => {
     items.push({ level, key, title, text, symbol });
@@ -123,6 +130,12 @@ export function advice(positions: Position[], week: AdviceWeek, now: number): Ad
   const hoursLeft = (closeAt - now) / 1000 / 3600;
   const livePositions = positions.filter((p) => p.status === "open");
 
+  for (const s of tooSmall) {
+    add("warn", `small:${s.coin}`, `${s.name}: too small to place`,
+        `The call is ${s.side} ${s.name} at ${s.leverage}x, but your share makes a ` +
+        `$${pyFixed(s.position_usd, 2)} position and the exchange's smallest order is $${pyFixed(wc.MIN_ORDER_USD, 0)}. ` +
+        `Set the weekly amount to at least $${pyFixed(s.min_weekly_amount, 0)}, or skip ${s.name}.`, s.coin);
+  }
   for (const p of positions) {
     const tag = `${p.side} ${p.name}`;
     if (p.status === "liquidated") {
@@ -133,6 +146,10 @@ export function advice(positions: Position[], week: AdviceWeek, now: number): Ad
       add("critical", `stop:${p.coin}`, `${p.name}: stop hit, trade closed`,
           `The ${tag} hit its stop at ${px(p.stop as number)} (${money(p.pnl_usd)}). It is closed for the week. ` +
           "Do not re-enter or move the stop after the fact.", p.coin);
+    } else if (p.status === "target") {
+      add("good", `target:${p.coin}`, `${p.name}: take profit hit, trade closed`,
+          `The ${tag} reached its take profit at ${px(p.target as number)} (${money(p.pnl_usd)}). ` +
+          "It is closed for the week. Do not re-enter; the next call is Monday.", p.coin);
     } else {
       const room = p.stop_room_left;
       const normal = p.normal_week_pct || 0;
@@ -140,19 +157,20 @@ export function advice(positions: Position[], week: AdviceWeek, now: number): Ad
         add("warn", `near:${p.coin}`, `${p.name}: close to the stop`,
             `Price ${px(p.last)} is ${pyFixed(p.stop_distance_pct as number, 1)}% from the stop at ${px(p.stop as number)}. ` +
             "Leave the stop where it is and let it work.", p.coin);
-      } else if (p.target_seen) {
-        add("good", `target:${p.coin}`, `${p.name}: far target reached`,
-            `The optional target at ${px(p.target as number)} was reached. If you set it, the trade is closed in ` +
-            "profit. If not, the tested plan still holds to Monday.", p.coin);
-      } else if (normal && p.move_pct >= normal) {
+      } else if (normal && p.move_pct >= normal && !p.target) {
+        const why = p.side === "long"
+          ? "There is no take profit on longs, because in testing every nearer target made longs " +
+            "worse: rises tend to keep going."
+          : "No take profit is set for this side.";
         add("good", `profit:${p.coin}`, `${p.name}: in profit, hold`,
             `The ${tag} is up ${pyFixed(p.move_pct, 1)}% (${money(p.pnl_usd)}), more than a normal week. ` +
-            "Hold to Monday. Moving the stop to break-even made no difference in testing, and trailing it " +
-            "closely made results worse.", p.coin);
+            `Hold to Monday. ${why}`, p.coin);
       } else if (p.move_pct >= 0) {
+        const plan = p.target
+          ? `Take profit at ${px(p.target)}, ${pyFixed(p.target_distance_pct as number, 1)}% away. ` : "";
         add("info", `hold:${p.coin}`, `${p.name}: on track`,
             p.stop
-              ? `The ${tag} is up ${pyFixed(p.move_pct, 1)}% (${money(p.pnl_usd)}). No action. Stop at ${px(p.stop)}.`
+              ? `The ${tag} is up ${pyFixed(p.move_pct, 1)}% (${money(p.pnl_usd)}). No action. ${plan}Stop at ${px(p.stop)}.`
               : `The ${tag} is up ${pyFixed(p.move_pct, 1)}% (${money(p.pnl_usd)}). No action.`, p.coin);
       } else {
         add("info", `down:${p.coin}`, `${p.name}: down, inside normal swings`,
@@ -285,7 +303,15 @@ export async function snapshot(stake: number): Promise<TerminalSnapshot> {
   const coins = Object.keys(wc.callsConfig());
   const share = stake / coins.length;
   const monday = parseDay(week.week_of);
-  const called = week.coins.filter((c) => c.side);
+  const calls = week.coins.filter((c) => c.side);
+  // the exchange would refuse an order this small, so there is no position to follow
+  const small = (c: WeekCoin) => share * (c.leverage as number) < wc.MIN_ORDER_USD;
+  const tooSmall: TooSmall[] = calls.filter(small).map((c) => ({
+    coin: c.coin, name: c.name, side: c.side as Side, leverage: c.leverage as number,
+    position_usd: share * (c.leverage as number),
+    min_weekly_amount: c.min_weekly_amount || wc.MIN_ORDER_USD / (c.leverage as number) * coins.length,
+  }));
+  const called = calls.filter((c) => !small(c));
   const dailies = await Promise.all(called.map((c) => md.chartCandles(c.coin, "1d", 12)));
   // The long downloads start only now, so they do not slow down what the screen needs first.
   want(DASHBOARD);
@@ -311,7 +337,7 @@ export async function snapshot(stake: number): Promise<TerminalSnapshot> {
     now: isoMoment(now), week_of: week.week_of, next_call: week.next_call,
     mood: { week: week.mood, today: week.preview ? week.preview.mood : null },
     stake, positions, week_pnl_usd: pySum(positions.map((p) => p.pnl_usd)),
-    advice: advice(positions, week, now), markets,
+    advice: advice(positions, week, now, tooSmall), markets, too_small: tooSmall,
     stay_out: week.coins.filter((c) => !c.side)
       .map((c) => ({ coin: c.coin, name: c.name, signal: c.signal, skipped: c.skipped })),
   };

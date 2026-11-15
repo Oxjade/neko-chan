@@ -87,6 +87,30 @@ export interface ExitRecord {
   total: number;
 }
 
+/** How a take-profit plan did over the tested weeks, as a share of the stake. */
+export interface TakeProfitRecord extends ExitRecord {
+  first_target: number;
+  /** Share of weeks in which the take profit was reached. */
+  final_target: number;
+  stopped: number;
+  locked_out: number;
+}
+
+/** The take profit for one side (crypto_take_profit.py). `target` is in normal weeks; null means hold to Monday. */
+export interface TakeProfitPlan {
+  target: number | null;
+  with: TakeProfitRecord;
+  stop_only: TakeProfitRecord;
+  at_one_normal_week: TakeProfitRecord | null;
+  /** Share of weeks that reached the target, where there is one. */
+  reached: number | null;
+  plans_as_good: number;
+  plans_tested: number;
+}
+
+export type TakeProfit = Partial<Record<Side, TakeProfitPlan>>;
+export type Targets = Record<Side, number | null>;
+
 export interface SpotStats {
   weeks: number;
   grew_to: number;
@@ -140,6 +164,8 @@ export interface WeekCoin {
   leverage: number | null;
   price: number | null;
   record: CoinRecord | null;
+  /** For a called coin: the weekly amount at which its share becomes an order the exchange accepts. */
+  min_weekly_amount?: number;
   // Present only for a called coin with a live price.
   entry?: number;
   liquidation_move_pct?: number;
@@ -149,8 +175,10 @@ export interface WeekCoin {
   stop_pct?: number;
   stop_price?: number;
   stake_lost_at_stop?: number;
+  // Present only where the call's side has a take profit.
   target_pct?: number;
   target_price?: number;
+  stake_made_at_target?: number;
 }
 
 export interface WeekCall {
@@ -176,7 +204,8 @@ export interface WeekPreview {
 
 export interface WeekExits {
   stop: number | null;
-  optional_target: number | null;
+  targets: Targets;
+  take_profit: TakeProfit;
   with: ExitRecord | null;
   holding: ExitRecord | null;
 }
@@ -190,6 +219,8 @@ export interface Week {
   next_call: string;
   preview: WeekPreview | null;
   exits: WeekExits;
+  /** The exchange refuses to open anything smaller (USD). */
+  min_order_usd: number;
 }
 
 // ---- week by week (weekly_calls.scoreboard) ------------------------------------
@@ -201,6 +232,9 @@ export interface ScoreRow {
   skipped: string[];
   wiped: string[];
   stopped: string[];
+  took_profit: string[];
+  /** Coins that had a call too small for the exchange to accept at this amount. */
+  too_small: string[];
   result: number;
   running_total: number;
 }
@@ -227,11 +261,13 @@ export interface Scoreboard {
   expect: Expectation[];
   /** Coins whose exchange limit is below the chosen leverage. */
   capped: Record<string, number>;
+  min_order_usd: number;
 }
 
 // ---- the terminal (terminal.snapshot) ------------------------------------------
 
-export type PositionStatus = "open" | "stopped" | "liquidated";
+/** "target" means the take profit was reached and the trade is closed. */
+export type PositionStatus = "open" | "stopped" | "liquidated" | "target";
 
 /** A model position: what the weekly amount would be doing had the call been followed. */
 export interface Position {
@@ -250,11 +286,22 @@ export interface Position {
   move_pct: number;
   pnl_usd: number;
   pnl_pct: number;
-  target_seen: boolean;
   normal_week_pct: number | null;
+  // Present only while the position is open and has a take profit.
+  target_distance_pct?: number;
   // Present only while the position is open and has a stop.
   stop_distance_pct?: number;
   stop_room_left?: number | null;
+}
+
+/** A call whose share of the weekly amount is below the exchange's smallest order. */
+export interface TooSmall {
+  coin: string;
+  name: string;
+  side: Side;
+  leverage: number;
+  position_usd: number;
+  min_weekly_amount: number;
 }
 
 export type AdviceLevel = "critical" | "warn" | "good" | "info";
@@ -311,6 +358,7 @@ export interface TerminalSnapshot {
   week_pnl_usd: number;
   advice: Advice[];
   markets: TerminalMarket[];
+  too_small: TooSmall[];
   stay_out: StayOut[];
 }
 
@@ -447,7 +495,8 @@ export interface MoodPoint {
 
 export interface AdvancedExits {
   stop: number | null;
-  optional_target: number | null;
+  targets: Targets;
+  take_profit: TakeProfit;
   with: ExitRecord | null;
   holding: ExitRecord | null;
   by_call: Record<string, ExitRecord>;

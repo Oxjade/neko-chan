@@ -322,34 +322,56 @@ function paintRisk(el: Elements, adv: AdvancedSnapshot): void {
     { label: "Exposure", num: true, cell: (r) => `$${r.exposure_usd.toFixed(2)}` },
     { label: "P&L", num: true, cell: (r) => usd(r.pnl_usd), cls: (r) => tone(r.pnl_usd) },
     { label: "To stop", num: true, cell: (r) => (r.stop_distance_pct === null || r.stop_distance_pct === undefined
-        ? r.status : `${r.stop_distance_pct.toFixed(1)}%`) },
+        ? (r.status === "target" ? "profit taken" : r.status) : `${r.stop_distance_pct.toFixed(1)}%`) },
     { label: "To liq.", num: true, cell: (r) => (r.liquidation_distance_pct === null
         ? "–" : `${r.liquidation_distance_pct.toFixed(0)}%`) },
-    { label: "At stop", num: true, cell: (r) => usd(-r.loss_at_stop_usd), cls: () => "down" },
+    { label: "At stop", num: true, cell: (r) => (r.loss_at_stop_usd ? usd(-r.loss_at_stop_usd) : "–"),
+      cls: () => "down" },
   ], risk.rows, { empty: "No open positions this week." }),
     h("table", { class: "t-dense t-wrap" }, h("tbody", null,
       h("tr", null, h("td", { class: "dim" }, "Total exposure"),
         h("td", { class: "n" }, `$${(risk.exposure_usd || 0).toFixed(2)} · ${((risk.exposure_of_stake || 0) * 100).toFixed(0)}% of the weekly amount`)),
       h("tr", null, h("td", { class: "dim" }, "If every stop is hit"),
-        h("td", { class: "n down" }, usd(risk.worst_case_usd || 0))),
+        h("td", { class: "n down" }, risk.worst_case_usd ? usd(risk.worst_case_usd) : "$0.00")),
       h("tr", null, h("td", { class: "dim" }, "Left in cash"),
         h("td", { class: "n" }, `$${(risk.in_cash_usd || 0).toFixed(2)}`)))),
     exitTable(adv.exits));
 }
 
-// The stop rule against simply holding to Monday, over every tested week.
+// The exit rules in use, each against the alternative it was tested with.
 function exitTable(exits: AdvancedExits | null): Child {
-  if (!exits || !exits.with || !exits.holding) return null;
-  const row = (name: string, e: ExitRecord) => h("tr", null, h("td", { class: "amber" }, name),
+  if (!exits) return null;
+  const row = (name: string, e: ExitRecord, used: boolean) => h("tr", null, h("td", { class: used ? "amber" : "dim" }, name),
     h("td", { class: "n" }, String(e.weeks)), h("td", { class: "n" }, `${(e.ahead * 100).toFixed(0)}%`),
     h("td", { class: `n ${tone(e.avg)}` }, pct(e.avg * 100, 1)),
     h("td", { class: "n down" }, pct(e.worst * 100, 0)));
+  const rows: HTMLElement[] = [];
+  const plans = exits.take_profit || {};
+  for (const [side, word] of [["short", "Shorts"], ["long", "Longs"]] as Array<["short" | "long", string]>) {
+    const plan = plans[side];
+    if (!plan) continue;
+    if (plan.target) {
+      rows.push(row(`${word}: stop, take profit ${plan.target} normal week away`, plan.with, true),
+                row(`${word}: stop only`, plan.stop_only, false));
+    } else {
+      rows.push(row(`${word}: stop only, no take profit`, plan.stop_only, true));
+      if (plan.at_one_normal_week) {
+        rows.push(row(`${word}: with a take profit 1 normal week away`, plan.at_one_normal_week, false));
+      }
+    }
+  }
+  if (!rows.length && exits.with && exits.holding) {
+    rows.push(row(`Stop ${exits.stop} normal week away`, exits.with, true),
+              row("Hold to Monday, no stop", exits.holding, false));
+  }
+  if (!rows.length) return null;
   return [h("table", { class: "t-dense" },
     h("thead", null, h("tr", null, h("th", null, "Exit rule"), h("th", { class: "n" }, "Weeks"),
       h("th", { class: "n" }, "Ahead"), h("th", { class: "n" }, "Avg week"), h("th", { class: "n" }, "Worst week"))),
-    h("tbody", null, row(`Stop ${exits.stop} normal week away`, exits.with), row("Hold to Monday, no stop", exits.holding))),
+    h("tbody", null, rows)),
     h("p", { class: "dim t-pad t-micro" },
-      "Share of the stake, at the suggested leverage. The stop gives up a little on average to cap the worst week.")];
+      "Share of the stake, at the suggested leverage. Amber rows are the rules in use: shorts bank profit " +
+      "because falls tend to bounce, longs are left to run.")];
 }
 
 function paintPerformance(el: Elements, adv: AdvancedSnapshot): void {
@@ -439,7 +461,8 @@ function paintScore(el: Elements, adv: AdvancedSnapshot): void {
     dense<ScoreRow>([
       { label: "Week of", amber: true, cell: (r) => r.week_of.slice(5) },
       { label: "Calls", cell: (r) => (r.calls.length
-          ? r.calls.map((c) => `${c.side[0].toUpperCase()} ${c.coin}`).join(", ") : "stay out"),
+          ? r.calls.map((c) => `${c.side[0].toUpperCase()} ${c.coin}`).join(", ")
+          : r.too_small && r.too_small.length ? "too small" : "stay out"),
         cls: (r) => (r.calls.length ? "" : "dim") },
       { label: "Result", num: true, cell: (r) => (r.calls.length ? usd(r.result) : "–"),
         cls: (r) => tone(r.result) },

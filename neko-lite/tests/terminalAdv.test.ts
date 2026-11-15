@@ -68,7 +68,7 @@ describe("risk", () => {
   const position = (over: Partial<Position> = {}): Position => ({
     coin: "ETH", name: "Ether", side: "short", status: "open", leverage: 3, share: 4.5,
     position_usd: 13.5, pnl_usd: 1.2, pnl_pct: 0, move_pct: 0, entry: 2000.0, last: 1800.0, stop: 2180.0,
-    target: null, target_seen: false, liquidation: 2620.0, stop_distance_pct: 21.1, normal_week_pct: 9.0, ...over,
+    target: null, liquidation: 2620.0, stop_distance_pct: 21.1, normal_week_pct: 9.0, ...over,
   });
 
   it("open position exposure and loss at the stop", () => {

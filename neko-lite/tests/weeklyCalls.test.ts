@@ -72,7 +72,9 @@ const coinConfig = (coin: string): Record<Side, SideConfig> => ({
   },
 });
 const CONFIG: CallsConfig = { BTC: coinConfig("BTC"), ETH: coinConfig("ETH") };
-const EXITS: wc.ExitRule = { stop: 1.0, optional_target: 3.0, with: null, holding: null, by_call: {} };
+const EXITS: wc.ExitRule = { stop: 1.0, targets: { long: null, short: 1.0 }, take_profit: {},
+                             with: null, holding: null, by_call: {} };
+const NO_STOP: wc.ExitRule = { ...EXITS, stop: null };
 
 const closes = (now: number, fourWeeksAgo: number): wc.SundayClose[] => {
   const start = day("2026-11-08");
@@ -146,8 +148,13 @@ describe("weekly calls", () => {
     // a short is liquidated above the entry price, and its stop sits above too
     expect(eth.liquidation_price).toBeCloseTo(50.0 * (1 + 1 / 3 - 1 / 50), 7);
     expect(eth.stop_price).toBeCloseTo(50.0 * 1.05, 7);          // one normal week (5%)
-    expect(eth.target_price).toBeCloseTo(50.0 * 0.85, 7);        // optional, three normal weeks
+    expect(eth.target_price).toBeCloseTo(50.0 * 0.95, 7);        // shorts take profit one normal week away
+    expect(eth.stake_made_at_target).toBeCloseTo(3 * (0.05 - 2 * wc.FEE_PER_SIDE), 7);
     expect(eth.stake_lost_at_stop).toBeCloseTo(3 * (0.05 + 2 * wc.FEE_PER_SIDE), 7);
+    // two coins share the weekly amount, so a 3x call needs 2 * 10 / 3 a week to reach a 10 USD order
+    expect(eth.min_weekly_amount).toBeCloseTo(20 / 3, 7);
+    expect(out.min_order_usd).toBe(10.0);
+    expect(out.exits.targets).toEqual({ long: null, short: 1.0 });
     expect(eth.stop_price as number).toBeLessThan(eth.liquidation_price as number);
     expect([out.week_of, out.next_call]).toEqual(["2026-11-09", "2026-11-16"]);
   });
@@ -166,6 +173,7 @@ describe("weekly calls", () => {
     expect(out.calls).toEqual([{ coin: "BTC", side: "long", leverage: 3 }]);
     expect(out.coins[0].liquidation_price as number).toBeLessThan(100.0);   // a long is liquidated below
     expect(out.coins[0].stop_price).toBeCloseTo(95.0, 7);                   // and stopped below
+    expect(out.coins[0]).not.toHaveProperty("target_price");                // longs have no take profit
     expect(out.coins[1].skipped).toBe(false);                               // no signal at all
     out = week(70, "Greed", { BTC: down, ETH: down });
     expect(out.calls).toEqual([]);
@@ -189,14 +197,43 @@ describe("weekly calls", () => {
     const monday = day("2026-09-14");
     // dips 6% on day two, then recovers to end +4%
     const dip = weekCandles(monday, [[0.5, -0.5, 0.2], [0.5, -6.0, -1.0], ...repeat([0.5, -0.5, 0.2], 4), [4.5, -0.5, 4.0]]);
-    const stopped = wc.weekResult(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG.ETH, 1.0, fixedNormal);
+    const stopped = wc.weekResult(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG.ETH, EXITS, fixedNormal);
     expect(stopped.stopped).toBe(true);
     expect(stopped.wiped).toBe(false);
     // loses the stop distance (5%) at 3x, with fees and two days of funding
     expect(stopped.result).toBeCloseTo(9.0 * 3 * (-0.05 - 2 * wc.FEE_PER_SIDE - 2 * wc.FUNDING_PER_DAY), 7);
-    const held = wc.weekResult(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG.ETH, null, fixedNormal);
+    const held = wc.weekResult(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG.ETH, NO_STOP, fixedNormal);
     expect(held.stopped).toBe(false);
     expect(held.result as number).toBeGreaterThan(0);
+  });
+
+  it("take profit closes a short but never a long", () => {
+    const monday = day("2026-09-14");
+    const eth = CONFIG.ETH;
+    // falls 6% on day three, then bounces to end only 1% down: the short banked 5% at its target
+    const bounce = weekCandles(monday, [...repeat([0.5, -0.5, -0.2], 2), [0.5, -6.0, -3.0], ...repeat([0.5, -0.5, -1.0], 4)],
+                               100, 110);
+    const short = wc.weekResult(bounce, monday, 40, 9.0, wc.SUGGESTED, 25, eth, EXITS, fixedNormal);
+    expect(short.took_profit).toBe(true);
+    expect(short.result).toBeCloseTo(9.0 * 3 * (0.05 - 2 * wc.FEE_PER_SIDE), 7);
+    // a day that touches both the stop and the target counts as the stop
+    const both = weekCandles(monday, [[5.5, -6.0, -3.0], ...repeat([0.5, -0.5, -1.0], 6)], 100, 110);
+    const hit = wc.weekResult(both, monday, 40, 9.0, wc.SUGGESTED, 25, eth, EXITS, fixedNormal);
+    expect([hit.stopped, hit.took_profit]).toEqual([true, false]);
+    // a long that runs 8% keeps all of it: there is no target on longs
+    const run = weekCandles(monday, [...repeat([0.5, -0.5, 0.2], 6), [8.5, -0.5, 8.0]]);
+    const long = wc.weekResult(run, monday, 60, 9.0, wc.SUGGESTED, 25, eth, EXITS, fixedNormal);
+    expect(long.took_profit).toBe(false);
+    expect(long.result).toBeCloseTo(9.0 * 3 * (0.08 - 2 * wc.FEE_PER_SIDE - 7 * wc.FUNDING_PER_DAY), 7);
+  });
+
+  it("a position under the exchange minimum is not traded", () => {
+    const monday = day("2026-09-14");
+    const rise = weekCandles(monday, [...repeat([0.5, -0.5, 0.2], 6), [4.5, -0.5, 4.0]]);
+    const small = wc.weekResult(rise, monday, 60, 3.0, wc.SUGGESTED, 25, CONFIG.ETH, EXITS, fixedNormal);   // 3 USD at 3x is 9 USD
+    expect([small.side, small.too_small, small.result]).toEqual([null, true, 0.0]);
+    const enough = wc.weekResult(rise, monday, 60, 3.4, wc.SUGGESTED, 25, CONFIG.ETH, EXITS, fixedNormal);  // 10.2 USD
+    expect(enough.side).toBe("long");
   });
 
   it("week result long, short and liquidation", () => {
@@ -205,31 +242,31 @@ describe("weekly calls", () => {
     const fall = weekCandles(monday, [...repeat([0.5, -0.5, -0.2], 6), [0.5, -4.5, -4.0]], 100, 110);  // ends -4%
     const eth = CONFIG.ETH;
     // long at the suggested 3x: three times the move, less fees and funding
-    const long = wc.weekResult(rise, monday, 60, 9.0, wc.SUGGESTED, 25, eth, null);
+    const long = wc.weekResult(rise, monday, 60, 9.0, wc.SUGGESTED, 25, eth, NO_STOP);
     expect([long.side, long.leverage_used]).toEqual(["long", 3.0]);
     expect(long.result).toBeCloseTo(9.0 * 3 * (0.04 - 2 * wc.FEE_PER_SIDE - 7 * wc.FUNDING_PER_DAY), 7);
     // short profits from the fall and pays no funding
-    const short = wc.weekResult(fall, monday, 40, 9.0, wc.SUGGESTED, 25, eth, null);
+    const short = wc.weekResult(fall, monday, 40, 9.0, wc.SUGGESTED, 25, eth, NO_STOP);
     expect(short.side).toBe("short");
     expect(short.result).toBeCloseTo(9.0 * 3 * (0.04 - 2 * wc.FEE_PER_SIDE), 7);
     // shorting Bitcoin is not called: no trade, flagged as skipped
-    const skipped = wc.weekResult(fall, monday, 40, 9.0, wc.SUGGESTED, 40, CONFIG.BTC, null);
+    const skipped = wc.weekResult(fall, monday, 40, 9.0, wc.SUGGESTED, 40, CONFIG.BTC, NO_STOP);
     expect([skipped.side, skipped.skipped, skipped.result]).toEqual([null, true, 0.0]);
     // mood and price disagree: no trade, not skipped
-    const none = wc.weekResult(fall, monday, 60, 9.0, wc.SUGGESTED, 25, eth, null);
+    const none = wc.weekResult(fall, monday, 60, 9.0, wc.SUGGESTED, 25, eth, NO_STOP);
     expect([none.side, none.skipped]).toEqual([null, false]);
     // a 3% spike against a 30x short liquidates it even though the week ends in its favour
     const spike = weekCandles(monday, [[3.0, -0.5, -0.2], ...repeat([0.5, -0.5, -0.2], 5), [0.5, -4.5, -4.0]], 100, 110);
-    const wiped = wc.weekResult(spike, monday, 40, 9.0, 30, 40, CONFIG.ETH, null);
+    const wiped = wc.weekResult(spike, monday, 40, 9.0, 30, 40, CONFIG.ETH, NO_STOP);
     expect(wiped.wiped).toBe(true);
     expect(wiped.result).toBe(-9.0);
-    expect(wc.weekResult(spike, monday, 40, 9.0, 3, 40, CONFIG.ETH, null).wiped).toBe(false);
+    expect(wc.weekResult(spike, monday, 40, 9.0, 3, 40, CONFIG.ETH, NO_STOP).wiped).toBe(false);
     // leverage above the exchange's limit is capped
-    expect(wc.weekResult(rise, monday, 60, 9.0, 30, 25, eth, null).leverage_used).toBe(25);
+    expect(wc.weekResult(rise, monday, 60, 9.0, 30, 25, eth, NO_STOP).leverage_used).toBe(25);
     // missing days: the week is not scored
     const shortWeek = new Map(rise);
     shortWeek.delete(monday);
-    expect(wc.weekResult(shortWeek, monday, 60, 9.0, 1, 40, eth, null).known).toBe(false);
+    expect(wc.weekResult(shortWeek, monday, 60, 9.0, 1, 40, eth, NO_STOP).known).toBe(false);
   });
 
   it("scoreboard totals", () => {
@@ -242,16 +279,21 @@ describe("weekly calls", () => {
     ]);
     const moods = new Map(mondays.map((m) => [m - 1, 60]));
     const live = new Map([["BTC", { max_leverage: 40 }], ["ETH", { max_leverage: 25 }]]);
-    const inputs: wc.ScoreboardInputs = { config: CONFIG, stopRule: null, moods, live,
+    const inputs: wc.ScoreboardInputs = { config: CONFIG, rule: NO_STOP, moods, live,
                                           candles: { BTC: candles, ETH: candles } };
-    const board = wc.buildScoreboard(inputs, 18, 1, 2);
+    const board = wc.buildScoreboard(inputs, 20, 1, 2);
     const high = wc.buildScoreboard(inputs, 18, 30, 2);
     const suggested = wc.buildScoreboard(inputs, 18, wc.SUGGESTED, 2);
+    const tiny = wc.buildScoreboard(inputs, 18, 1, 2);       // 9 USD a coin at 1x: under the exchange minimum
     expect(board.rows.map((r) => r.week_of)).toEqual(["2026-09-14", "2026-09-07"]);
     expect([board.ahead, board.behind, board.no_trade]).toEqual([1, 1, 0]);
     expect(board.rows[1].running_total).toBeCloseTo(board.rows[1].result, 7);
     expect(board.rows[0].running_total).toBeCloseTo(board.total, 7);
-    expect(board.total).toBeCloseTo(18 * (0.04 - 0.03 - 4 * wc.FEE_PER_SIDE), 7);
+    expect(board.total).toBeCloseTo(20 * (0.04 - 0.03 - 4 * wc.FEE_PER_SIDE), 7);
+    expect([tiny.total, tiny.no_trade]).toEqual([0.0, 2]);
+    expect(tiny.rows[0].too_small).toEqual(["BTC", "ETH"]);
+    expect(board.rows[0].too_small).toEqual([]);
+    expect(board.min_order_usd).toBe(10.0);
     expect(board.rows[0].calls[0]).toEqual({ coin: "BTC", side: "long", leverage: 1.0 });
     expect(high.capped).toEqual({ ETH: 25 });
     expect(new Set(high.expect.filter((e) => e.side === "long").map((e) => `${e.coin} ${e.leverage}`)))
@@ -290,6 +332,26 @@ describe("weekly calls", () => {
     const holding = rule.holding as NonNullable<typeof rule.holding>;
     expect(kept.worst).toBeGreaterThan(holding.worst);        // the stop caps the worst week
     expect(kept.avg).toBeGreaterThan(0);
+  });
+
+  it("real take profit file", () => {
+    const rule = wc.exitRule();
+    // shorts take profit one normal week away; no target was as good as the stop alone for longs
+    expect(rule.targets).toEqual({ long: null, short: 1.0 });
+    const short = rule.take_profit.short as NonNullable<typeof rule.take_profit.short>;
+    const long = rule.take_profit.long as NonNullable<typeof rule.take_profit.long>;
+    expect(short.with.avg).toBeGreaterThanOrEqual(short.stop_only.avg);
+    expect(short.with.ahead).toBeGreaterThan(short.stop_only.ahead);
+    expect(short.reached as number).toBeGreaterThan(0.2);     // a target has to be reachable
+    expect((long.at_one_normal_week as NonNullable<typeof long.at_one_normal_week>).avg).toBeLessThan(long.stop_only.avg);
+    expect(long.plans_as_good).toBe(0);
+    expect(long.reached).toBeNull();
+  });
+
+  it("a missing take profit table means no targets", () => {
+    const rule = wc.exitRule(wc.takeProfitRule(null));
+    expect(rule.targets).toEqual({ long: null, short: null });
+    expect(rule.stop).toBe(1.0);
   });
 });
 

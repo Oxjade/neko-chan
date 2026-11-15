@@ -18,8 +18,8 @@ const captured = (name: string): unknown => JSON.parse(readFileSync(join(FIXTURE
 
 // Fields that are present only in some situations (a call was made, a stop exists, ...).
 const SOMETIMES = new Set(["entry", "liquidation_move_pct", "liquidation_price", "normal_week_pct", "stop_pct",
-                           "stop_price", "stake_lost_at_stop", "target_pct", "target_price", "stop_distance_pct",
-                           "stop_room_left", "bars"]);
+                           "stop_price", "stake_lost_at_stop", "target_pct", "target_price", "stake_made_at_target",
+                           "min_weekly_amount", "stop_distance_pct", "stop_room_left", "target_distance_pct", "bars"]);
 // Objects keyed by data (a coin, a market label), not by field name.
 const KEYED_BY_DATA = [/\.capped$/, /\.performance$/, /\.by_call$/];
 
@@ -50,7 +50,9 @@ function compare(name: string, mine: unknown, extra: string[] = []): void {
     const known = theirs.get(path);
     if (!known) continue;                                    // nothing captured there to compare with (an empty list)
     for (const field of names) {
-      if (!known.has(field) && !extra.includes(field)) problems.push(`${path}.${field} is not in the Python answer`);
+      if (!known.has(field) && !extra.includes(field) && !SOMETIMES.has(field)) {
+        problems.push(`${path}.${field} is not in the Python answer`);
+      }
     }
     for (const field of known) {
       if (!names.has(field) && !SOMETIMES.has(field)) problems.push(`${path}.${field} is missing`);

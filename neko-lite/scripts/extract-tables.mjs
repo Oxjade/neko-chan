@@ -45,18 +45,33 @@ mkdirSync(OUT, { recursive: true });
   write("calls.json", calls);
 }
 
-// Stop and optional target, in normal weeks, with the tested effect.
+// The stop, in normal weeks, with the tested effect.
 {
   const rec = read("crypto_exits.json").recommendation;
   const byCall = {};
   for (const [call, record] of Object.entries(rec.by_call || {})) byCall[call] = { all: record.all };
   write("exits.json", {
     stop: rec.stop,
-    optional_target: rec.optional_target ?? null,
     with: rec.with.all,
     holding: rec.holding.all,
     by_call: byCall,
   });
+}
+
+// Per side, the take profit the test allows, in normal weeks (null: hold to Monday).
+{
+  const sides = {};
+  for (const [side, s] of Object.entries(read("crypto_take_profit.json").by_side)) {
+    sides[side] = {
+      target: s.target ?? null,
+      with: s.with.all,
+      stop_only: s.stop_only.all,
+      at_one_normal_week: s.at_one_normal_week ?? null,
+      plans_as_good: s.plans_as_good,
+      plans_tested: s.plans_tested,
+    };
+  }
+  write("take_profit.json", sides);
 }
 
 // The long side without leverage, against simply holding.

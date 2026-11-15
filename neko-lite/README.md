@@ -16,8 +16,9 @@ TypeScript, so the site can be hosted as static files.
 
 Included, and unchanged in layout, wording and numbers:
 
-- the weekly calls (long, short or stay out per coin, suggested leverage,
-  stop and optional far target) and the week-by-week scoreboard
+- the weekly calls (long, short or stay out per coin, suggested leverage, the
+  stop, the take profit on shorts, and a warning when a call is too small for
+  the exchange to accept) and the week-by-week scoreboard
 - the terminal: model positions, the "what to do now" feed, the market
   dashboard, the recommendation gauge, the candle chart with the 10-day and
   40-day averages, and the one-second live chart

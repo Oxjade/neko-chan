@@ -39,7 +39,7 @@ describe("position state", () => {
     expect(p.pnl_usd).toBeCloseTo(9.0 * 3 * (0.10 - 0.0009), 7);
     expect(p.stop_distance_pct).toBeCloseTo((2180 - 1800) / 1800 * 100, 7);
     expect(p.stop_room_left).toBe(1.5);                       // well clear of the stop
-    expect(p.target_seen).toBe(false);
+    expect(p.target_distance_pct).toBeCloseTo((1800 - 1500) / 1800 * 100, 7);
   });
 
   it("short is stopped when a day trades through the stop", () => {
@@ -56,8 +56,22 @@ describe("position state", () => {
     expect(stopped.status).toBe("stopped");
     const gone = terminal.positionState(longBtc({ stop_price: null }), [{ high: 101.0, low: 60.0 }], 70.0, 9.0);
     expect([gone.status, gone.pnl_usd]).toEqual(["liquidated", -9.0]);
-    const seen = terminal.positionState(longBtc(), [{ high: 119.0, low: 99.0 }], 110.0, 9.0);
-    expect([seen.status, seen.target_seen]).toEqual(["open", true]);
+    const took = terminal.positionState(longBtc(), [{ high: 119.0, low: 99.0 }], 110.0, 9.0);
+    expect(took.status).toBe("target");                       // closed at the target, not at today's price
+    expect(took.pnl_usd).toBeCloseTo(9.0 * 3 * (0.18 - 0.0009), 7);
+    expect(took).not.toHaveProperty("stop_distance_pct");
+    expect(took).not.toHaveProperty("target_distance_pct");
+    // a day that touches both the stop and the target counts as the stop
+    const both = terminal.positionState(longBtc(), [{ high: 119.0, low: 93.0 }], 110.0, 9.0);
+    expect(both.status).toBe("stopped");
+  });
+
+  it("short takes profit at its target", () => {
+    const days = [{ high: 2050.0, low: 1990.0 }, { high: 2000.0, low: 1790.0 }];
+    const p = terminal.positionState(shortEth({ target_price: 1820.0 }), days, 1900.0, 9.0);
+    expect(p.status).toBe("target");
+    expect(p.move_pct).toBeCloseTo(9.0, 7);                   // banked at the target despite the bounce
+    expect(p.pnl_usd).toBeCloseTo(9.0 * 3 * (0.09 - 0.0009), 7);
   });
 
   it("near the stop", () => {
@@ -72,14 +86,37 @@ describe("advice", () => {
     terminal.advice([position], week, when);
   const keys = (items: Array<{ key: string }>) => items.map((i) => i.key);
 
-  it("in profit says hold and never tighten", () => {
-    const p = terminal.positionState(shortEth(), [{ high: 2050.0, low: 1780.0 }], 1800.0, 9.0);
-    const top = advice(p)[0];
-    expect([top.level, top.key]).toEqual(["good", "profit:ETH"]);
+  it("a long in profit is held because longs have no target", () => {
+    const p = terminal.positionState(longBtc({ target_price: null }), [{ high: 111.0, low: 99.0 }], 110.0, 9.0);
+    const top = terminal.advice([p], { ...WEEK, coins: [] }, at(11))[0];
+    expect([top.level, top.key]).toEqual(["good", "profit:BTC"]);
     expect(top.text).toContain("Hold to Monday");
-    expect(top.text).toContain("made no difference");
-    expect(top.text).toBe("The short Ether is up 10.0% (+$2.68), more than a normal week. Hold to Monday. " +
-      "Moving the stop to break-even made no difference in testing, and trailing it closely made results worse.");
+    expect(top.text).toContain("no take profit on longs");
+  });
+
+  it("take profit hit closes the trade", () => {
+    const p = terminal.positionState(shortEth({ target_price: 1820.0 }), [{ high: 2000.0, low: 1790.0 }], 1900.0, 9.0);
+    const items = advice(p);
+    expect([items[0].level, items[0].key]).toEqual(["good", "target:ETH"]);
+    expect(items[0].text).toContain("take profit");
+    expect(items[0].text).toContain("Do not re-enter");
+    expect(keys(items)).not.toContain("close-soon");         // nothing left open to close
+  });
+
+  it("a short on track is told where its take profit is", () => {
+    const p = terminal.positionState(shortEth({ target_price: 1820.0 }), [{ high: 2010.0, low: 1950.0 }], 1960.0, 9.0);
+    const top = advice(p)[0];
+    expect(top.key).toBe("hold:ETH");
+    expect(top.text).toContain("Take profit at 1,820");
+  });
+
+  it("a call too small for the exchange is flagged", () => {
+    const small = [{ coin: "SOL", name: "Solana", side: "short" as const, leverage: 1, position_usd: 4.5,
+                     min_weekly_amount: 40.0 }];
+    const items = terminal.advice([], { ...WEEK, coins: [] }, at(11), small);
+    expect([items[0].level, items[0].key]).toEqual(["warn", "small:SOL"]);
+    expect(items[0].text).toContain("$4.50");
+    expect(items[0].text).toContain("at least $40");
   });
 
   it("stop hit is the most urgent", () => {
@@ -130,16 +167,17 @@ describe("advice", () => {
 });
 
 describe("the sentences, word for word as Python writes them", () => {
-  const texts = (row: CalledCoin, days: Array<{ high: number; low: number }>, price: number, when: number) =>
-    terminal.advice([terminal.positionState(row, days, price, 9.0)], WEEK, when).map((i) => `${i.key} | ${i.text}`);
+  const texts = (row: CalledCoin, days: Array<{ high: number; low: number }>, price: number, when: number,
+                 week: terminal.AdviceWeek = WEEK) =>
+    terminal.advice([terminal.positionState(row, days, price, 9.0)], week, when).map((i) => `${i.key} | ${i.text}`);
 
-  it("down, on track, the close reminder, liquidation and the far target", () => {
+  it("down, on track, the close reminder and liquidation", () => {
     expect(texts(shortEth(), [{ high: 2060.0, low: 1990.0 }], 2040.0, at(11))[0]).toBe(
       "down:ETH | The short Ether is down 2.0% (-$0.56), 6.9% from the stop. No action: the stop is the exit.");
     const soon = texts(shortEth(), [{ high: 2050.0, low: 1900.0 }], 1950.0, at(15, 21));
     expect(soon).toEqual([
       "close-soon | Close Ether at 00:00 UTC Monday, in 3h 00m. Then take the new call.",
-      "hold:ETH | The short Ether is up 2.5% (+$0.65). No action. Stop at 2,180.",
+      "hold:ETH | The short Ether is up 2.5% (+$0.65). No action. Take profit at 1,500, 23.1% away. Stop at 2,180.",
       "late | These trades were opened at Monday's open. Entering part-way through the week was not tested, " +
         "so if you are not already in, skip to the next call.",
       "out:BTC | The rule points short, but going short on Bitcoin did not hold up in testing.",
@@ -148,11 +186,48 @@ describe("the sentences, word for word as Python writes them", () => {
     expect(earlier[1]).toBe("close-soon | Close Ether at 00:00 UTC Monday, in 21h 43m. Then take the new call.");
     expect(texts(longBtc({ stop_price: null }), [{ high: 101.0, low: 60.0 }], 70.0, at(11))[0]).toBe(
       "liq:BTC | The long Bitcoin was liquidated near 68.00. That share is gone. Do not re-enter this week.");
-    expect(texts(longBtc(), [{ high: 119.0, low: 99.0 }], 110.0, at(11))[0]).toBe(
-      "target:BTC | The optional target at 118.00 was reached. If you set it, the trade is closed in profit. " +
-      "If not, the tested plan still holds to Monday.");
     expect(texts(longBtc({ stop_price: null }), [{ high: 103.0, low: 99.0 }], 102.5, at(11))[0]).toBe(
       "hold:BTC | The long Bitcoin is up 2.5% (+$0.65). No action.");
+    expect(texts(longBtc(), [{ high: 103.0, low: 99.0 }], 102.5, at(11))[0]).toBe(
+      "hold:BTC | The long Bitcoin is up 2.5% (+$0.65). No action. Take profit at 118.00, 15.1% away. Stop at 94.00.");
+  });
+
+  it("take profit hit, and in profit with no take profit", () => {
+    expect(texts(shortEth({ target_price: 1820.0 }), [{ high: 2000.0, low: 1790.0 }], 1900.0, at(11))[0]).toBe(
+      "target:ETH | The short Ether reached its take profit at 1,820 (+$2.41). It is closed for the week. " +
+      "Do not re-enter; the next call is Monday.");
+    expect(texts(longBtc(), [{ high: 119.0, low: 99.0 }], 110.0, at(11))[0]).toBe(
+      "target:BTC | The long Bitcoin reached its take profit at 118.00 (+$4.84). It is closed for the week. " +
+      "Do not re-enter; the next call is Monday.");
+    const bare = { ...WEEK, coins: [] };
+    expect(texts(longBtc({ target_price: null }), [{ high: 111.0, low: 99.0 }], 110.0, at(11), bare)[0]).toBe(
+      "profit:BTC | The long Bitcoin is up 10.0% (+$2.68), more than a normal week. Hold to Monday. " +
+      "There is no take profit on longs, because in testing every nearer target made longs worse: rises tend to keep going.");
+    expect(texts(shortEth({ target_price: null }), [{ high: 2050.0, low: 1780.0 }], 1800.0, at(11), bare)[0]).toBe(
+      "profit:ETH | The short Ether is up 10.0% (+$2.68), more than a normal week. Hold to Monday. " +
+      "No take profit is set for this side.");
+    // with a take profit still ahead, a short in profit is simply on track
+    expect(texts(shortEth(), [{ high: 2050.0, low: 1780.0 }], 1800.0, at(11))[0]).toBe(
+      "hold:ETH | The short Ether is up 10.0% (+$2.68). No action. Take profit at 1,500, 16.7% away. Stop at 2,180.");
+  });
+
+  it("too small to place, with the amounts rounded as Python rounds them", () => {
+    const small = [
+      { coin: "SOL", name: "Solana", side: "short" as const, leverage: 1, position_usd: 4.5, min_weekly_amount: 40.0 },
+      { coin: "ETH", name: "Ether", side: "short" as const, leverage: 3, position_usd: 7.5,
+        min_weekly_amount: 13.333333333333334 },
+      { coin: "BTC", name: "Bitcoin", side: "long" as const, leverage: 3, position_usd: 9.375, min_weekly_amount: 12.5 },
+    ];
+    const lines = terminal.advice([], { ...WEEK, coins: [] }, at(11), small)
+      .map((i) => `${i.level} ${i.key} | ${i.title} | ${i.text}`);
+    expect(lines).toEqual([
+      "warn small:SOL | Solana: too small to place | The call is short Solana at 1x, but your share makes a $4.50 " +
+        "position and the exchange's smallest order is $10. Set the weekly amount to at least $40, or skip Solana.",
+      "warn small:ETH | Ether: too small to place | The call is short Ether at 3x, but your share makes a $7.50 " +
+        "position and the exchange's smallest order is $10. Set the weekly amount to at least $13, or skip Ether.",
+      "warn small:BTC | Bitcoin: too small to place | The call is long Bitcoin at 3x, but your share makes a $9.38 " +
+        "position and the exchange's smallest order is $10. Set the weekly amount to at least $12, or skip Bitcoin.",
+    ]);
   });
 });
 

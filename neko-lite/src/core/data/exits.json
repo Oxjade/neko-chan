@@ -1,6 +1,5 @@
 {
  "stop": 1,
- "optional_target": 3,
  "with": {
   "weeks": 315,
   "ahead": 0.5079365079365079,
