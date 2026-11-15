@@ -8,6 +8,7 @@ Writes tests/fixtures/reference.json (committed):
   correlation   the random walk test_terminal_adv.py uses for its correlation test
   replay        the trend rule replayed over the saved BTC and SUI price history
                 by desk.replay, beside research/scripts/strategy_search.py
+  forex         a small made-up table of rates and forex_weekly.overview() for it
 
 Run with the repository's Python environment:
 
@@ -89,11 +90,39 @@ def replay() -> dict:
     return out
 
 
+def forex() -> dict:
+    """A small made-up table in the ECB's format, and what forex_weekly.overview() makes of it."""
+    import io
+    from datetime import date, timedelta
+
+    import forex_weekly
+
+    rng = np.random.default_rng(5)
+    names = ["USD", "JPY", "GBP", "CHF", "AUD", "NZD", "CAD"]
+    level = np.array([1.10, 160.0, 0.85, 0.95, 1.65, 1.80, 1.50])
+    rows = []
+    day = date(2024, 11, 4)
+    while day <= date(2026, 11, 11):                    # ends on a Wednesday: the last week is incomplete
+        if day.weekday() < 5 and day not in (date(2024, 12, 25), date(2025, 4, 18)):
+            level = level * np.exp(rng.normal(0, 0.004, len(names)))
+            cells = [f"{v:.4f}" if v < 10 else f"{v:.2f}" for v in level]
+            if day < date(2025, 12, 1):
+                cells[5] = "N/A"                        # a currency with too little history: its pairs are left out
+            if day == date(2025, 6, 3):
+                cells[1] = "N/A"                        # a single missing fixing
+            rows.append(",".join([day.isoformat(), *cells, "N/A", ""]))
+        day += timedelta(days=1)
+    csv = "\n".join(["Date," + ",".join(names) + ",XXX,", *reversed(rows), ""])    # newest first, as the ECB sends it
+    forex_weekly._state.update(daily=forex_weekly._read(io.StringIO(csv)), loaded_at=float("inf"))
+    forex_weekly.time = type("Clock", (), {"time": staticmethod(lambda: 0.0)})
+    return {"csv": csv, "overview": forex_weekly.overview()}
+
+
 def main():
     rng = np.random.default_rng(7)
     base = np.exp(np.cumsum(rng.normal(0, 0.01, 200)))
     reference = {"sums": sums(), "python_sums": python_sums(), "formats": formats(),
-                 "correlation": {"base": base.tolist()}, "replay": replay()}
+                 "correlation": {"base": base.tolist()}, "replay": replay(), "forex": forex()}
     target = HERE / "reference.json"
     target.write_text(json.dumps(reference, allow_nan=False))
     print(f"wrote {target} ({target.stat().st_size:,} bytes)")

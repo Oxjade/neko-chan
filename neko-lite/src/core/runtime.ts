@@ -37,7 +37,7 @@ export const runtime: Runtime = {
   fetch: (input, init) => globalThis.fetch(input, init),
   now: () => Date.now(),
   storage: null,
-  weightPerMinute: 1000,
+  weightPerMinute: 1100,
   fxUrl: "/api/fx",
 };
 

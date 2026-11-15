@@ -9,7 +9,7 @@
 import { DataError, HL_URL, onReset, runtime } from "./runtime";
 
 const WINDOW_MS = 60_000;
-const BACKGROUND_SHARE = 0.8;        // background loading leaves a fifth of the allowance for the live screen
+const BACKGROUND_SHARE = 0.9;        // background loading always leaves a tenth of the allowance for the live screen
 const MAX_BACKGROUND = 3;            // long histories downloading at once
 const RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
 const WAKE_MS = 250;
@@ -20,8 +20,10 @@ export function candleWeight(candles: number): number {
 }
 
 export interface RequestOptions {
-  /** What the request costs against the exchange's allowance. */
+  /** What the request is expected to cost against the exchange's allowance. */
   weight: number;
+  /** What it did cost, once the answer is in (a young market returns fewer candles than asked for). */
+  actualWeight?: (data: unknown) => number;
   /** Background requests wait their turn and are retried; the screen is not waiting for them. */
   background?: boolean;
   timeoutMs?: number;
@@ -36,6 +38,7 @@ interface Failure {
 interface Job {
   payload: unknown;
   weight: number;
+  actualWeight?: (data: unknown) => number;
   background: boolean;
   timeoutMs: number;
   attempt: number;
@@ -66,13 +69,19 @@ onReset(() => {
 export function info<T>(payload: unknown, options: RequestOptions): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     waiting.push({
-      payload, weight: options.weight, background: Boolean(options.background),
+      payload, weight: options.weight, actualWeight: options.actualWeight,
+      background: Boolean(options.background),
       timeoutMs: options.timeoutMs ?? (options.background ? 60_000 : 20_000),
       attempt: 0, notBefore: 0,
       resolve: resolve as (value: unknown) => void, reject,
     });
     pump();
   });
+}
+
+/** True while long downloads are queued or running; the live screen then asks a little less often. */
+export function backgroundBusy(): boolean {
+  return activeBackground > 0 || waiting.some((job) => job.background);
 }
 
 /** Weight spent in the last minute (for the network notes in the README and tests). */
@@ -105,17 +114,19 @@ function pump(): void {
     }
     waiting.splice(waiting.indexOf(job), 1);
     used += job.weight;
-    spent.push({ at: now, weight: job.weight });
-    void run(job);
+    const entry = { at: now, weight: job.weight };
+    spent.push(entry);
+    void run(job, entry);
   }
   if (waiting.length && !wake) wake = setTimeout(pump, WAKE_MS);
 }
 
-async function run(job: Job): Promise<void> {
+async function run(job: Job, entry: { weight: number }): Promise<void> {
   const mine = generation;
   if (job.background) activeBackground += 1;
   try {
     const data = await send(job.payload, job.timeoutMs);
+    if (job.actualWeight) entry.weight = job.actualWeight(data);
     job.resolve(data);
   } catch (error) {
     const failure = error as Failure;

@@ -11,7 +11,7 @@ import * as cryptoMood from "./cryptoMood";
 import { isoDay, isoMoment } from "./dates";
 import * as desk from "./desk";
 import * as forex from "./forex";
-import { want, type Bars } from "./history";
+import { settleQuick, want, type Bars } from "./history";
 import * as md from "./marketData";
 import { logReturns, mean, pySum, sampleStd } from "./numeric";
 import { runtime, soft } from "./runtime";
@@ -32,6 +32,7 @@ export const BARS_PER_DAY = 6;
 const MIN_VOLUME_USD = 250_000;            // ignore markets too thin for their day change to mean much
 const ANNUAL = Math.sqrt(BARS_PER_DAY * 365);
 const MONTH_BARS = 30 * BARS_PER_DAY;
+const HISTORY_PATIENCE_MS = 2000;          // how long a snapshot waits for stored history to catch up
 
 type Live = Map<string, Market>;
 
@@ -302,7 +303,10 @@ export async function snapshot(stake: number, replaced: Partial<Sources> = {}): 
   // The markets the basic screen shows come first; the rest of the worksheet queues behind them.
   want(terminal.DASHBOARD);
   want(WORKSHEET);
-  const [live, base, week] = await Promise.all([from.catalogue(), from.terminal(stake), from.week()]);
+  // History kept from an earlier visit is read back (and topped up) before the worksheet is drawn.
+  const [live, base, week] = await Promise.all([
+    from.catalogue(), from.terminal(stake), from.week(), settleQuick(WORKSHEET, HISTORY_PATIENCE_MS),
+  ]);
   // The three panels that may wait on the network run side by side.
   const [board, pairs, moods] = await Promise.all([
     soft<Scoreboard | null>(() => from.scoreboard(stake), null),

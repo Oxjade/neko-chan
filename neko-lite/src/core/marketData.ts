@@ -6,7 +6,7 @@
 
 import { cached } from "./cache";
 import { BAR_MS, HISTORY_BARS, historyStatus, type Bars, type RawCandle } from "./history";
-import { candleWeight, info } from "./hyperliquid";
+import { backgroundBusy, candleWeight, info } from "./hyperliquid";
 import { DataError, onReset, runtime } from "./runtime";
 import type { AssetClass, Candle, ChartInterval, Market, OrderBook } from "./types";
 
@@ -23,6 +23,7 @@ export const H4_MS = BAR_MS["4h"];
 export const MIN_BARS = 242;
 /** Prices also arrive over the live stream, so the catalogue is asked for at most this often. */
 export const CATALOGUE_SECONDS = 10;
+const CATALOGUE_LOADING_SECONDS = 30;
 const CHART_SECONDS = 20;
 const BOOK_SECONDS = 2;
 
@@ -63,7 +64,8 @@ type MetaAndContexts = [{ universe: RawAsset[] }, RawContext[]];
 
 /** Every market the terminal can show, with its live price. */
 export function catalogue(): Promise<Catalogue> {
-  return cached("catalogue", CATALOGUE_SECONDS, async () => {
+  // While long histories are downloading, the allowance is better spent on them.
+  return cached("catalogue", backgroundBusy() ? CATALOGUE_LOADING_SECONDS : CATALOGUE_SECONDS, async () => {
     const crypto = new Set<string>(CRYPTO);
     const venues = await Promise.all(["", XYZ].map((dex) =>
       info<MetaAndContexts>(dex ? { type: "metaAndAssetCtxs", dex } : { type: "metaAndAssetCtxs" }, { weight: 20 })));

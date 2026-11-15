@@ -155,6 +155,8 @@ function inWindow(bars: Bars, interval: BarInterval, count: number, now: number)
            close: bars.close.subarray(first, end) };
 }
 
+const rowsWeight = (rows: unknown) => candleWeight(Array.isArray(rows) ? rows.length : 0);
+
 async function fetchBars(s: Series, background: boolean): Promise<void> {
   const mine = generation;
   const now = runtime.now();
@@ -166,7 +168,7 @@ async function fetchBars(s: Series, background: boolean): Promise<void> {
   const from = last !== null && last + ms > start ? last : start;
   const rows = await info<RawCandle[]>(
     { type: "candleSnapshot", req: { coin: s.symbol, interval: s.interval, startTime: from, endTime: now } },
-    { weight: candleWeight((now - from) / ms + 1), background });
+    { weight: candleWeight((now - from) / ms + 1), background, actualWeight: rowsWeight });
   if (mine !== generation) return;
   if (!Array.isArray(rows)) throw new DataError("Market data is unavailable right now (ValueError).");
   const closed = rows.filter((row) => Number(row.t) + ms <= now);
