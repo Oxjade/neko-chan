@@ -50,7 +50,8 @@ def position_state(coin_row: dict, days: list[dict], price: float, share: float)
     sign = 1.0 if side == "long" else -1.0
     entry, stop = coin_row["entry"], coin_row.get("stop_price")
     target, liq = coin_row.get("target_price"), coin_row.get("liquidation_price")
-    status, closed_at, target_seen = "open", None, False
+    status, closed_at = "open", None
+    # Inside one day the order of events is unknown, so the stop is counted before the take profit.
     for day in days:
         worst = day["low"] if side == "long" else day["high"]
         best = day["high"] if side == "long" else day["low"]
@@ -61,7 +62,8 @@ def position_state(coin_row: dict, days: list[dict], price: float, share: float)
             status, closed_at = "stopped", stop
             break
         if target and (best - target) * sign >= 0:
-            target_seen = True
+            status, closed_at = "target", target
+            break
     mark = closed_at if closed_at else price
     move = (mark / entry - 1) * sign
     pnl = -share if status == "liquidated" else share * lev * (move - 2 * wc.FEE_PER_SIDE)
@@ -70,8 +72,10 @@ def position_state(coin_row: dict, days: list[dict], price: float, share: float)
         "share": share, "position_usd": share * lev, "entry": entry, "last": price,
         "stop": stop, "target": target, "liquidation": liq, "status": status,
         "move_pct": move * 100, "pnl_usd": max(pnl, -share), "pnl_pct": max(pnl, -share) / share * 100,
-        "target_seen": target_seen, "normal_week_pct": coin_row.get("normal_week_pct"),
+        "normal_week_pct": coin_row.get("normal_week_pct"),
     }
+    if target and status == "open":
+        out["target_distance_pct"] = (target - price) * sign / price * 100
     if stop and status == "open":
         total = abs(stop - entry)
         left = (stop - price) * -sign             # positive while the stop has not been reached
@@ -80,7 +84,7 @@ def position_state(coin_row: dict, days: list[dict], price: float, share: float)
     return out
 
 
-def advice(positions: list[dict], week: dict, now: datetime) -> list[dict]:
+def advice(positions: list[dict], week: dict, now: datetime, too_small: list[dict] | None = None) -> list[dict]:
     """What to do right now, most urgent first."""
     items = []
 
@@ -92,6 +96,11 @@ def advice(positions: list[dict], week: dict, now: datetime) -> list[dict]:
     hours_left = (close_at - now).total_seconds() / 3600
     live_positions = [p for p in positions if p["status"] == "open"]
 
+    for s in too_small or []:
+        add("warn", f"small:{s['coin']}", f"{s['name']}: too small to place",
+            f"The call is {s['side']} {s['name']} at {s['leverage']}x, but your share makes a "
+            f"${s['position_usd']:.2f} position and the exchange's smallest order is ${wc.MIN_ORDER_USD:.0f}. "
+            f"Set the weekly amount to at least ${s['min_weekly_amount']:.0f}, or skip {s['name']}.", s["coin"])
     for p in positions:
         tag = f"{p['side']} {p['name']}"
         if p["status"] == "liquidated":
@@ -102,6 +111,10 @@ def advice(positions: list[dict], week: dict, now: datetime) -> list[dict]:
             add("critical", f"stop:{p['coin']}", f"{p['name']}: stop hit, trade closed",
                 f"The {tag} hit its stop at {_px(p['stop'])} ({_money(p['pnl_usd'])}). It is closed for the week. "
                 f"Do not re-enter or move the stop after the fact.", p["coin"])
+        elif p["status"] == "target":
+            add("good", f"target:{p['coin']}", f"{p['name']}: take profit hit, trade closed",
+                f"The {tag} reached its take profit at {_px(p['target'])} ({_money(p['pnl_usd'])}). "
+                f"It is closed for the week. Do not re-enter; the next call is Monday.", p["coin"])
         else:
             room = p.get("stop_room_left")
             normal = p.get("normal_week_pct") or 0
@@ -109,18 +122,18 @@ def advice(positions: list[dict], week: dict, now: datetime) -> list[dict]:
                 add("warn", f"near:{p['coin']}", f"{p['name']}: close to the stop",
                     f"Price {_px(p['last'])} is {p['stop_distance_pct']:.1f}% from the stop at {_px(p['stop'])}. "
                     f"Leave the stop where it is and let it work.", p["coin"])
-            elif p["target_seen"]:
-                add("good", f"target:{p['coin']}", f"{p['name']}: far target reached",
-                    f"The optional target at {_px(p['target'])} was reached. If you set it, the trade is closed in "
-                    f"profit. If not, the tested plan still holds to Monday.", p["coin"])
-            elif normal and p["move_pct"] >= normal:
+            elif normal and p["move_pct"] >= normal and not p.get("target"):
+                why = ("There is no take profit on longs, because in testing every nearer target made longs "
+                       "worse: rises tend to keep going." if p["side"] == "long"
+                       else "No take profit is set for this side.")
                 add("good", f"profit:{p['coin']}", f"{p['name']}: in profit, hold",
                     f"The {tag} is up {p['move_pct']:.1f}% ({_money(p['pnl_usd'])}), more than a normal week. "
-                    f"Hold to Monday. Moving the stop to break-even made no difference in testing, and trailing it "
-                    f"closely made results worse.", p["coin"])
+                    f"Hold to Monday. {why}", p["coin"])
             elif p["move_pct"] >= 0:
+                plan = (f"Take profit at {_px(p['target'])}, {p['target_distance_pct']:.1f}% away. "
+                        if p.get("target") else "")
                 add("info", f"hold:{p['coin']}", f"{p['name']}: on track",
-                    f"The {tag} is up {p['move_pct']:.1f}% ({_money(p['pnl_usd'])}). No action. "
+                    f"The {tag} is up {p['move_pct']:.1f}% ({_money(p['pnl_usd'])}). No action. {plan}"
                     f"Stop at {_px(p['stop'])}." if p["stop"] else
                     f"The {tag} is up {p['move_pct']:.1f}% ({_money(p['pnl_usd'])}). No action.", p["coin"])
             else:
@@ -198,9 +211,16 @@ def snapshot(stake: float, now: datetime | None = None) -> dict:
     coins = list(wc.calls_config())
     share = stake / len(coins)
     monday = datetime.fromisoformat(week["week_of"]).date()
-    positions = []
+    positions, too_small = [], []
     for c in week["coins"]:
         if not c["side"]:
+            continue
+        if share * c["leverage"] < wc.MIN_ORDER_USD:
+            # the exchange would refuse an order this small, so there is no position to follow
+            too_small.append({"coin": c["coin"], "name": c["name"], "side": c["side"],
+                              "leverage": c["leverage"], "position_usd": share * c["leverage"],
+                              "min_weekly_amount": c.get("min_weekly_amount")
+                              or wc.MIN_ORDER_USD / c["leverage"] * len(coins)})
             continue
         price = (live.get(c["coin"]) or {}).get("price") or c["price"]
         daily = md.chart_candles(c["coin"], "1d", 12)
@@ -230,7 +250,7 @@ def snapshot(stake: float, now: datetime | None = None) -> dict:
         "now": now.isoformat(), "week_of": week["week_of"], "next_call": week["next_call"],
         "mood": {"week": week["mood"], "today": (week.get("preview") or {}).get("mood")},
         "stake": stake, "positions": positions, "week_pnl_usd": total,
-        "advice": advice(positions, week, now), "markets": markets,
+        "advice": advice(positions, week, now, too_small), "markets": markets, "too_small": too_small,
         "stay_out": [{"coin": c["coin"], "name": c["name"], "signal": c["signal"], "skipped": c["skipped"]}
                      for c in week["coins"] if not c["side"]],
     }

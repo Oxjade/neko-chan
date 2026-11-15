@@ -52,7 +52,7 @@ class PositionStateTests(unittest.TestCase):
         self.assertAlmostEqual(p["pnl_usd"], 9.0 * 3 * (0.10 - 0.0009))
         self.assertAlmostEqual(p["stop_distance_pct"], (2180 - 1800) / 1800 * 100)
         self.assertEqual(p["stop_room_left"], 1.5)                 # well clear of the stop
-        self.assertFalse(p["target_seen"])
+        self.assertAlmostEqual(p["target_distance_pct"], (1800 - 1500) / 1800 * 100)
 
     def test_short_is_stopped_when_a_day_trades_through_the_stop(self):
         days = [{"high": 2100.0, "low": 1950.0}, {"high": 2200.0, "low": 2000.0}]
@@ -67,8 +67,20 @@ class PositionStateTests(unittest.TestCase):
         self.assertEqual(stopped["status"], "stopped")
         gone = terminal.position_state(long_btc(stop_price=None), [{"high": 101.0, "low": 60.0}], 70.0, 9.0)
         self.assertEqual((gone["status"], gone["pnl_usd"]), ("liquidated", -9.0))
-        seen = terminal.position_state(long_btc(), [{"high": 119.0, "low": 99.0}], 110.0, 9.0)
-        self.assertEqual((seen["status"], seen["target_seen"]), ("open", True))
+        took = terminal.position_state(long_btc(), [{"high": 119.0, "low": 99.0}], 110.0, 9.0)
+        self.assertEqual(took["status"], "target")                  # closed at the target, not at today's price
+        self.assertAlmostEqual(took["pnl_usd"], 9.0 * 3 * (0.18 - 0.0009))
+        self.assertNotIn("stop_distance_pct", took)
+        # a day that touches both the stop and the target counts as the stop
+        both = terminal.position_state(long_btc(), [{"high": 119.0, "low": 93.0}], 110.0, 9.0)
+        self.assertEqual(both["status"], "stopped")
+
+    def test_short_takes_profit_at_its_target(self):
+        days = [{"high": 2050.0, "low": 1990.0}, {"high": 2000.0, "low": 1790.0}]
+        p = terminal.position_state(short_eth(target_price=1820.0), days, 1900.0, 9.0)
+        self.assertEqual(p["status"], "target")
+        self.assertAlmostEqual(p["move_pct"], 9.0)                 # banked at the target despite the bounce
+        self.assertAlmostEqual(p["pnl_usd"], 9.0 * 3 * (0.09 - 0.0009))
 
     def test_near_the_stop(self):
         p = terminal.position_state(long_btc(), [{"high": 101.0, "low": 95.0}], 95.0, 9.0)
@@ -83,13 +95,34 @@ class AdviceTests(unittest.TestCase):
     def keys(self, items):
         return [i["key"] for i in items]
 
-    def test_in_profit_says_hold_and_never_tighten(self):
-        p = terminal.position_state(short_eth(), [{"high": 2050.0, "low": 1780.0}], 1800.0, 9.0)
-        items = self.advice(p)
-        top = items[0]
-        self.assertEqual((top["level"], top["key"]), ("good", "profit:ETH"))
+    def test_a_long_in_profit_is_held_because_longs_have_no_target(self):
+        p = terminal.position_state(long_btc(target_price=None), [{"high": 111.0, "low": 99.0}], 110.0, 9.0)
+        top = terminal.advice([p], {**WEEK, "coins": []}, at(11))[0]
+        self.assertEqual((top["level"], top["key"]), ("good", "profit:BTC"))
         self.assertIn("Hold to Monday", top["text"])
-        self.assertIn("made no difference", top["text"])
+        self.assertIn("no take profit on longs", top["text"])
+
+    def test_take_profit_hit_closes_the_trade(self):
+        p = terminal.position_state(short_eth(target_price=1820.0), [{"high": 2000.0, "low": 1790.0}], 1900.0, 9.0)
+        items = self.advice(p)
+        self.assertEqual((items[0]["level"], items[0]["key"]), ("good", "target:ETH"))
+        self.assertIn("take profit", items[0]["text"])
+        self.assertIn("Do not re-enter", items[0]["text"])
+        self.assertNotIn("close-soon", self.keys(items))          # nothing left open to close
+
+    def test_a_short_on_track_is_told_where_its_take_profit_is(self):
+        p = terminal.position_state(short_eth(target_price=1820.0), [{"high": 2010.0, "low": 1950.0}], 1960.0, 9.0)
+        top = self.advice(p)[0]
+        self.assertEqual(top["key"], "hold:ETH")
+        self.assertIn("Take profit at 1,820", top["text"])
+
+    def test_a_call_too_small_for_the_exchange_is_flagged(self):
+        small = [{"coin": "SOL", "name": "Solana", "side": "short", "leverage": 1, "position_usd": 4.5,
+                  "min_weekly_amount": 40.0}]
+        items = terminal.advice([], {**WEEK, "coins": []}, at(11), small)
+        self.assertEqual((items[0]["level"], items[0]["key"]), ("warn", "small:SOL"))
+        self.assertIn("$4.50", items[0]["text"])
+        self.assertIn("at least $40", items[0]["text"])
 
     def test_stop_hit_is_the_most_urgent(self):
         p = terminal.position_state(short_eth(), [{"high": 2200.0, "low": 2000.0}], 2050.0, 9.0)

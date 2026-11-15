@@ -235,7 +235,8 @@ class WeeklyCallsTests(unittest.TestCase):
         self.assertAlmostEqual(by["ETH"]["four_week_change_pct"], -10.0)
         self.assertIsNone(wc.preview(CONFIG, {}, live))
 
-    EXITS = {"stop": 1.0, "optional_target": 3.0, "with": None, "holding": None, "by_call": {}}
+    EXITS = {"stop": 1.0, "targets": {"long": None, "short": 1.0}, "take_profit": {},
+             "with": None, "holding": None, "by_call": {}}
 
     def _week(self, mood_value, label, closes_by_coin, normal=0.05, monday_open=None):
         import crypto_mood
@@ -264,8 +265,13 @@ class WeeklyCallsTests(unittest.TestCase):
         # a short is liquidated above the entry price, and its stop sits above too
         self.assertAlmostEqual(eth["liquidation_price"], 50.0 * (1 + 1 / 3 - 1 / 50))
         self.assertAlmostEqual(eth["stop_price"], 50.0 * 1.05)          # one normal week (5%)
-        self.assertAlmostEqual(eth["target_price"], 50.0 * 0.85)        # optional, three normal weeks
+        self.assertAlmostEqual(eth["target_price"], 50.0 * 0.95)        # shorts take profit one normal week away
+        self.assertAlmostEqual(eth["stake_made_at_target"], 3 * (0.05 - 2 * wc_fee()))
         self.assertAlmostEqual(eth["stake_lost_at_stop"], 3 * (0.05 + 2 * wc_fee()))
+        # two coins share the weekly amount, so a 3x call needs 2 * 10 / 3 a week to reach a 10 USD order
+        self.assertAlmostEqual(eth["min_weekly_amount"], 20 / 3)
+        self.assertEqual(week["min_order_usd"], 10.0)
+        self.assertEqual(week["exits"]["targets"], {"long": None, "short": 1.0})
         self.assertLess(eth["stop_price"], eth["liquidation_price"])
         self.assertEqual((week["week_of"], week["next_call"]), ("2026-11-09", "2026-11-16"))
         self.assertIn("short ETH at 3x", line)
@@ -283,6 +289,7 @@ class WeeklyCallsTests(unittest.TestCase):
         self.assertEqual(week["calls"], [{"coin": "BTC", "side": "long", "leverage": 3}])
         self.assertLess(week["coins"][0]["liquidation_price"], 100.0)   # a long is liquidated below
         self.assertAlmostEqual(week["coins"][0]["stop_price"], 95.0)    # and stopped below
+        self.assertNotIn("target_price", week["coins"][0])              # longs have no take profit
         self.assertFalse(week["coins"][1]["skipped"])                   # no signal at all
         week, line = self._week(70, "Greed", {"BTC": down, "ETH": down})
         self.assertEqual(week["calls"], [])
@@ -317,6 +324,42 @@ class WeeklyCallsTests(unittest.TestCase):
             held = wc.week_result(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG["ETH"])
         self.assertFalse(held["stopped"])
         self.assertGreater(held["result"], 0)
+
+    def test_take_profit_closes_a_short_but_never_a_long(self):
+        import weekly_calls as wc
+        from datetime import date
+        self.enterContext(mock.patch.object(wc, "exit_rule", lambda: self.EXITS))
+        self.enterContext(mock.patch.object(wc, "normal_week", lambda candles, sunday: 0.05))
+        monday = date(2026, 9, 14)
+        eth = CONFIG["ETH"]
+        # falls 6% on day three, then bounces to end only 1% down: the short banked 5% at its target
+        bounce = self.week(monday, [(0.5, -0.5, -0.2)] * 2 + [(0.5, -6.0, -3.0)] + [(0.5, -0.5, -1.0)] * 4,
+                           100, 110)
+        short = wc.week_result(bounce, monday, 40, 9.0, wc.SUGGESTED, 25, eth)
+        self.assertTrue(short["took_profit"])
+        self.assertAlmostEqual(short["result"], 9.0 * 3 * (0.05 - 2 * wc.FEE_PER_SIDE))
+        # a day that touches both the stop and the target counts as the stop
+        both = self.week(monday, [(5.5, -6.0, -3.0)] + [(0.5, -0.5, -1.0)] * 6, 100, 110)
+        hit = wc.week_result(both, monday, 40, 9.0, wc.SUGGESTED, 25, eth)
+        self.assertEqual((hit["stopped"], hit["took_profit"]), (True, False))
+        # a long that runs 8% keeps all of it: there is no target on longs
+        run = self.week(monday, [(0.5, -0.5, 0.2)] * 6 + [(8.5, -0.5, 8.0)])
+        long = wc.week_result(run, monday, 60, 9.0, wc.SUGGESTED, 25, eth)
+        self.assertFalse(long["took_profit"])
+        self.assertAlmostEqual(long["result"],
+                               9.0 * 3 * (0.08 - 2 * wc.FEE_PER_SIDE - 7 * wc.FUNDING_PER_DAY))
+
+    def test_a_position_under_the_exchange_minimum_is_not_traded(self):
+        import weekly_calls as wc
+        from datetime import date
+        self.enterContext(mock.patch.object(wc, "exit_rule", lambda: self.EXITS))
+        self.enterContext(mock.patch.object(wc, "normal_week", lambda candles, sunday: 0.05))
+        monday = date(2026, 9, 14)
+        rise = self.week(monday, [(0.5, -0.5, 0.2)] * 6 + [(4.5, -0.5, 4.0)])
+        small = wc.week_result(rise, monday, 60, 3.0, wc.SUGGESTED, 25, CONFIG["ETH"])     # 3 USD at 3x is 9 USD
+        self.assertEqual((small["side"], small["too_small"], small["result"]), (None, True, 0.0))
+        enough = wc.week_result(rise, monday, 60, 3.4, wc.SUGGESTED, 25, CONFIG["ETH"])    # 10.2 USD
+        self.assertEqual(enough["side"], "long")
 
     def test_week_result_long_short_and_liquidation(self):
         import weekly_calls as wc
@@ -372,14 +415,18 @@ class WeeklyCallsTests(unittest.TestCase):
                 mock.patch.object(wc, "calls_config", lambda: CONFIG), \
                 mock.patch.object(wc, "exit_rule", lambda: {**self.EXITS, "stop": None}), \
                 mock.patch.object(wc, "daily_candles", lambda coin: candles):
-            board = wc.scoreboard(18, 1, weeks=2)
+            board = wc.scoreboard(20, 1, weeks=2)
             high = wc.scoreboard(18, 30, weeks=2)
             suggested = wc.scoreboard(18, wc.SUGGESTED, weeks=2)
+            tiny = wc.scoreboard(18, 1, weeks=2)        # 9 USD a coin at 1x: under the exchange minimum
         self.assertEqual([r["week_of"] for r in board["rows"]], ["2026-09-14", "2026-09-07"])
         self.assertEqual((board["ahead"], board["behind"], board["no_trade"]), (1, 1, 0))
         self.assertAlmostEqual(board["rows"][1]["running_total"], board["rows"][1]["result"])
         self.assertAlmostEqual(board["rows"][0]["running_total"], board["total"])
-        self.assertAlmostEqual(board["total"], 18 * (0.04 - 0.03 - 4 * wc.FEE_PER_SIDE))
+        self.assertAlmostEqual(board["total"], 20 * (0.04 - 0.03 - 4 * wc.FEE_PER_SIDE))
+        self.assertEqual((tiny["total"], tiny["no_trade"]), (0.0, 2))
+        self.assertEqual(tiny["rows"][0]["too_small"], ["BTC", "ETH"])
+        self.assertEqual(board["rows"][0]["too_small"], [])
         self.assertEqual(board["rows"][0]["calls"][0], {"coin": "BTC", "side": "long", "leverage": 1.0})
         self.assertEqual(high["capped"], {"ETH": 25})
         self.assertEqual({(e["coin"], e["leverage"]) for e in high["expect"] if e["side"] == "long"},
@@ -417,6 +464,25 @@ class WeeklyCallsTests(unittest.TestCase):
         self.assertEqual(rule["stop"], 1.0)
         self.assertGreater(rule["with"]["worst"], rule["holding"]["worst"])    # the stop caps the worst week
         self.assertGreater(rule["with"]["avg"], 0)
+
+    def test_real_take_profit_file(self):
+        import weekly_calls as wc
+        rule = wc.exit_rule()
+        # shorts take profit one normal week away; no target was as good as the stop alone for longs
+        self.assertEqual(rule["targets"], {"long": None, "short": 1.0})
+        short, long = rule["take_profit"]["short"], rule["take_profit"]["long"]
+        self.assertGreaterEqual(short["with"]["avg"], short["stop_only"]["avg"])
+        self.assertGreater(short["with"]["ahead"], short["stop_only"]["ahead"])
+        self.assertGreater(short["reached"], 0.2)                    # a target has to be reachable
+        self.assertLess(long["at_one_normal_week"]["avg"], long["stop_only"]["avg"])
+        self.assertEqual(long["plans_as_good"], 0)
+
+    def test_a_missing_take_profit_file_means_no_targets(self):
+        import weekly_calls as wc
+        with mock.patch.object(wc, "TAKE_PROFIT_EVIDENCE", wc.TABLES / "does-not-exist.json"):
+            rule = wc.exit_rule()
+        self.assertEqual(rule["targets"], {"long": None, "short": None})
+        self.assertEqual(rule["stop"], 1.0)
 
 
 class DeskEndpointTests(unittest.TestCase):

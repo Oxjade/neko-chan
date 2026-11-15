@@ -106,16 +106,22 @@ the stream cannot connect.
   doing had the calls been followed from Monday's open. Live profit, and how
   far the price is from the stop. The terminal does not know what you hold.
 - **Desk feed.** What to do now, most urgent first: stop hit (closed, do not
-  re-enter), close to the stop (leave it), in profit (hold to Monday), the
-  weekly close coming up, do not enter late, and a preview of Monday's call.
-- **Take profit and stop advice is tested.** Moving the stop to break-even
-  made no real difference and trailing it closely made results worse, so the
-  feed never says to tighten a stop.
+  re-enter), close to the stop (leave it), take profit hit (closed), a long in
+  profit (hold to Monday), a call too small for the exchange, the weekly close
+  coming up, do not enter late, and a preview of Monday's call.
+- **Take profit and stop advice is tested.** Shorts take profit one normal
+  week from the entry; longs have no take profit. Moving the stop to
+  break-even or trailing it did not help, so the feed never says to tighten a
+  stop. See "Stop loss, take profit, limit entry" below.
+- **Too small to place.** The exchange refuses orders under 10 USD. A call
+  whose share of the weekly amount, times its leverage, is below that is shown
+  as too small with the weekly amount it needs, and is left out of the model
+  positions and the scoreboard.
 - **Recommendation.** For the selected market: which way the tested signals
   lean (mood, last four weeks, 10-day against 40-day average) and whether the
   platform makes the call. Stocks, forex and commodities show "no call".
 - **Chart.** 1h, 4h or 1d candles with the two averages and this week's
-  entry, stop and optional target. **1S** is a one-second chart: the exchange
+  entry, stop and take profit. **1S** is a one-second chart: the exchange
   keeps no one-second history, so the browser builds those candles itself from
   the live stream (best bid and offer, plus trades for volume), starting when
   the terminal opens and keeping the last five minutes.
@@ -200,9 +206,25 @@ week's calls.
 sides at 3x with each combination, measured in "normal weeks" (the coin's
 typical weekly move over the previous half year):
 
-- **Take profit** at 1 to 2 normal weeks lowered the average result; the
-  profit comes from the few large weeks. A far target (3 normal weeks) made
-  no real difference and is shown as optional.
+- **Take profit, all sides together** at 1 to 2 normal weeks lowered the
+  average result; the profit comes from the few large weeks. The only target
+  that did no harm was 3 normal weeks away, and that is reached in about 3%
+  of weeks, so it was no use as a target.
+- **Take profit by side** (`research/scripts/crypto_take_profit.py`, 523
+  traded weeks, every called side at its suggested leverage, 83 plans: full
+  exits, part exits, stops that move up). Longs and shorts behave differently:
+  - **Shorts: take profit one normal week from the entry.** Reached in 31% of
+    short weeks. Shorts ended ahead in 55% of weeks with it against 52%
+    without, and the average week was no lower in either half of the history
+    (1.1 against 1.0 cents per dollar overall). Falls tend to bounce. 30 of
+    the 83 plans were as good as the stop alone for shorts.
+  - **Longs: no take profit.** None of the 83 plans was as good as the stop
+    alone. A target one normal week away cut the average long week from 5.2
+    to 2.5 cents per dollar. Rises tend to keep going.
+  The gain on shorts is small and a week that takes profit can still leave
+  money behind; what it buys is a target that is actually reached.
+  Only plans that can be placed as resting orders on Monday are used: the
+  exchange's 10 USD minimum rules out closing part of a small position.
 - **Tight stops** (0.5 to 0.75 normal weeks) were hit by ordinary swings and
   cut the average by a third to a half.
 - **A stop one normal week away** costs a little (3.1 against 3.7 cents per
@@ -212,7 +234,7 @@ typical weekly move over the previous half year):
   and made less in total: the missed weeks included too many winners.
 
 The page shows an order ticket per call: position size, entry, the stop
-price, and what is lost if the stop is hit. The scoreboard applies the same
+price, the take profit where there is one, and what is made or lost at each. The scoreboard applies the same
 stop.
 
 ### Week by week
@@ -315,6 +337,7 @@ python research/scripts/crypto_in_or_out.py       # hold-or-cash rules against a
 python research/scripts/leverage_on_rule.py       # the weekly rule on perps with leverage
 python research/scripts/crypto_long_short.py      # long and short sides separately; calls and leverage
 python research/scripts/crypto_exits.py           # stop loss, take profit and limit entry on the calls
+python research/scripts/crypto_take_profit.py     # nearer take-profit plans, longs and shorts apart
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```

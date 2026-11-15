@@ -391,7 +391,7 @@ function chartPanel() {
       h("span", null, h("i", { style: `background:${COLORS.violet}` }), "40-day average"),
       h("span", null, h("i", { style: `background:${COLORS.cyan}` }), "Entry"),
       h("span", null, h("i", { style: `background:${COLORS.down}` }), "Stop loss"),
-      h("span", null, h("i", { style: `background:${COLORS.up}` }), "Optional far target")));
+      h("span", null, h("i", { style: `background:${COLORS.up}` }), "Take profit")));
 }
 
 const FOOT = "Positions are model positions: what the weekly amount would be doing had this week's calls been followed from Monday's open. " +
@@ -523,6 +523,8 @@ function weekPnl() {
   return state.snap.positions.reduce((sum, p) => sum + livePosition(p).pnl_usd, 0);
 }
 
+const CLOSED_WORDS = { stopped: "Stopped", liquidated: "Liquidated", target: "Profit taken" };
+
 function paintPositions() {
   const snap = state.snap;
   const cards = snap.positions.map((raw) => {
@@ -533,12 +535,14 @@ function paintPositions() {
       h("div", { class: "t-card-head" },
         h("strong", null, `${p.coin}/USD`),
         h("span", { class: "t-badge", "data-side": closed ? p.status : p.side },
-          closed ? p.status : `${p.side} ${p.leverage}x`)),
+          closed ? CLOSED_WORDS[p.status] || p.status : `${p.side} ${p.leverage}x`)),
       h("div", { class: "t-kv" },
         h("span", null, "Size"), h("b", null, `$${p.position_usd.toFixed(2)}`),
         h("span", null, "Entry"), h("b", null, px(p.entry)),
         h("span", null, "Last"), h("b", { "data-live": p.coin }, px(p.last)),
-        h("span", null, "Stop"), h("b", { class: "down" }, px(p.stop))),
+        h("span", null, "Stop"), h("b", { class: "down" }, px(p.stop)),
+        h("span", null, "Target"), p.target ? h("b", { class: "up" }, px(p.target)) : h("b", { class: "dim" }, "none"),
+        h("span", null, "Liq."), h("b", null, px(p.liquidation))),
       h("div", { class: `t-pnl ${tone(p.pnl_usd)}`, "data-pnl": p.coin },
         `${usd(p.pnl_usd)} (${pct(p.pnl_pct, 1)})`),
       !closed && p.stop_room_left !== undefined ? h("div", null,
@@ -554,8 +558,15 @@ function paintPositions() {
     h("div", { class: "dim", style: "font-size:var(--t-small)" },
       c.skipped ? `Signals lean ${c.signal}; that side has not held up here.`
                 : "Mood and the last four weeks disagree.")));
-  replace(el.pos, ...cards, ...out,
-    !cards.length && !out.length ? h("p", { class: "dim" }, "No calls this week.") : null);
+  const small = (snap.too_small || []).map((c) => h("button", { class: "t-card", type: "button",
+    "aria-pressed": String(state.selected === c.coin), onclick: () => select(c.coin) },
+    h("div", { class: "t-card-head" },
+      h("strong", null, `${c.coin}/USD`), h("span", { class: "t-badge", "data-side": "small" }, "Too small")),
+    h("div", { class: "dim", style: "font-size:var(--t-small)" },
+      `Called ${c.side} at ${c.leverage}x, but that is a $${c.position_usd.toFixed(2)} position and the ` +
+      `exchange's smallest order is $10. Needs a weekly amount of $${Math.ceil(c.min_weekly_amount)}.`)));
+  replace(el.pos, ...cards, ...small, ...out,
+    !cards.length && !small.length && !out.length ? h("p", { class: "dim" }, "No calls this week.") : null);
 }
 
 function paintPnl() {
@@ -693,8 +704,9 @@ function paintRecommendation() {
     position ? h("div", { class: "t-votes" },
       h("div", null, h("span", { class: "dim" }, "Entry"), h("span", { class: "num" }, px(position.entry))),
       h("div", null, h("span", { class: "dim" }, "Stop loss"), h("span", { class: "num down" }, px(position.stop))),
-      h("div", null, h("span", { class: "dim" }, "Optional far target"),
-        h("span", { class: "num up" }, px(position.target))),
+      h("div", null, h("span", { class: "dim" }, "Take profit"),
+        position.target ? h("span", { class: "num up" }, px(position.target))
+                        : h("span", { class: "dim" }, "None: hold to Monday")),
       h("div", null, h("span", { class: "dim" }, "Liquidation"), h("span", { class: "num" }, px(position.liquidation))))
       : null);
 }
