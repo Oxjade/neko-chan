@@ -16,6 +16,14 @@ out instead of guessing.
 The suggested leverage is the highest tested level at which the weekly stake
 was liquidated in at most one week in fifty. Positions are opened on Monday
 (00:00 UTC) and closed the following Monday.
+
+Stop loss and take profit (research/scripts/crypto_exits.py): tight stops and
+take-profit targets made the calls worse, and limit entries at a better price
+missed too many winning weeks. A stop one "normal week" from entry (the
+coin's typical weekly move over the last half year) is suggested as
+protection: it caps a bad week for a small cost in average gain. No take
+profit is suggested; a far one, three normal weeks away, is offered as
+optional because it did not hurt.
 """
 
 from __future__ import annotations
@@ -32,6 +40,8 @@ COINS = ("BTC", "ETH")
 TABLES = Path(__file__).resolve().parents[2] / "research" / "exports" / "tables"
 CALLS_EVIDENCE = TABLES / "crypto_long_short.json"
 SPOT_EVIDENCE = TABLES / "crypto_in_or_out.json"
+EXITS_EVIDENCE = TABLES / "crypto_exits.json"
+VOL_WEEKS = 26                              # the "normal week" looks back half a year
 SUGGESTED = 0                               # leverage value meaning "use the suggested level"
 LEVERAGES = (SUGGESTED, 1, 2, 3, 5, 10, 20, 30)
 FEE_PER_SIDE = 0.00045                      # exchange fee, share of the position, each way
@@ -45,6 +55,27 @@ def calls_config() -> dict:
         return json.loads(CALLS_EVIDENCE.read_text())["calls"]
     except (OSError, ValueError, KeyError) as exc:
         raise md.DataError("The tested record for the weekly calls is missing.") from exc
+
+
+def exit_rule() -> dict:
+    """Stop and optional target, in normal weeks, with the tested effect."""
+    try:
+        rec = json.loads(EXITS_EVIDENCE.read_text())["recommendation"]
+        return {"stop": rec["stop"], "optional_target": rec.get("optional_target"),
+                "with": rec["with"]["all"], "holding": rec["holding"]["all"], "by_call": rec["by_call"]}
+    except (OSError, ValueError, KeyError):
+        return {"stop": None, "optional_target": None, "with": None, "holding": None, "by_call": {}}
+
+
+def normal_week(candles: dict, sunday) -> float | None:
+    """A coin's typical weekly move (as a fraction) over the half year ending that Sunday."""
+    closes = [candles.get(sunday - timedelta(days=7 * k)) for k in range(VOL_WEEKS + 1)]
+    if any(c is None for c in closes):
+        return None
+    prices = [c["close"] for c in reversed(closes)]
+    returns = [b / a - 1 for a, b in zip(prices, prices[1:])]
+    mean = sum(returns) / len(returns)
+    return (sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)) ** 0.5
 
 
 def signal(mood_value: int, close_now: float, close_four_weeks_ago: float) -> str | None:
@@ -100,6 +131,7 @@ def _record(side_config: dict, leverage: int | None) -> dict:
 
 def this_week() -> dict:
     config = calls_config()
+    exits = exit_rule()
     mood = crypto_mood.this_week()
     value = mood["week_reading"]["value"]
     live = md.catalogue()
@@ -126,14 +158,34 @@ def this_week() -> dict:
             "record": _record(side_config, side_config["suggested_leverage"]) if sig else None,
         }
         if called and price:
+            sign = 1 if sig == "long" else -1
+            candles = daily_candles(coin)
+            sunday = closes[0]["date"]
+            # The trade opens at Monday's open; before that candle has closed, use the live price.
+            entry = (candles.get(sunday + timedelta(days=1)) or {}).get("open") or price
             distance = liquidation_distance(leverage, max_lev)
+            row["entry"] = entry
             row["liquidation_move_pct"] = distance * 100
-            row["liquidation_price"] = price * (1 - distance if sig == "long" else 1 + distance)
+            row["liquidation_price"] = entry * (1 - sign * distance)
+            normal = normal_week(candles, sunday)
+            if normal and exits["stop"]:
+                stop_move = min(exits["stop"] * normal, distance * 0.95)
+                row["normal_week_pct"] = normal * 100
+                row["stop_pct"] = stop_move * 100
+                row["stop_price"] = entry * (1 - sign * stop_move)
+                row["stake_lost_at_stop"] = min(1.0, leverage * (stop_move + 2 * FEE_PER_SIDE))
+                if exits["optional_target"]:
+                    target_move = exits["optional_target"] * normal
+                    row["target_pct"] = target_move * 100
+                    row["target_price"] = entry * (1 + sign * target_move)
         coins.append(row)
+    week_start = datetime.fromisoformat(mood["week_reading"]["date"]).date() + timedelta(days=1)
     return {
         "calls": [{"coin": c["coin"], "side": c["side"], "leverage": c["leverage"]}
                   for c in coins if c["side"]],
         "mood": mood["week_reading"], "coins": coins, "spot_record": spot_record(),
+        "week_of": week_start.isoformat(), "next_call": (week_start + timedelta(days=7)).isoformat(),
+        "exits": {k: exits[k] for k in ("stop", "optional_target", "with", "holding")},
     }
 
 
@@ -144,7 +196,7 @@ def daily_candles(coin: str) -> dict:
     def load():
         now = int(time.time() * 1000)
         rows = md._post({"type": "candleSnapshot", "req": {
-            "coin": coin, "interval": "1d", "startTime": now - 220 * DAY_MS, "endTime": now}})
+            "coin": coin, "interval": "1d", "startTime": now - 330 * DAY_MS, "endTime": now}})
         return {datetime.fromtimestamp(int(r["t"]) / 1000, timezone.utc).date():
                 {"open": float(r["o"]), "high": float(r["h"]), "low": float(r["l"]),
                  "close": float(r["c"])}
@@ -162,7 +214,8 @@ def week_result(candles: dict, monday, mood_value: int, share: float, leverage: 
         return {"known": False}
     sig = signal(mood_value, now["close"], before["close"])
     if not sig or not coin_config[sig]["allowed"]:
-        return {"known": True, "side": None, "skipped": bool(sig), "result": 0.0, "wiped": False}
+        return {"known": True, "side": None, "skipped": bool(sig), "result": 0.0, "wiped": False,
+                "stopped": False}
     lev = float(coin_config[sig]["suggested_leverage"] if leverage == SUGGESTED
                 else min(leverage, max_leverage))
     entry = days[0]["open"]
@@ -172,13 +225,25 @@ def week_result(candles: dict, monday, mood_value: int, share: float, leverage: 
     else:
         against = max(d["high"] for d in days) / entry - 1
         move = 1 - days[-1]["close"] / entry
-    funding = 7 * FUNDING_PER_DAY if (sig == "long" and lev > 1) else 0.0
-    result = share * lev * (move - 2 * FEE_PER_SIDE - funding)
-    wiped = against >= liquidation_distance(lev, max_leverage)
-    if wiped:
-        result = -share
+    liquidation = liquidation_distance(lev, max_leverage)
+    stop_rule = exit_rule()["stop"]
+    normal = normal_week(candles, sunday_before) if stop_rule else None
+    stop_move = stop_rule * normal if (stop_rule and normal) else None
+    # Walk the week a day at a time: liquidation or the stop ends it early.
+    held, wiped, stopped = 0, False, False
+    for day in days:
+        held += 1
+        worst = (1 - day["low"] / entry) if sig == "long" else (day["high"] / entry - 1)
+        if stop_move is not None and stop_move < liquidation and worst >= stop_move:
+            move, stopped = -stop_move, True
+            break
+        if worst >= liquidation:
+            wiped = True
+            break
+    funding = held * FUNDING_PER_DAY if (sig == "long" and lev > 1) else 0.0
+    result = -share if wiped else share * lev * (move - 2 * FEE_PER_SIDE - funding)
     return {"known": True, "side": sig, "skipped": False, "result": max(result, -share),
-            "wiped": bool(wiped), "leverage_used": lev}
+            "wiped": bool(wiped), "stopped": bool(stopped), "leverage_used": lev}
 
 
 def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
@@ -207,6 +272,7 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
                       for c, p in parts.items() if p["side"]],
             "skipped": [c for c, p in parts.items() if p["skipped"]],
             "wiped": [c for c, p in parts.items() if p["wiped"]],
+            "stopped": [c for c, p in parts.items() if p.get("stopped")],
             "result": sum(p["result"] for p in parts.values()),
         })
     total = 0.0

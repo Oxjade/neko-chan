@@ -127,6 +127,27 @@ or shorting, holding in "long" weeks only turned 1 USD into 24.63 against
 treat the size of the gains as luck-prone. The daily email starts with the
 week's calls.
 
+### Stop loss, take profit, limit entry
+
+`research/scripts/crypto_exits.py` replays every traded week of the called
+sides at 3x with each combination, measured in "normal weeks" (the coin's
+typical weekly move over the previous half year):
+
+- **Take profit** at 1 to 2 normal weeks lowered the average result; the
+  profit comes from the few large weeks. A far target (3 normal weeks) made
+  no real difference and is shown as optional.
+- **Tight stops** (0.5 to 0.75 normal weeks) were hit by ordinary swings and
+  cut the average by a third to a half.
+- **A stop one normal week away** costs a little (3.1 against 3.7 cents per
+  dollar per traded week) and caps the worst week at 57% of the weekly
+  amount, against 100%. It is suggested as protection.
+- **Limit entries** at a better price than Monday's open traded fewer weeks
+  and made less in total: the missed weeks included too many winners.
+
+The page shows an order ticket per call: position size, entry, the stop
+price, and what is lost if the stop is hit. The scoreboard applies the same
+stop.
+
 ### Week by week
 
 The page also scores each finished week: what a fresh weekly amount would
@@ -226,6 +247,7 @@ python research/scripts/crypto_weekly_search.py   # weekly crypto rules incl. mo
 python research/scripts/crypto_in_or_out.py       # hold-or-cash rules against always holding
 python research/scripts/leverage_on_rule.py       # the weekly rule on perps with leverage
 python research/scripts/crypto_long_short.py      # long and short sides separately; calls and leverage
+python research/scripts/crypto_exits.py           # stop loss, take profit and limit entry on the calls
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```

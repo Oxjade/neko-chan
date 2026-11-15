@@ -163,6 +163,11 @@ class CryptoMoodTests(unittest.TestCase):
         self.assertEqual(week["change_from_last_week"], -17)
 
 
+def wc_fee():
+    import weekly_calls
+    return weekly_calls.FEE_PER_SIDE
+
+
 CONFIG = {  # the shape research/scripts/crypto_long_short.py writes
     coin: {
         "long": {"allowed": True, "suggested_leverage": 3,
@@ -213,14 +218,21 @@ class WeeklyCallsTests(unittest.TestCase):
                 self.assertLessEqual(c["by_leverage"][f"{c['suggested_leverage']}x"]["liquidated"], 0.02)
         self.assertTrue(config["BTC"]["long"]["allowed"])
 
-    def _week(self, mood_value, label, closes_by_coin):
+    EXITS = {"stop": 1.0, "optional_target": 3.0, "with": None, "holding": None, "by_call": {}}
+
+    def _week(self, mood_value, label, closes_by_coin, normal=0.05, monday_open=None):
         import crypto_mood
         import weekly_calls as wc
+        from datetime import date
         mood = {"week_reading": {"value": mood_value, "label": label, "date": "2026-11-08"}}
         live = {"BTC": {"price": 100.0, "max_leverage": 40}, "ETH": {"price": 50.0, "max_leverage": 25}}
+        candles = {date(2026, 11, 9): {"open": monday_open}} if monday_open else {}
         with mock.patch.object(crypto_mood, "this_week", lambda: mood), \
                 mock.patch.object(market_data, "catalogue", lambda: live), \
                 mock.patch.object(wc, "calls_config", lambda: CONFIG), \
+                mock.patch.object(wc, "exit_rule", lambda: self.EXITS), \
+                mock.patch.object(wc, "daily_candles", lambda coin: candles), \
+                mock.patch.object(wc, "normal_week", lambda candles, sunday: normal), \
                 mock.patch.object(wc, "sunday_closes", lambda coin: closes_by_coin[coin]):
             return wc.this_week(), wc.one_line()
 
@@ -232,15 +244,28 @@ class WeeklyCallsTests(unittest.TestCase):
         self.assertTrue(btc["skipped"])
         self.assertIsNone(btc["side"])
         self.assertEqual(btc["signal"], "short")
-        # a short is liquidated above the entry price
+        # a short is liquidated above the entry price, and its stop sits above too
         self.assertAlmostEqual(eth["liquidation_price"], 50.0 * (1 + 1 / 3 - 1 / 50))
+        self.assertAlmostEqual(eth["stop_price"], 50.0 * 1.05)          # one normal week (5%)
+        self.assertAlmostEqual(eth["target_price"], 50.0 * 0.85)        # optional, three normal weeks
+        self.assertAlmostEqual(eth["stake_lost_at_stop"], 3 * (0.05 + 2 * wc_fee()))
+        self.assertLess(eth["stop_price"], eth["liquidation_price"])
+        self.assertEqual((week["week_of"], week["next_call"]), ("2026-11-09", "2026-11-16"))
         self.assertIn("short ETH at 3x", line)
+
+    def test_levels_use_mondays_open_once_it_exists(self):
+        down = self.closes(90, 100)
+        week, _ = self._week(28, "Fear", {"BTC": down, "ETH": down}, monday_open=60.0)
+        eth = week["coins"][1]
+        self.assertEqual(eth["entry"], 60.0)
+        self.assertAlmostEqual(eth["stop_price"], 63.0)
 
     def test_greedy_and_rising_goes_long_and_mixed_stays_out(self):
         up, down = self.closes(110, 100), self.closes(90, 100)
         week, line = self._week(70, "Greed", {"BTC": up, "ETH": down})
         self.assertEqual(week["calls"], [{"coin": "BTC", "side": "long", "leverage": 3}])
         self.assertLess(week["coins"][0]["liquidation_price"], 100.0)   # a long is liquidated below
+        self.assertAlmostEqual(week["coins"][0]["stop_price"], 95.0)    # and stopped below
         self.assertFalse(week["coins"][1]["skipped"])                   # no signal at all
         week, line = self._week(70, "Greed", {"BTC": down, "ETH": down})
         self.assertEqual(week["calls"], [])
@@ -257,9 +282,29 @@ class WeeklyCallsTests(unittest.TestCase):
                 "close": 100.0 * (1 + close / 100)}
         return candles
 
+    def test_stop_loss_ends_a_week_early(self):
+        import weekly_calls as wc
+        from datetime import date
+        monday = date(2026, 9, 14)
+        # dips 6% on day two, then recovers to end +4%
+        dip = self.week(monday, [(0.5, -0.5, 0.2), (0.5, -6.0, -1.0)] + [(0.5, -0.5, 0.2)] * 4 + [(4.5, -0.5, 4.0)])
+        with mock.patch.object(wc, "exit_rule", lambda: self.EXITS), \
+                mock.patch.object(wc, "normal_week", lambda candles, sunday: 0.05):
+            stopped = wc.week_result(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG["ETH"])
+        self.assertTrue(stopped["stopped"])
+        self.assertFalse(stopped["wiped"])
+        # loses the stop distance (5%) at 3x, with fees and two days of funding
+        self.assertAlmostEqual(stopped["result"],
+                               9.0 * 3 * (-0.05 - 2 * wc.FEE_PER_SIDE - 2 * wc.FUNDING_PER_DAY))
+        with mock.patch.object(wc, "exit_rule", lambda: {**self.EXITS, "stop": None}):
+            held = wc.week_result(dip, monday, 60, 9.0, wc.SUGGESTED, 25, CONFIG["ETH"])
+        self.assertFalse(held["stopped"])
+        self.assertGreater(held["result"], 0)
+
     def test_week_result_long_short_and_liquidation(self):
         import weekly_calls as wc
         from datetime import date
+        self.enterContext(mock.patch.object(wc, "exit_rule", lambda: {**self.EXITS, "stop": None}))
         monday = date(2026, 9, 14)
         rise = self.week(monday, [(0.5, -0.5, 0.2)] * 6 + [(4.5, -0.5, 4.0)])            # ends +4%
         fall = self.week(monday, [(0.5, -0.5, -0.2)] * 6 + [(0.5, -4.5, -4.0)], 100, 110)  # ends -4%
@@ -308,6 +353,7 @@ class WeeklyCallsTests(unittest.TestCase):
         with mock.patch.object(crypto_mood, "history", lambda: moods), \
                 mock.patch.object(market_data, "catalogue", lambda: live), \
                 mock.patch.object(wc, "calls_config", lambda: CONFIG), \
+                mock.patch.object(wc, "exit_rule", lambda: {**self.EXITS, "stop": None}), \
                 mock.patch.object(wc, "daily_candles", lambda coin: candles):
             board = wc.scoreboard(18, 1, weeks=2)
             high = wc.scoreboard(18, 30, weeks=2)
@@ -334,6 +380,26 @@ class WeeklyCallsTests(unittest.TestCase):
                 mock.patch.object(wc, "sunday_closes", lambda coin: self.closes(110, 100)):
             with self.assertRaises(market_data.DataError):
                 wc.this_week()
+
+    def test_normal_week_is_the_spread_of_recent_weekly_moves(self):
+        import weekly_calls as wc
+        from datetime import date, timedelta
+        sunday = date(2026, 11, 8)
+        price, candles = 100.0, {}
+        for k in range(wc.VOL_WEEKS, -1, -1):                   # alternate +2% and -2% weeks
+            candles[sunday - timedelta(days=7 * k)] = {"close": price}
+            price *= 1.02 if k % 2 else 0.98
+        normal = wc.normal_week(candles, sunday)
+        self.assertAlmostEqual(normal, 0.02, delta=0.002)
+        candles.pop(sunday - timedelta(days=7 * 5))
+        self.assertIsNone(wc.normal_week(candles, sunday))      # a missing week: no estimate
+
+    def test_real_exit_rule_file(self):
+        import weekly_calls as wc
+        rule = wc.exit_rule()
+        self.assertEqual(rule["stop"], 1.0)
+        self.assertGreater(rule["with"]["worst"], rule["holding"]["worst"])    # the stop caps the worst week
+        self.assertGreater(rule["with"]["avg"], 0)
 
 
 class DeskEndpointTests(unittest.TestCase):

@@ -79,7 +79,8 @@ function answerPanel() {
         ? "These are the trades the tested rule makes this week, on perps, at the leverage that almost never got liquidated in testing."
         : "The tested rule has no trade this week. Staying out is part of the plan."),
     h("p", { class: "soft small" },
-      `Decided from the week that ended ${longDate(w.mood.date)}. The calls change at most once a week, on Monday.`));
+      `This call is for the week starting Monday ${longDate(w.week_of)}. ` +
+      `The next call comes on Monday ${longDate(w.next_call)}.`));
 }
 
 function whyPanel() {
@@ -118,26 +119,37 @@ function recordWords(c) {
   return `was right in ${share(r.first_half.right)} of weeks up to 2023 and ${share(r.second_half.right)} since.`;
 }
 
+function ticket(called, each) {
+  const usd = (c) => each * c.leverage;
+  return table([
+    { label: "Trade", cell: (c) => `${c.side === "long" ? "Long" : "Short"} ${name(c.coin)}` },
+    { label: "Leverage", num: true, cell: (c) => `${c.leverage}x` },
+    { label: "Position", num: true, cell: (c) => fmt.usd(usd(c)) },
+    { label: "Entry", num: true, cell: (c) => `about ${fmt.price(c.entry)}` },
+    { label: "Stop loss", num: true,
+      cell: (c) => (c.stop_price ? `${fmt.price(c.stop_price)} (${c.stop_pct.toFixed(1)}% away)` : "–") },
+    { label: "Take profit", cell: () => "None: close next Monday" },
+    { label: "Lost if stopped", num: true,
+      cell: (c) => (c.stake_lost_at_stop ? fmt.usd(each * c.stake_lost_at_stop) : "–"),
+      cls: () => "loss" },
+  ], called, "");
+}
+
 function stepsPanel() {
   const w = state.week;
   const each = state.plan.stake / w.coins.length;
   const called = w.coins.filter((c) => c.side);
+  const ex = w.exits || {};
   let steps;
   if (called.length) {
-    const open = called.map((c) => {
-      const stop = c.liquidation_price
-        ? ` The exchange closes it if ${name(c.coin)} ${c.side === "long" ? "falls" : "rises"} to about ` +
-          `${fmt.price(c.liquidation_price)} (${c.liquidation_move_pct.toFixed(0)}% away), and that share is lost.`
-        : "";
-      return `${c.side === "long" ? "Long" : "Short"} ${name(c.coin)} with ${fmt.usd(each)} at ${c.leverage}x: ` +
-        `a ${fmt.usd(each * c.leverage)} position.${stop}`;
-    });
     const idle = w.coins.length - called.length;
     steps = [
-      ["Open the trade on perps", open.join(" ")],
-      ["Leave it for the week",
-       `Do not add to it or raise the leverage.${idle ? ` Keep the other ${fmt.usd(each * idle)} in cash.` : ""}`],
-      ["Close it next Monday", "Then follow the new answer on this page."],
+      ["Open the trade on Monday",
+       `Use the table below. Enter at the market price, or with a limit order at the current price.` +
+       `${idle ? ` Keep the other ${fmt.usd(each * idle)} in cash.` : ""}`],
+      ["Set the stop loss, then leave it",
+       "Place the stop at the price shown as soon as the trade is open. Do not move it, add to the trade or raise the leverage."],
+      ["Close it next Monday", "Close whatever is still open, then follow the new call."],
     ];
   } else {
     steps = [
@@ -146,10 +158,29 @@ function stepsPanel() {
       ["Check again next Monday", "Trade only when this page makes a call."],
     ];
   }
+  const optional = called.filter((c) => c.target_price);
   return h("section", { class: "stack" },
     h("h2", { style: "font-size:var(--t-h3)" }, "What to do"),
     h("ol", { class: "steps" }, steps.map(([title, text]) =>
-      h("li", null, h("h3", null, title), h("p", { class: "soft" }, text)))));
+      h("li", null, h("h3", null, title), h("p", { class: "soft" }, text)))),
+    called.length ? ticket(called, each) : null,
+    called.length ? h("p", { class: "soft small" },
+      `The stop sits one normal week's move from the entry (${list(called.map((c) =>
+        `${c.normal_week_pct.toFixed(1)}% for ${name(c.coin)}`))}). ` +
+      (ex.with && ex.holding
+        ? `In testing it cut the worst week from losing ${Math.abs(ex.holding.worst * 100).toFixed(0)}% of the ` +
+          `weekly amount to ${Math.abs(ex.with.worst * 100).toFixed(0)}%, and lowered the average week from ` +
+          `${(ex.holding.avg * 100).toFixed(1)} to ${(ex.with.avg * 100).toFixed(1)} cents per dollar. `
+        : "") +
+      `Tighter stops were hit too often by ordinary swings and did worse.`) : null,
+    called.length ? h("p", { class: "soft small" },
+      `No take profit is suggested: targets closer than three normal weeks lowered the result, because the ` +
+      `profit comes from the few big weeks. Waiting for a better entry price with a limit order missed too ` +
+      `many winning weeks.` +
+      (optional.length
+        ? ` If you want a target anyway, a far one did no harm: ${list(optional.map((c) =>
+            `${fmt.price(c.target_price)} for ${name(c.coin)} (${c.target_pct.toFixed(0)}% away)`))}.`
+        : "")) : null);
 }
 
 // ---- week by week ----------------------------------------------------------
@@ -183,7 +214,7 @@ function boardPanel() {
   const head = [
     h("h2", { style: "font-size:var(--t-h3)" }, "Week by week"),
     h("p", { class: "soft" },
-      "What a fresh weekly amount would have made in each finished week, following this page's calls. The amount is split equally between the two coins; a coin with no call stays in cash."),
+      "What a fresh weekly amount would have made in each finished week, following this page's calls and stop loss. The amount is split equally between the two coins; a coin with no call stays in cash."),
     form, error,
   ];
   if (state.boardError) {
@@ -206,7 +237,8 @@ function boardPanel() {
       { label: "Mood", num: true, cell: (r) => String(r.mood) },
       { label: "Result", num: true,
         cell: (r) => (r.calls.length
-          ? `${fmt.signedUsd(r.result)}${r.wiped.length ? ` (${list(r.wiped)} liquidated)` : ""}`
+          ? `${fmt.signedUsd(r.result)}${r.wiped.length ? ` (${list(r.wiped)} liquidated)` : ""}` +
+            `${r.stopped && r.stopped.length ? ` (${list(r.stopped)} stopped)` : ""}`
           : "No trade"),
         cls: (r) => (r.calls.length ? tone(r.result) : "") },
       { label: "Running total", num: true, cell: (r) => fmt.signedUsd(r.running_total),
