@@ -209,7 +209,7 @@ def mood_history() -> list[dict]:
 
 def exits() -> dict:
     rule = wc.exit_rule()
-    return {"stop": rule["stop"], "optional_target": rule["optional_target"],
+    return {"stop": rule["stop"], "targets": rule["targets"], "take_profit": rule["take_profit"],
             "with": rule["with"], "holding": rule["holding"],
             "by_call": {k: v["all"] for k, v in (rule.get("by_call") or {}).items()}}
 

@@ -138,16 +138,23 @@ function recordWords(c) {
   return `was right in ${share(r.first_half.right)} of weeks up to 2023 and ${share(r.second_half.right)} since.`;
 }
 
-function ticket(called, each) {
+function ticket(called, each, smallest) {
   const usd = (c) => each * c.leverage;
   return table([
     { label: "Trade", cell: (c) => `${c.side === "long" ? "Long" : "Short"} ${name(c.coin)}` },
     { label: "Leverage", num: true, cell: (c) => `${c.leverage}x` },
-    { label: "Position", num: true, cell: (c) => fmt.usd(usd(c)) },
+    { label: "Position", num: true,
+      cell: (c) => `${fmt.usd(usd(c))}${usd(c) < smallest ? " (too small)" : ""}`,
+      cls: (c) => (usd(c) < smallest ? "loss" : "") },
     { label: "Entry", num: true, cell: (c) => `about ${fmt.price(c.entry)}` },
     { label: "Stop loss", num: true,
       cell: (c) => (c.stop_price ? `${fmt.price(c.stop_price)} (${c.stop_pct.toFixed(1)}% away)` : "–") },
-    { label: "Take profit", cell: () => "None: close next Monday" },
+    { label: "Take profit", num: true,
+      cell: (c) => (c.target_price ? `${fmt.price(c.target_price)} (${c.target_pct.toFixed(1)}% away)`
+                                   : "None: close next Monday") },
+    { label: "Made at take profit", num: true,
+      cell: (c) => (c.stake_made_at_target ? fmt.usd(each * c.stake_made_at_target) : "–"),
+      cls: (c) => (c.stake_made_at_target ? "gain" : "") },
     { label: "Lost if stopped", num: true,
       cell: (c) => (c.stake_lost_at_stop ? fmt.usd(each * c.stake_lost_at_stop) : "–"),
       cls: () => "loss" },
@@ -166,8 +173,12 @@ function stepsPanel() {
       ["Open the trade on Monday",
        `Use the table below. Enter at the market price, or with a limit order at the current price.` +
        `${idle ? ` Keep the other ${fmt.usd(each * idle)} in cash.` : ""}`],
-      ["Set the stop loss, then leave it",
-       "Place the stop at the price shown as soon as the trade is open. Do not move it, add to the trade or raise the leverage."],
+      called.some((c) => c.target_price)
+        ? ["Set the stop loss and the take profit, then leave them",
+           "Place both at the prices shown as soon as the trade is open; a take profit only where the table " +
+           "shows one. Do not move them, add to the trade or raise the leverage."]
+        : ["Set the stop loss, then leave it",
+           "Place the stop at the price shown as soon as the trade is open. Do not move it, add to the trade or raise the leverage."],
       ["Close it next Monday", "Close whatever is still open, then follow the new call."],
     ];
   } else {
@@ -177,12 +188,36 @@ function stepsPanel() {
       ["Check again next Monday", "Trade only when this page makes a call."],
     ];
   }
-  const optional = called.filter((c) => c.target_price);
+  const smallest = w.min_order_usd || 0;
+  const small = called.filter((c) => each * c.leverage < smallest);
+  const tp = ex.take_profit || {};
+  const cents = (v) => (v * 100).toFixed(1);
+  const takeProfitWords = [
+    tp.short && tp.short.target
+      ? `Shorts take profit one normal week from the entry. In testing that level was reached in ` +
+        `${share(tp.short.reached)} of short weeks; shorts ended the week ahead ${share(tp.short.with.ahead)} of ` +
+        `the time with it, against ${share(tp.short.stop_only.ahead)} without, and the average week was no ` +
+        `lower (${cents(tp.short.with.avg)} against ${cents(tp.short.stop_only.avg)} cents per dollar). ` +
+        `Falls tend to bounce, so banking them paid.`
+      : null,
+    tp.long && !tp.long.target && tp.long.at_one_normal_week
+      ? `Longs have no take profit: a target one normal week away cut the average long week from ` +
+        `${cents(tp.long.stop_only.avg)} to ${cents(tp.long.at_one_normal_week.avg)} cents per dollar, and none ` +
+        `of the ${tp.long.plans_tested} take-profit plans tested was as good as the stop alone. ` +
+        `Rises tend to keep going.`
+      : null,
+  ].filter(Boolean).join(" ");
   return h("section", { class: "stack" },
     h("h2", { style: "font-size:var(--t-h3)" }, "What to do"),
     h("ol", { class: "steps" }, steps.map(([title, text]) =>
       h("li", null, h("h3", null, title), h("p", { class: "soft" }, text)))),
-    called.length ? ticket(called, each) : null,
+    called.length ? ticket(called, each, smallest) : null,
+    small.length ? h("p", { class: "notice bad" },
+      `Too small to place: ${list(small.map((c) =>
+        `${name(c.coin)} at ${c.leverage}x would be a ${fmt.usd(each * c.leverage)} position`))}. ` +
+      `The exchange's smallest order is ${fmt.usd(smallest)}. Use a weekly amount of at least ` +
+      `${fmt.usd(Math.ceil(Math.max(...small.map((c) => c.min_weekly_amount))))}, or skip ` +
+      `${small.length > 1 ? "those trades" : "that trade"}.`) : null,
     called.length ? h("p", { class: "soft small" },
       `The stop sits one normal week's move from the entry (${list(called.map((c) =>
         `${c.normal_week_pct.toFixed(1)}% for ${name(c.coin)}`))}). ` +
@@ -193,13 +228,8 @@ function stepsPanel() {
         : "") +
       `Tighter stops were hit too often by ordinary swings and did worse.`) : null,
     called.length ? h("p", { class: "soft small" },
-      `No take profit is suggested: targets closer than three normal weeks lowered the result, because the ` +
-      `profit comes from the few big weeks. Waiting for a better entry price with a limit order missed too ` +
-      `many winning weeks.` +
-      (optional.length
-        ? ` If you want a target anyway, a far one did no harm: ${list(optional.map((c) =>
-            `${fmt.price(c.target_price)} for ${name(c.coin)} (${c.target_pct.toFixed(0)}% away)`))}.`
-        : "")) : null);
+      `${takeProfitWords} Waiting for a better entry price with a limit order missed too many winning weeks.`)
+      : null);
 }
 
 // ---- week by week ----------------------------------------------------------
@@ -250,14 +280,18 @@ function boardPanel() {
       `Total ${fmt.signedUsd(b.total)}.`),
     table([
       { label: "Week of", cell: (r) => longDate(r.week_of) },
-      { label: "Call", cell: (r) => (r.calls.length
-          ? list(r.calls.map((c) => `${c.side === "long" ? "Long" : "Short"} ${c.coin} ${Number(c.leverage)}x`))
-          : "Stay out") },
+      { label: "Call", cell: (r) => {
+          const small = r.too_small && r.too_small.length ? `too small to place: ${list(r.too_small)}` : "";
+          if (!r.calls.length) return small ? `No trade (${small})` : "Stay out";
+          return list(r.calls.map((c) => `${c.side === "long" ? "Long" : "Short"} ${c.coin} ${Number(c.leverage)}x`)) +
+            (small ? ` (${small})` : "");
+        } },
       { label: "Mood", num: true, cell: (r) => String(r.mood) },
       { label: "Result", num: true,
         cell: (r) => (r.calls.length
           ? `${fmt.signedUsd(r.result)}${r.wiped.length ? ` (${list(r.wiped)} liquidated)` : ""}` +
-            `${r.stopped && r.stopped.length ? ` (${list(r.stopped)} stopped)` : ""}`
+            `${r.stopped && r.stopped.length ? ` (${list(r.stopped)} stopped)` : ""}` +
+            `${r.took_profit && r.took_profit.length ? ` (${list(r.took_profit)} took profit)` : ""}`
           : "No trade"),
         cls: (r) => (r.calls.length ? tone(r.result) : "") },
       { label: "Running total", num: true, cell: (r) => fmt.signedUsd(r.running_total),

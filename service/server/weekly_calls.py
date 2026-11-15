@@ -41,6 +41,8 @@ TABLES = Path(__file__).resolve().parents[2] / "research" / "exports" / "tables"
 CALLS_EVIDENCE = TABLES / "crypto_long_short.json"
 SPOT_EVIDENCE = TABLES / "crypto_in_or_out.json"
 EXITS_EVIDENCE = TABLES / "crypto_exits.json"
+TAKE_PROFIT_EVIDENCE = TABLES / "crypto_take_profit.json"
+MIN_ORDER_USD = 10.0                        # the exchange refuses to open anything smaller
 VOL_WEEKS = 26                              # the "normal week" looks back half a year
 SUGGESTED = 0                               # leverage value meaning "use the suggested level"
 LEVERAGES = (SUGGESTED, 1, 2, 3, 5, 10, 20, 30)
@@ -57,14 +59,34 @@ def calls_config() -> dict:
         raise md.DataError("The tested record for the weekly calls is missing.") from exc
 
 
+def take_profit_rule() -> dict:
+    """Per side, the take profit the test allows, in normal weeks (None: hold to Monday).
+
+    Shorts get one because falls tend to bounce; longs do not, because every
+    nearer target made longs worse (research/scripts/crypto_take_profit.py)."""
+    try:
+        sides = json.loads(TAKE_PROFIT_EVIDENCE.read_text())["by_side"]
+        return {side: {"target": s["target"], "with": s["with"]["all"], "stop_only": s["stop_only"]["all"],
+                       "at_one_normal_week": s.get("at_one_normal_week"),
+                       "reached": s["with"]["all"].get("final_target") if s["target"] else None,
+                       "plans_as_good": s["plans_as_good"], "plans_tested": s["plans_tested"]}
+                for side, s in sides.items()}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
 def exit_rule() -> dict:
-    """Stop and optional target, in normal weeks, with the tested effect."""
+    """Stop and take profit, in normal weeks, with the tested effect."""
     try:
         rec = json.loads(EXITS_EVIDENCE.read_text())["recommendation"]
-        return {"stop": rec["stop"], "optional_target": rec.get("optional_target"),
+        take = take_profit_rule()
+        return {"stop": rec["stop"],
+                "targets": {side: (take.get(side) or {}).get("target") for side in ("long", "short")},
+                "take_profit": take,
                 "with": rec["with"]["all"], "holding": rec["holding"]["all"], "by_call": rec["by_call"]}
     except (OSError, ValueError, KeyError):
-        return {"stop": None, "optional_target": None, "with": None, "holding": None, "by_call": {}}
+        return {"stop": None, "targets": {"long": None, "short": None}, "take_profit": {},
+                "with": None, "holding": None, "by_call": {}}
 
 
 def normal_week(candles: dict, sunday) -> float | None:
@@ -157,6 +179,9 @@ def this_week() -> dict:
             "skipped": bool(sig and not called), "leverage": leverage, "price": price,
             "record": _record(side_config, side_config["suggested_leverage"]) if sig else None,
         }
+        if called:
+            # the weekly amount at which this call's share becomes an order the exchange accepts
+            row["min_weekly_amount"] = MIN_ORDER_USD / leverage * len(config)
         if called and price:
             sign = 1 if sig == "long" else -1
             candles = daily_candles(coin)
@@ -174,10 +199,12 @@ def this_week() -> dict:
                 row["stop_pct"] = stop_move * 100
                 row["stop_price"] = entry * (1 - sign * stop_move)
                 row["stake_lost_at_stop"] = min(1.0, leverage * (stop_move + 2 * FEE_PER_SIDE))
-                if exits["optional_target"]:
-                    target_move = exits["optional_target"] * normal
+                target_rule = exits["targets"].get(sig)
+                if target_rule:
+                    target_move = target_rule * normal
                     row["target_pct"] = target_move * 100
                     row["target_price"] = entry * (1 + sign * target_move)
+                    row["stake_made_at_target"] = leverage * (target_move - 2 * FEE_PER_SIDE)
         coins.append(row)
     week_start = datetime.fromisoformat(mood["week_reading"]["date"]).date() + timedelta(days=1)
     return {
@@ -186,7 +213,8 @@ def this_week() -> dict:
         "mood": mood["week_reading"], "coins": coins, "spot_record": spot_record(),
         "week_of": week_start.isoformat(), "next_call": (week_start + timedelta(days=7)).isoformat(),
         "preview": preview(config, mood, live),
-        "exits": {k: exits[k] for k in ("stop", "optional_target", "with", "holding")},
+        "exits": {k: exits[k] for k in ("stop", "targets", "take_profit", "with", "holding")},
+        "min_order_usd": MIN_ORDER_USD,
     }
 
 
@@ -240,6 +268,10 @@ def week_result(candles: dict, monday, mood_value: int, share: float, leverage: 
                 "stopped": False}
     lev = float(coin_config[sig]["suggested_leverage"] if leverage == SUGGESTED
                 else min(leverage, max_leverage))
+    if share * lev < MIN_ORDER_USD:
+        # the exchange would not have opened a position this small
+        return {"known": True, "side": None, "skipped": False, "too_small": True, "result": 0.0,
+                "wiped": False, "stopped": False}
     entry = days[0]["open"]
     if sig == "long":
         against = 1 - min(d["low"] for d in days) / entry
@@ -248,11 +280,15 @@ def week_result(candles: dict, monday, mood_value: int, share: float, leverage: 
         against = max(d["high"] for d in days) / entry - 1
         move = 1 - days[-1]["close"] / entry
     liquidation = liquidation_distance(lev, max_leverage)
-    stop_rule = exit_rule()["stop"]
+    rule = exit_rule()
+    stop_rule = rule["stop"]
     normal = normal_week(candles, sunday_before) if stop_rule else None
     stop_move = stop_rule * normal if (stop_rule and normal) else None
-    # Walk the week a day at a time: liquidation or the stop ends it early.
-    held, wiped, stopped = 0, False, False
+    target_rule = rule["targets"].get(sig) if stop_move is not None else None
+    target_move = target_rule * normal if target_rule else None
+    # Walk the week a day at a time: liquidation, the stop or the take profit ends it early.
+    # Inside one day the order of events is unknown, so the stop is counted before the target.
+    held, wiped, stopped, took = 0, False, False, False
     for day in days:
         held += 1
         worst = (1 - day["low"] / entry) if sig == "long" else (day["high"] / entry - 1)
@@ -262,10 +298,15 @@ def week_result(candles: dict, monday, mood_value: int, share: float, leverage: 
         if worst >= liquidation:
             wiped = True
             break
+        best = (day["high"] / entry - 1) if sig == "long" else (1 - day["low"] / entry)
+        if target_move is not None and best >= target_move:
+            move, took = target_move, True
+            break
     funding = held * FUNDING_PER_DAY if (sig == "long" and lev > 1) else 0.0
     result = -share if wiped else share * lev * (move - 2 * FEE_PER_SIDE - funding)
     return {"known": True, "side": sig, "skipped": False, "result": max(result, -share),
-            "wiped": bool(wiped), "stopped": bool(stopped), "leverage_used": lev}
+            "wiped": bool(wiped), "stopped": bool(stopped), "took_profit": bool(took),
+            "leverage_used": lev}
 
 
 def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
@@ -296,6 +337,8 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
             "skipped": [c for c, p in parts.items() if p["skipped"]],
             "wiped": [c for c, p in parts.items() if p["wiped"]],
             "stopped": [c for c, p in parts.items() if p.get("stopped")],
+            "took_profit": [c for c, p in parts.items() if p.get("took_profit")],
+            "too_small": [c for c, p in parts.items() if p.get("too_small")],
             "result": sum(p["result"] for p in parts.values()),
         })
     total = 0.0
@@ -324,6 +367,7 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
         "no_trade": sum(1 for r in rows if not r["calls"]),
         "expect": expect,
         "capped": {coin: max_lev[coin] for coin in coins if max_lev[coin] < leverage},
+        "min_order_usd": MIN_ORDER_USD,
     }
 
 

@@ -1,7 +1,8 @@
 // Neko terminal: a live working screen for this week's calls.
 // The server works out positions, advice and recommendations every few seconds
-// (so the rules live in one tested place); a direct price stream keeps the
-// numbers and the chart moving in between.
+// (so the rules live in one tested place); a direct stream from the exchange
+// (prices, best bid and offer, trades, order book) keeps the numbers and the
+// chart moving in between.
 
 import { api, h, replace, signInForm } from "/web/common.js";
 import { COLORS, px, pct, usd, tone } from "/web/terminal_util.js";
@@ -11,7 +12,8 @@ const app = document.getElementById("app");
 const POLL_MS = 5000;
 const CHART_MS = 60000;
 const STREAM_URL = "wss://api.hyperliquid.xyz/ws";
-const INTERVALS = [["1h", "1H"], ["4h", "4H"], ["1d", "1D"]];
+const INTERVALS = [["1s", "1S"], ["1h", "1H"], ["4h", "4H"], ["1d", "1D"]];
+const TICK_BARS = 300;                // the one-second chart keeps the last five minutes
 const CLOCKS = [["UTC", "UTC"], ["New York", "America/New_York"], ["London", "Europe/London"],
                 ["Tokyo", "Asia/Tokyo"]];
 const ADV_MS = 20000;
@@ -21,7 +23,9 @@ const state = {
   snap: null, chart: null, selected: "ETH", interval: "4h", stake: loadStake(),
   prices: {}, stream: "connecting", lastPoll: 0, error: null,
   log: [], seen: new Set(), hover: null, frame: null,
-  mode: loadMode(), adv: null, book: null, tape: [], bookSymbol: null,
+  mode: loadMode(), adv: null, book: null, tape: [], bookSymbol: null, tradeSymbol: null,
+  tradeBacklog: false,
+  watch: new Set(["ETH"]),
 };
 
 // Basic or advanced screen: a per-browser preference.
@@ -70,6 +74,80 @@ function live(symbol, fallback) {
   return v === undefined ? fallback : v;
 }
 
+// ---- one-second candles ------------------------------------------------------
+
+// The exchange has no one-second history, so these are built here from the live
+// stream: every price update and every trade of a watched market lands in the
+// candle of the second it arrived in. They start when the page opens.
+const ticks = new Map();              // symbol -> candles, oldest first
+
+function tickPrice(symbol, price, size = 0) {
+  let candles = ticks.get(symbol);
+  if (!candles) ticks.set(symbol, candles = []);
+  const t = Math.floor(Date.now() / 1000) * 1000;
+  let last = candles[candles.length - 1];
+  if (!last || t > last.t) {
+    const open = last ? last.c : price;
+    // quiet seconds get flat candles, so the time axis stays even
+    for (let s = last ? Math.max(last.t + 1000, t - (TICK_BARS - 1) * 1000) : t; s < t; s += 1000) {
+      candles.push({ t: s, o: open, h: open, l: open, c: open, v: 0 });
+    }
+    last = { t, o: open, h: open, l: open, c: open, v: 0 };
+    candles.push(last);
+    if (candles.length > TICK_BARS) candles.splice(0, candles.length - TICK_BARS);
+  }
+  last.h = Math.max(last.h, price);
+  last.l = Math.min(last.l, price);
+  last.c = price;
+  last.v += size;
+}
+
+// Markets worth keeping one-second candles for: the ones a screen can select.
+function watchMarkets() {
+  const watch = new Set([state.selected]);
+  if (state.snap) for (const m of state.snap.markets) watch.add(m.symbol);
+  if (state.adv) for (const m of state.adv.worksheet) watch.add(m.symbol);
+  state.watch = watch;
+  watchQuotes();
+}
+
+// Best bid and offer for every watched market. These arrive several times a
+// second, where the all-markets price feed only ticks every few seconds, so
+// they are what keeps prices, profit and the one-second chart moving.
+const quoted = new Set();
+
+function watchQuotes() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  for (const symbol of [...quoted]) {
+    if (state.watch.has(symbol)) continue;
+    send({ method: "unsubscribe", subscription: { type: "bbo", coin: symbol } });
+    quoted.delete(symbol);
+  }
+  for (const symbol of state.watch) {
+    if (quoted.has(symbol)) continue;
+    send({ method: "subscribe", subscription: { type: "bbo", coin: symbol } });
+    quoted.add(symbol);
+  }
+}
+
+// What the chart draws: server candles, or the one-second candles built here.
+function chartNow() {
+  if (state.interval !== "1s") return state.chart;
+  return { candles: ticks.get(state.selected) || [], emas: {} };
+}
+
+// Once a second: start the next candle even if the market is quiet, and redraw.
+function everySecond() {
+  paintBar();
+  if (state.interval !== "1s") return;
+  const candles = ticks.get(state.selected);
+  const price = candles && candles.length ? candles[candles.length - 1].c : state.prices[state.selected];
+  if (price === undefined) return;
+  tickPrice(state.selected, price);
+  if (state.hover === null) paintReadout();
+  draw();
+}
+
 // ---- data --------------------------------------------------------------------
 
 async function poll() {
@@ -84,6 +162,7 @@ async function poll() {
       for (const m of state.snap.markets) if (m.price) state.prices[m.symbol] = m.price;
     }
     noteAdvice();
+    watchMarkets();
     paint();
   } catch (err) {
     if (err.status === 401) {
@@ -100,6 +179,7 @@ async function pollAdvanced() {
   if (state.mode !== "advanced") return;
   try {
     state.adv = await api(`/api/web/terminal/advanced?stake=${encodeURIComponent(state.stake)}`);
+    watchMarkets();
     paintAdvanced(el, state, helpers);
   } catch (err) {
     if (err.status === 401) return;
@@ -123,20 +203,25 @@ function send(message) {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
-// Follow the selected market's order book and trades on the stream.
+// Follow the selected market on the stream: its trades always (they feed the
+// one-second chart and the tape), its order book only on the advanced screen.
 function watchBook() {
+  if (state.tradeSymbol !== state.selected) {
+    if (state.tradeSymbol) {
+      send({ method: "unsubscribe", subscription: { type: "trades", coin: state.tradeSymbol } });
+    }
+    send({ method: "subscribe", subscription: { type: "trades", coin: state.selected } });
+    state.tradeSymbol = state.selected;
+    state.tradeBacklog = true;
+    state.tape = [];
+  }
   const want = state.mode === "advanced" ? state.selected : null;
   if (state.bookSymbol && state.bookSymbol !== want) {
     send({ method: "unsubscribe", subscription: { type: "l2Book", coin: state.bookSymbol } });
-    send({ method: "unsubscribe", subscription: { type: "trades", coin: state.bookSymbol } });
   }
   if (want !== state.bookSymbol) {
     state.book = null;
-    state.tape = [];
-    if (want) {
-      send({ method: "subscribe", subscription: { type: "l2Book", coin: want } });
-      send({ method: "subscribe", subscription: { type: "trades", coin: want } });
-    }
+    if (want) send({ method: "subscribe", subscription: { type: "l2Book", coin: want } });
     state.bookSymbol = want;
     paintBook(el, state, helpers);
     pollBook();
@@ -144,6 +229,11 @@ function watchBook() {
 }
 
 async function loadChart() {
+  if (state.interval === "1s") {                  // built in the browser; nothing to fetch
+    paintChartHead();
+    draw();
+    return;
+  }
   try {
     state.chart = await api(
       `/api/web/terminal/chart?symbol=${encodeURIComponent(state.selected)}&interval=${state.interval}`);
@@ -182,7 +272,10 @@ function connect() {
     socket.send(JSON.stringify({ method: "subscribe", subscription: { type: "allMids" } }));
     socket.send(JSON.stringify({ method: "subscribe", subscription: { type: "allMids", dex: "xyz" } }));
     state.bookSymbol = null;                      // subscriptions do not survive a reconnect
+    state.tradeSymbol = null;
+    quoted.clear();
     watchBook();
+    watchQuotes();
   });
   socket.addEventListener("message", (event) => {
     let msg;
@@ -198,19 +291,37 @@ function connect() {
       return;
     }
     if (msg.channel === "trades" && Array.isArray(msg.data)) {
+      // The first batch after subscribing is a backlog of earlier trades. It
+      // belongs on the tape, but not in the candle of the current second.
+      const backlog = state.tradeBacklog && msg.data.some((t) => t.coin === state.tradeSymbol);
       for (const t of msg.data) {
-        if (t.coin !== state.bookSymbol) continue;
+        if (t.coin !== state.tradeSymbol) continue;
         state.tape.unshift({ time: t.time, px: Number(t.px), sz: Number(t.sz), buy: t.side === "B" });
+        if (!backlog) tickPrice(t.coin, Number(t.px), Number(t.sz));
       }
+      if (backlog) state.tradeBacklog = false;
       state.tape = state.tape.slice(0, 16);
       scheduleBook();
+      if (state.interval === "1s") schedule();
+      return;
+    }
+    if (msg.channel === "bbo" && msg.data && Array.isArray(msg.data.bbo)) {
+      const [bid, ask] = msg.data.bbo;
+      const price = bid && ask ? (Number(bid.px) + Number(ask.px)) / 2 : Number((bid || ask || {}).px);
+      if (!(price > 0)) return;
+      state.stream = "live";
+      state.prices[msg.data.coin] = price;
+      if (state.watch.has(msg.data.coin)) tickPrice(msg.data.coin, price);
+      schedule();
       return;
     }
     if (msg.channel !== "allMids" || !msg.data || !msg.data.mids) return;
     state.stream = "live";
     for (const [symbol, value] of Object.entries(msg.data.mids)) {
       const price = Number(value);
-      if (price > 0) state.prices[symbol] = price;
+      if (!(price > 0)) continue;
+      state.prices[symbol] = price;
+      if (state.watch.has(symbol)) tickPrice(symbol, price);
     }
     schedule();
   });
@@ -280,7 +391,7 @@ function chartPanel() {
       h("span", null, h("i", { style: `background:${COLORS.violet}` }), "40-day average"),
       h("span", null, h("i", { style: `background:${COLORS.cyan}` }), "Entry"),
       h("span", null, h("i", { style: `background:${COLORS.down}` }), "Stop loss"),
-      h("span", null, h("i", { style: `background:${COLORS.up}` }), "Optional far target")));
+      h("span", null, h("i", { style: `background:${COLORS.up}` }), "Take profit")));
 }
 
 const FOOT = "Positions are model positions: what the weekly amount would be doing had this week's calls been followed from Monday's open. " +
@@ -412,6 +523,8 @@ function weekPnl() {
   return state.snap.positions.reduce((sum, p) => sum + livePosition(p).pnl_usd, 0);
 }
 
+const CLOSED_WORDS = { stopped: "Stopped", liquidated: "Liquidated", target: "Profit taken" };
+
 function paintPositions() {
   const snap = state.snap;
   const cards = snap.positions.map((raw) => {
@@ -422,12 +535,14 @@ function paintPositions() {
       h("div", { class: "t-card-head" },
         h("strong", null, `${p.coin}/USD`),
         h("span", { class: "t-badge", "data-side": closed ? p.status : p.side },
-          closed ? p.status : `${p.side} ${p.leverage}x`)),
+          closed ? CLOSED_WORDS[p.status] || p.status : `${p.side} ${p.leverage}x`)),
       h("div", { class: "t-kv" },
         h("span", null, "Size"), h("b", null, `$${p.position_usd.toFixed(2)}`),
         h("span", null, "Entry"), h("b", null, px(p.entry)),
         h("span", null, "Last"), h("b", { "data-live": p.coin }, px(p.last)),
-        h("span", null, "Stop"), h("b", { class: "down" }, px(p.stop))),
+        h("span", null, "Stop"), h("b", { class: "down" }, px(p.stop)),
+        h("span", null, "Target"), p.target ? h("b", { class: "up" }, px(p.target)) : h("b", { class: "dim" }, "none"),
+        h("span", null, "Liq."), h("b", null, px(p.liquidation))),
       h("div", { class: `t-pnl ${tone(p.pnl_usd)}`, "data-pnl": p.coin },
         `${usd(p.pnl_usd)} (${pct(p.pnl_pct, 1)})`),
       !closed && p.stop_room_left !== undefined ? h("div", null,
@@ -443,8 +558,15 @@ function paintPositions() {
     h("div", { class: "dim", style: "font-size:var(--t-small)" },
       c.skipped ? `Signals lean ${c.signal}; that side has not held up here.`
                 : "Mood and the last four weeks disagree.")));
-  replace(el.pos, ...cards, ...out,
-    !cards.length && !out.length ? h("p", { class: "dim" }, "No calls this week.") : null);
+  const small = (snap.too_small || []).map((c) => h("button", { class: "t-card", type: "button",
+    "aria-pressed": String(state.selected === c.coin), onclick: () => select(c.coin) },
+    h("div", { class: "t-card-head" },
+      h("strong", null, `${c.coin}/USD`), h("span", { class: "t-badge", "data-side": "small" }, "Too small")),
+    h("div", { class: "dim", style: "font-size:var(--t-small)" },
+      `Called ${c.side} at ${c.leverage}x, but that is a $${c.position_usd.toFixed(2)} position and the ` +
+      `exchange's smallest order is $10. Needs a weekly amount of $${Math.ceil(c.min_weekly_amount)}.`)));
+  replace(el.pos, ...cards, ...small, ...out,
+    !cards.length && !small.length && !out.length ? h("p", { class: "dim" }, "No calls this week.") : null);
 }
 
 function paintPnl() {
@@ -582,8 +704,9 @@ function paintRecommendation() {
     position ? h("div", { class: "t-votes" },
       h("div", null, h("span", { class: "dim" }, "Entry"), h("span", { class: "num" }, px(position.entry))),
       h("div", null, h("span", { class: "dim" }, "Stop loss"), h("span", { class: "num down" }, px(position.stop))),
-      h("div", null, h("span", { class: "dim" }, "Optional far target"),
-        h("span", { class: "num up" }, px(position.target))),
+      h("div", null, h("span", { class: "dim" }, "Take profit"),
+        position.target ? h("span", { class: "num up" }, px(position.target))
+                        : h("span", { class: "dim" }, "None: hold to Monday")),
       h("div", null, h("span", { class: "dim" }, "Liquidation"), h("span", { class: "num" }, px(position.liquidation))))
       : null);
 }
@@ -605,6 +728,8 @@ function select(symbol) {
   if (state.selected === symbol) return;
   state.selected = symbol;
   state.chart = null;
+  state.hover = null;
+  watchMarkets();
   paint();
   loadChart();
   watchBook();
@@ -632,23 +757,35 @@ function paintChartHead() {
     h("span", { class: "t-tabs", role: "group", "aria-label": "Chart interval" },
       INTERVALS.map(([value, text]) => h("button", { type: "button",
         "aria-pressed": String(state.interval === value),
-        onclick: () => { state.interval = value; state.chart = null; paintChartHead(); draw(); loadChart(); } },
+        onclick: () => {
+          state.interval = value;
+          state.chart = null;
+          state.hover = null;
+          paintChartHead();
+          draw();
+          loadChart();
+        } },
         text))));
   paintReadout();
 }
 
 function paintReadout() {
   if (!el.readout) return;
-  const candles = state.chart ? state.chart.candles : [];
+  const seconds = state.interval === "1s";
+  const chart = chartNow();
+  const candles = chart ? chart.candles : [];
   const c = state.hover !== null ? candles[state.hover] : candles[candles.length - 1];
   if (!c) {
-    replace(el.readout, h("span", null, state.chart === null ? "Loading chart…" : ""));
+    replace(el.readout, h("span", null,
+      seconds ? "Waiting for the first live price…" : state.chart === null ? "Loading chart…" : ""));
     return;
   }
-  const when = new Date(c.t).toISOString().replace("T", " ").slice(0, 16);
+  const when = new Date(c.t).toISOString().replace("T", " ").slice(0, seconds ? 19 : 16);
   replace(el.readout,
     h("span", null, `${when} UTC`), h("span", null, `O ${px(c.o)}`), h("span", null, `H ${px(c.h)}`),
-    h("span", null, `L ${px(c.l)}`), h("span", { class: c.c >= c.o ? "up" : "down" }, `C ${px(c.c)}`));
+    h("span", null, `L ${px(c.l)}`), h("span", { class: c.c >= c.o ? "up" : "down" }, `C ${px(c.c)}`),
+    seconds ? h("span", { class: "amber" },
+      `Live: ${candles.length} of ${TICK_BARS} seconds, built from live prices and trades since you opened the terminal`) : null);
 }
 
 function levels() {
@@ -679,12 +816,15 @@ function draw() {
   g.clearRect(0, 0, W, H);
   g.font = "11px 'IBM Plex Mono', ui-monospace, monospace";
   geometry = null;
-  if (!state.chart || !state.chart.candles.length) {
+  const chart = chartNow();
+  const seconds = state.interval === "1s";
+  if (!chart || !chart.candles.length) {
     g.fillStyle = COLORS.text;
-    g.fillText(state.chart === null ? "Loading…" : "No chart data.", 12, 24);
+    g.fillText(seconds ? "Waiting for the first live price…"
+      : state.chart === null ? "Loading…" : "No chart data.", 12, 24);
     return;
   }
-  const candles = state.chart.candles.map((c) => ({ ...c }));
+  const candles = chart.candles.map((c) => ({ ...c }));
   const tip = candles[candles.length - 1];
   const now = live(state.selected, tip.c);
   tip.c = now;                                          // the forming candle follows the live price
@@ -721,7 +861,8 @@ function draw() {
   for (let i = 0; i < dates; i += 1) {
     const index = Math.floor(candles.length * (i + 0.5) / dates);
     const date = new Date(candles[index].t);
-    const text = state.interval === "1d"
+    const text = seconds ? date.toISOString().slice(11, 19)
+      : state.interval === "1d"
       ? date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })
       : `${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })} ${String(date.getUTCHours()).padStart(2, "0")}:00`;
     g.fillText(text, Math.max(0, x(index) - 30), H - 4);
@@ -761,8 +902,8 @@ function draw() {
     g.stroke();
     g.lineWidth = 1;
   };
-  line(state.chart.emas["10d"], COLORS.amber);
-  line(state.chart.emas["40d"], COLORS.violet);
+  line(chart.emas["10d"], COLORS.amber);
+  line(chart.emas["40d"], COLORS.violet);
 
   const tag = (value, text, color, at) => {
     g.fillStyle = color;
@@ -770,16 +911,22 @@ function draw() {
     g.fillStyle = "#05080c";
     g.fillText(text, plotW + 5, at + 4);
   };
+  let above = 0;
+  let below = 0;
   for (const level of levels()) {
     const inside = level.value >= lo && level.value <= hi;
-    const at = inside ? y(level.value) : (level.value > hi ? 10 : priceH - 10);
-    g.strokeStyle = level.color;
-    g.setLineDash([6, 4]);
-    g.beginPath();
-    g.moveTo(0, Math.round(at) + 0.5);
-    g.lineTo(plotW, Math.round(at) + 0.5);
-    g.stroke();
-    g.setLineDash([]);
+    // several levels off the same edge are listed one under the other
+    const at = inside ? y(level.value)
+      : level.value > hi ? 14 + 16 * above++ : priceH - 10 - 16 * below++;
+    if (inside) {                                   // a level off the chart gets its label only
+      g.strokeStyle = level.color;
+      g.setLineDash([6, 4]);
+      g.beginPath();
+      g.moveTo(0, Math.round(at) + 0.5);
+      g.lineTo(plotW, Math.round(at) + 0.5);
+      g.stroke();
+      g.setLineDash([]);
+    }
     g.fillStyle = level.color;
     g.fillText(`${level.name} ${px(level.value)}${inside ? "" : level.value > hi ? "  (above)" : "  (below)"}`,
       8, at - 4);
@@ -873,7 +1020,7 @@ async function start() {
   loadChart();
   timers.poll = setInterval(poll, POLL_MS);
   timers.chart = setInterval(loadChart, CHART_MS);
-  timers.clock = setInterval(paintBar, 1000);
+  timers.clock = setInterval(everySecond, 1000);
   restartTimers();
   connect();
   pollAdvanced();

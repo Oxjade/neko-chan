@@ -19,6 +19,7 @@ COPY research/exports/tables/crypto_in_or_out.json ./research/exports/tables/cry
 COPY research/exports/tables/leverage_on_rule.json ./research/exports/tables/leverage_on_rule.json
 COPY research/exports/tables/crypto_long_short.json ./research/exports/tables/crypto_long_short.json
 COPY research/exports/tables/crypto_exits.json ./research/exports/tables/crypto_exits.json
+COPY research/exports/tables/crypto_take_profit.json ./research/exports/tables/crypto_take_profit.json
 
 # Persist this directory: it holds the database and the secret key.
 # Set NEKO_PASSWORD when running; nothing else is required.

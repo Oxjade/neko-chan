@@ -285,6 +285,17 @@ button.t-card:hover,
   background: var(--gain-wash);
 }
 
+.t-badge[data-side="target"] {
+  color: var(--gain);
+  border-color: var(--gain);
+  background: var(--gain-wash);
+}
+
+.t-badge[data-side="small"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
 .t-badge[data-side="short"],
 .t-badge[data-side="stopped"],
 .t-badge[data-side="liquidated"] {
