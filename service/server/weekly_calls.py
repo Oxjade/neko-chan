@@ -36,7 +36,7 @@ from pathlib import Path
 import crypto_mood
 import market_data as md
 
-COINS = ("BTC", "ETH")
+NAMES = {"BTC": "Bitcoin", "ETH": "Ether", "SOL": "Solana", "SUI": "Sui"}
 TABLES = Path(__file__).resolve().parents[2] / "research" / "exports" / "tables"
 CALLS_EVIDENCE = TABLES / "crypto_long_short.json"
 SPOT_EVIDENCE = TABLES / "crypto_in_or_out.json"
@@ -136,7 +136,7 @@ def this_week() -> dict:
     value = mood["week_reading"]["value"]
     live = md.catalogue()
     coins = []
-    for coin in COINS:
+    for coin in config:
         closes = sunday_closes(coin)
         if len(closes) < 5:
             raise md.DataError("Not enough weekly prices to decide.")
@@ -151,7 +151,7 @@ def this_week() -> dict:
         market = live.get(coin) or {}
         price, max_lev = market.get("price"), market.get("max_leverage", 20)
         row = {
-            "coin": coin, "mood_greedy": value >= 50,
+            "coin": coin, "name": NAMES.get(coin, coin), "mood_greedy": value >= 50,
             "four_week_change_pct": (now / before - 1) * 100,
             "signal": sig, "side": sig if called else None,
             "skipped": bool(sig and not called), "leverage": leverage, "price": price,
@@ -185,8 +185,30 @@ def this_week() -> dict:
                   for c in coins if c["side"]],
         "mood": mood["week_reading"], "coins": coins, "spot_record": spot_record(),
         "week_of": week_start.isoformat(), "next_call": (week_start + timedelta(days=7)).isoformat(),
+        "preview": preview(config, mood, live),
         "exits": {k: exits[k] for k in ("stop", "optional_target", "with", "holding")},
     }
+
+
+def preview(config: dict, mood: dict, live: dict) -> dict | None:
+    """What next Monday's calls would be if the week ended now. Final only on Monday."""
+    today = mood.get("today")
+    if not today:
+        return None
+    rows = []
+    for coin in config:
+        closes = sunday_closes(coin)
+        price = (live.get(coin) or {}).get("price")
+        if len(closes) < 4 or not price:
+            continue
+        before = closes[3]["close"]              # four weeks before the coming week's end
+        sig = signal(today["value"], price, before)
+        called = bool(sig and config[coin][sig]["allowed"])
+        rows.append({"coin": coin, "name": NAMES.get(coin, coin), "signal": sig,
+                     "side": sig if called else None, "skipped": bool(sig and not called),
+                     "leverage": config[coin][sig]["suggested_leverage"] if called else None,
+                     "four_week_change_pct": (price / before - 1) * 100})
+    return {"mood": today, "coins": rows}
 
 
 # ---- week by week ----------------------------------------------------------
@@ -251,8 +273,9 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
     config = calls_config()
     moods = crypto_mood.history()
     live = md.catalogue()
-    candles = {coin: daily_candles(coin) for coin in COINS}
-    max_lev = {coin: (live.get(coin) or {}).get("max_leverage", 20) for coin in COINS}
+    coins = list(config)
+    candles = {coin: daily_candles(coin) for coin in coins}
+    max_lev = {coin: (live.get(coin) or {}).get("max_leverage", 20) for coin in coins}
     last_day = min(max(c) for c in candles.values())
     # the last finished week ends on the latest completed Sunday
     last_sunday = last_day - timedelta(days=(last_day.weekday() + 1) % 7)
@@ -262,8 +285,8 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
         mood_value = moods.get(monday - timedelta(days=1))
         if mood_value is None:
             continue
-        parts = {coin: week_result(candles[coin], monday, mood_value, stake / len(COINS), leverage,
-                                   max_lev[coin], config[coin]) for coin in COINS}
+        parts = {coin: week_result(candles[coin], monday, mood_value, stake / len(coins), leverage,
+                                   max_lev[coin], config[coin]) for coin in coins}
         if not all(p["known"] for p in parts.values()):
             continue
         rows.append({
@@ -280,7 +303,7 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
         total += row["result"]
         row["running_total"] = total
     expect = []
-    for coin in COINS:
+    for coin in coins:
         for side in ("long", "short"):
             c = config[coin][side]
             if not c["allowed"]:
@@ -300,7 +323,7 @@ def scoreboard(stake: float, leverage: float, weeks: int = 12) -> dict:
         "behind": sum(1 for r in rows if r["result"] < 0),
         "no_trade": sum(1 for r in rows if not r["calls"]),
         "expect": expect,
-        "capped": {coin: max_lev[coin] for coin in COINS if max_lev[coin] < leverage},
+        "capped": {coin: max_lev[coin] for coin in coins if max_lev[coin] < leverage},
     }
 
 

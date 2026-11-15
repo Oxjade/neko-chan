@@ -3,7 +3,7 @@ import { api, h, replace, fmt, tone, table, signInForm } from "/web/common.js";
 const app = document.getElementById("app");
 const signout = document.getElementById("signout");
 
-const NAMES = { BTC: "Bitcoin", ETH: "Ether" };
+const NAMES = { BTC: "Bitcoin", ETH: "Ether", SOL: "Solana", SUI: "Sui" };
 const LEVERAGES = [[0, "Suggested"], [1, "None (1x)"], [2, "2x"], [3, "3x"], [5, "5x"],
                    [10, "10x"], [20, "20x"], [30, "30x"]];
 const state = { week: null, board: null, boardError: null, plan: loadPlan() };
@@ -81,6 +81,25 @@ function answerPanel() {
     h("p", { class: "soft small" },
       `This call is for the week starting Monday ${longDate(w.week_of)}. ` +
       `The next call comes on Monday ${longDate(w.next_call)}.`));
+}
+
+function previewPanel() {
+  const w = state.week;
+  const p = w.preview;
+  if (!p || !p.coins.length) return null;
+  const hoursLeft = (new Date(`${w.next_call}T00:00:00Z`) - Date.now()) / 3600000;
+  if (hoursLeft > 48 || hoursLeft < 0) return null;       // only worth showing close to Monday
+  const calls = p.coins.filter((c) => c.side);
+  const out = p.coins.filter((c) => !c.side).map((c) => name(c.coin));
+  let text = calls.length ? `${list(calls.map(callWords))}.` : "Stay out.";
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  if (calls.length && out.length) text += ` Stay out of ${list(out)}.`;
+  return h("section", { class: "panel stack" },
+    h("h2", { style: "font-size:var(--t-h3)" }, `Next week, if nothing changes by Monday ${longDate(w.next_call)}`),
+    h("p", { class: "verdict" }, text),
+    h("p", { class: "soft small" },
+      `A preview from today's mood (${p.mood.value} of 100, ${p.mood.label.toLowerCase()}) and current prices. ` +
+      `The call becomes final at 00:00 UTC on Monday, with its entry and stop prices.`));
 }
 
 function whyPanel() {
@@ -214,7 +233,7 @@ function boardPanel() {
   const head = [
     h("h2", { style: "font-size:var(--t-h3)" }, "Week by week"),
     h("p", { class: "soft" },
-      "What a fresh weekly amount would have made in each finished week, following this page's calls and stop loss. The amount is split equally between the two coins; a coin with no call stays in cash."),
+      "What a fresh weekly amount would have made in each finished week, following this page's calls and stop loss. The amount is split equally between the coins; a coin with no call stays in cash."),
     form, error,
   ];
   if (state.boardError) {
@@ -312,7 +331,7 @@ function lessonsPanel() {
 function render() {
   signout.hidden = false;
   replace(app, h("div", { class: "week" },
-    answerPanel(), whyPanel(), stepsPanel(), boardPanel(), recordPanel(), lessonsPanel()));
+    answerPanel(), previewPanel(), whyPanel(), stepsPanel(), boardPanel(), recordPanel(), lessonsPanel()));
 }
 
 // ---- start -----------------------------------------------------------------

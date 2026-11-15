@@ -95,8 +95,8 @@ come from it.
 
 ## This week: long, short or stay out
 
-For someone who does not trade. Once a week, per coin (Bitcoin, Ether), on
-perps:
+For someone who does not trade. Once a week, per coin (Bitcoin, Ether, Solana,
+Sui), on perps:
 
 - **long** when the Fear & Greed index is 50 or more and the coin rose over
   the last four weeks;
@@ -114,9 +114,16 @@ was right more often than not and profitable in **both** halves:
 | Long Ether | 62% | 51% | yes |
 | Short Ether | 56% | 57% | yes |
 | Short Bitcoin | 52% | 48% | no: the platform says stay out |
+| Long Solana | 60% | 52% | yes (2x) |
+| Short Solana | 60% | 53% | yes (1x) |
+| Long Sui | 56% | 33% | no |
+| Short Sui | 33% | 54% | no |
 
 The **suggested leverage** is the highest tested level at which the weekly
-stake was liquidated in at most one week in fifty: 3x for every called side.
+stake was liquidated in at most one week in fifty: 3x for Bitcoin and Ether,
+2x for long Solana and 1x for short Solana. Each coin's halves are its own
+history split in two, so Sui (listed in 2023) is judged on much less data.
+From Saturday the page also previews next Monday's calls.
 At 10x the stake was liquidated in 16 to 37% of weeks, at 30x in about 70%.
 
 The long side carries most of the edge (average traded week about +1.5 to

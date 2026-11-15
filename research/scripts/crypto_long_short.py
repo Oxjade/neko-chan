@@ -36,7 +36,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import crypto_weekly_search as cws  # noqa: E402
 
 OUT = cws.fws.REPO / "research" / "exports" / "tables" / "crypto_long_short.json"
-MAX_LEVERAGE = {"BTC": 40, "ETH": 25}
+# coins the platform can call, with the exchange's maximum leverage for each
+CALL_COINS = {"BTC": "Bitcoin", "ETH": "Ether", "SOL": "Solana", "SUI": "Sui"}
+MAX_LEVERAGE = {"BTC": 40, "ETH": 25, "SOL": 20, "SUI": 10}
 FEE_PER_SIDE = 0.00045
 FUNDING_PER_DAY = 0.0003          # typical cost of a leveraged long; shorts usually receive it
 LEVELS = (1, 2, 3, 5, 7, 10, 20, 30)
@@ -85,6 +87,10 @@ def stats(gross: pd.DataFrame, active: pd.DataFrame) -> dict:
 
 
 def by_half(close: pd.DataFrame, position: pd.DataFrame, coins: list[str], split) -> dict:
+    if len(coins) == 1:
+        # one coin: split its own history in two, so a coin listed later is still judged on halves
+        own = close[coins[0]].dropna().index
+        split = own[len(own) // 2]
     fwd = close[coins].pct_change().shift(-1) * 100
     pos = position[coins].where(fwd.notna(), 0.0)
     gross, active = pos * fwd, pos != 0
@@ -119,14 +125,20 @@ def leveraged(coin: str, position: pd.Series, daily: pd.DataFrame, leverage: flo
 
 def main() -> int:
     refresh = "--refresh" in sys.argv
-    close = cws.daily_closes(refresh).resample("W-SUN").last().dropna(how="all")
+    daily = cws.daily_closes(refresh)
+    for coin in CALL_COINS:                      # coins outside the ten-coin file come from their candles
+        if coin not in daily.columns:
+            daily = daily.join(ohlc(coin, refresh)["close"].rename(coin), how="outer")
+    close = daily.resample("W-SUN").last().dropna(how="all")
     mood = cws.fear_greed(refresh)
     rules = sides(close, mood)
     split = close.index[len(close) // 2]
-    baskets = {"Bitcoin": ["BTC"], "Ether": ["ETH"], "Ten coins": list(cws.COINS)}
+    baskets = {name: [coin] for coin, name in CALL_COINS.items()}
+    baskets["Ten coins"] = list(cws.COINS)
     result = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "from": str(close.index[0].date()), "to": str(close.index[-1].date()),
-              "split": str(split.date()), "unleveraged": {}, "leveraged": {}}
+              "split": str(split.date()), "unleveraged": {}, "leveraged": {},
+              "coin_names": CALL_COINS, "max_leverage": MAX_LEVERAGE}
     print(f"weekly, {result['from']} to {result['to']}; halves split at {result['split']}; before costs")
     for basket, coins in baskets.items():
         print(f"\n=== {basket} ===")
@@ -148,8 +160,8 @@ def main() -> int:
     print(f"{'coin':<5} {'side':<40} {'lev':>4} {'weeks':>6} {'ahead':>6} {'liquidated':>11} "
           f"{'avg week':>9} {'total':>8}")
     result["calls"] = {}
-    names = {"BTC": "Bitcoin", "ETH": "Ether"}
-    for coin in ("BTC", "ETH"):
+    names = CALL_COINS
+    for coin in CALL_COINS:
         daily = ohlc(coin, refresh)
         result["leveraged"][coin] = {}
         result["calls"][coin] = {}

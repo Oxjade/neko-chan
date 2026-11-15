@@ -210,13 +210,30 @@ class WeeklyCallsTests(unittest.TestCase):
     def test_real_evidence_file_has_the_expected_shape(self):
         import weekly_calls as wc
         config = wc.calls_config()
-        for coin in wc.COINS:
+        for coin in config:
             for side in ("long", "short"):
                 c = config[coin][side]
                 self.assertIn("allowed", c)
-                self.assertIn(f"{c['suggested_leverage']}x", c["by_leverage"])
-                self.assertLessEqual(c["by_leverage"][f"{c['suggested_leverage']}x"]["liquidated"], 0.02)
+                if c["allowed"]:        # a called side always has a tested, rarely-liquidated leverage
+                    self.assertIn(f"{c['suggested_leverage']}x", c["by_leverage"])
+                    self.assertLessEqual(c["by_leverage"][f"{c['suggested_leverage']}x"]["liquidated"], 0.02)
         self.assertTrue(config["BTC"]["long"]["allowed"])
+        self.assertFalse(config["BTC"]["short"]["allowed"])
+        self.assertEqual(set(config), {"BTC", "ETH", "SOL", "SUI"})
+
+    def test_preview_uses_todays_mood_and_live_price(self):
+        import weekly_calls as wc
+        mood = {"today": {"value": 10, "label": "Extreme Fear", "date": "2026-11-15"}}
+        live = {"BTC": {"price": 90.0}, "ETH": {"price": 90.0}}
+        closes = self.closes(1, 1)
+        closes[3]["close"] = 100.0                       # four weeks before the coming week's end
+        with mock.patch.object(wc, "sunday_closes", lambda coin: closes):
+            out = wc.preview(CONFIG, mood, live)
+        by = {c["coin"]: c for c in out["coins"]}
+        self.assertEqual((by["ETH"]["side"], by["ETH"]["leverage"]), ("short", 3))
+        self.assertEqual((by["BTC"]["side"], by["BTC"]["skipped"]), (None, True))     # short Bitcoin is not called
+        self.assertAlmostEqual(by["ETH"]["four_week_change_pct"], -10.0)
+        self.assertIsNone(wc.preview(CONFIG, {}, live))
 
     EXITS = {"stop": 1.0, "optional_target": 3.0, "with": None, "holding": None, "by_call": {}}
 
