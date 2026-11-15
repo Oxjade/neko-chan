@@ -1,0 +1,80 @@
+{
+ "generated_at": "2026-11-15T10:20:50+00:00",
+ "coin": "BTC",
+ "rule": "In when mood and 4 weeks agree",
+ "stake_usd": 18.0,
+ "from": "2020-10-12",
+ "to": "2026-10-19",
+ "years": 6.017796030116359,
+ "maintenance_margin": 0.0125,
+ "fee_per_side": 0.00045,
+ "funding_per_day": 0.0003,
+ "by_leverage": {
+  "1x": {
+   "weeks": 125,
+   "lost_whole_stake": 0.0,
+   "weeks_with_a_gain": 0.576,
+   "average_per_week": 0.4416345916780216,
+   "typical_week": 0.13019685382470758,
+   "best_week": 4.60510348493259,
+   "total": 55.2043239597527,
+   "put_in": 2250.0,
+   "per_year": 9.173511977388387
+  },
+  "3x": {
+   "weeks": 125,
+   "lost_whole_stake": 0.0,
+   "weeks_with_a_gain": 0.552,
+   "average_per_week": 1.2115037750340645,
+   "typical_week": 0.2771905614741227,
+   "best_week": 13.701910454797769,
+   "total": 151.43797187925807,
+   "put_in": 2250.0,
+   "per_year": 25.165022397133306
+  },
+  "5x": {
+   "weeks": 125,
+   "lost_whole_stake": 0.024,
+   "weeks_with_a_gain": 0.552,
+   "average_per_week": 1.8640590483625217,
+   "typical_week": 0.46198426912353785,
+   "best_week": 22.83651742466295,
+   "total": 233.0073810453152,
+   "put_in": 2250.0,
+   "per_year": 38.71972062183866
+  },
+  "10x": {
+   "weeks": 125,
+   "lost_whole_stake": 0.16,
+   "weeks_with_a_gain": 0.536,
+   "average_per_week": 2.8558292058647856,
+   "typical_week": 0.7799785369343697,
+   "best_week": 45.6730348493259,
+   "total": 356.9786507330982,
+   "put_in": 2250.0,
+   "per_year": 59.32049689729942
+  },
+  "20x": {
+   "weeks": 125,
+   "lost_whole_stake": 0.496,
+   "weeks_with_a_gain": 0.408,
+   "average_per_week": 2.109953311666331,
+   "typical_week": -9.720561417188547,
+   "best_week": 91.3460696986518,
+   "total": 263.7441639582914,
+   "put_in": 2250.0,
+   "per_year": 43.82736846486166
+  },
+  "30x": {
+   "weeks": 125,
+   "lost_whole_stake": 0.704,
+   "weeks_with_a_gain": 0.28,
+   "average_per_week": -0.5639292476877266,
+   "typical_week": -18.0,
+   "best_week": 137.0191045479777,
+   "total": -70.49115596096583,
+   "put_in": 2250.0,
+   "per_year": -11.713782854751031
+  }
+ }
+}
