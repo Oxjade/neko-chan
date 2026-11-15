@@ -27,6 +27,7 @@ recording it finds:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -56,7 +57,9 @@ import weekly_calls  # noqa: E402
 STAKE = 18.0
 CHARTS = (("BTC", "4h"), ("ETH", "1h"), ("xyz:NVDA", "1d"))
 BOOKS = ("ETH", "xyz:NVDA")
-WEIGHT_PER_MINUTE = 900          # Hyperliquid allows 1200 per IP; leave room for anything else running
+# Hyperliquid allows 1200 "weight" a minute per IP; leave room for anything else running.
+# Set NEKO_PARITY_WEIGHT lower when the app is open on the same connection.
+WEIGHT_PER_MINUTE = float(os.getenv("NEKO_PARITY_WEIGHT", "900"))
 
 
 def canonical(payload: dict) -> str:

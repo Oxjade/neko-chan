@@ -111,12 +111,15 @@ the same responses through the TypeScript core and compares every field:
 numbers to 1e-9, everything else exactly.
 
 ```
-../.venv/bin/python tests/parity/make_fixtures.py     # about four minutes, 15 MB, git-ignored
+../.venv/bin/python tests/parity/make_fixtures.py            # about four minutes, 15 MB, git-ignored
+../.venv/bin/python tests/parity/make_fixtures.py monday     # a second moment, kept beside the first
 npm test
 ```
 
-Without the recording the parity test is skipped. Record again and re-run it
-after any change to a rule, in Python or here.
+Without a recording the parity test is skipped; with several, each is
+checked. Record again and re-run it after any change to a rule, in Python or
+here. A recording made on a Monday is worth having: the entry price then comes
+from the live price instead of a closed candle.
 
 ## Deploy on Vercel
 
@@ -161,8 +164,8 @@ request for most calls) and the five files of the site itself:
 | Load | Requests | Downloaded |
 | --- | --- | --- |
 | Week page, first visit | 17 | 0.35 MB |
-| Basic terminal, first visit, until the screen is drawn | 20 | 0.37 MB |
-| ... then its chart and the dashboard's 8 price histories, in the background | 34 in all | 4.3 MB in all |
+| Basic terminal, first visit, until the screen is drawn (about 2 seconds) | 19 | 0.37 MB |
+| ... then its chart and the dashboard's 8 price histories, in the background | 32 in all | 4.3 MB in all |
 | Advanced terminal, first visit, until all 30 worksheet markets are in (about 3 minutes) | 107 | 14 MB, of which 12.9 MB is price history downloaded once |
 | Advanced terminal, later visit | 13 | 0.2 MB |
 
