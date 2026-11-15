@@ -279,8 +279,8 @@ export const tradeColumns = [
 // ---- setup notice and sign-in, shared by the console and the desk -----------
 
 const SETUP_HELP = {
-  WEB_OPERATOR_PASSWORD: "the password for the console and the desk",
-  TG_VAULT_MASTER_KEY: "the key that encrypts stored secrets, needed to create bots",
+  WEB_OPERATOR_PASSWORD: "the sign-in password (NEKO_PASSWORD also works)",
+  TG_VAULT_MASTER_KEY: "the secret key; starting the app with service/start_web.py creates it for you",
 };
 
 export function setupNotice(missing) {

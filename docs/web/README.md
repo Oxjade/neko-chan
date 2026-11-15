@@ -15,21 +15,26 @@ It is paper trading only. The console cannot switch a bot to live trading and
 
 ## Run it
 
+Only a sign-in password is required:
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r service/requirements.txt
-export WEB_OPERATOR_PASSWORD='a long random password'
-export TG_VAULT_MASTER_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-python service/start_web.py          # http://localhost:8000
+NEKO_PASSWORD='a long random password' python service/start_web.py     # http://localhost:8000
 ```
 
-Keep `TG_VAULT_MASTER_KEY` somewhere safe: stored AI keys cannot be read without it.
+The app keeps its database and a secret key in `service/data` (or
+`NEKO_DATA_DIR`). The key is created on first start; back it up with the
+database, because stored AI keys cannot be read without it.
 
-Container: `docker build -f Dockerfile.web -t neko-web .` then run with the two
-variables above and a volume on `/data`. Put it behind HTTPS before exposing it.
+Container: the repository's default `Dockerfile` is the web app. Build it,
+set `NEKO_PASSWORD`, mount a volume at `/data`, expose port 8000 and put it
+behind HTTPS. The server needs to reach `api.hyperliquid.xyz`,
+`api.alternative.me` and `www.ecb.europa.eu`.
 
-Do not run it next to the Telegram master bot unless `WEB_MANAGE_AGENTS=0`:
-each has its own agent pool and two pools start two agents per bot.
+No Telegram is involved. A few internal settings still carry `TG_` names from
+the older bot code; `start_web.py` fills them in. Do not run the old Telegram
+master bot next to the web app unless `WEB_MANAGE_AGENTS=0`.
 
 ## The desk
 

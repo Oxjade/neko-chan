@@ -6,6 +6,31 @@
 
 </div>
 
+## Web app
+
+Neko runs as a web app. Start it with one setting, a sign-in password:
+
+```bash
+pip install -r service/requirements.txt
+NEKO_PASSWORD='a long password' python service/start_web.py     # http://localhost:8000
+```
+
+or build the default `Dockerfile`, set `NEKO_PASSWORD`, and mount a volume at `/data`.
+
+| Page | What it is for |
+|---|---|
+| `/week` | The week's calls on perps for Bitcoin and Ether: long, short or stay out, with a suggested leverage, the steps to take and a week-by-week scoreboard |
+| `/desk` | Signals for a watchlist across crypto, stocks, forex and commodities, with each market's record |
+| `/weekly` | Weekly forex planner: the odds and size for your own trade idea |
+| `/console` | Paper bots, goals and the daily email |
+| `/` | Public paper-trading record |
+
+Details, tests and what the research found: `docs/web/README.md`.
+
+The sections below describe the older Telegram bot stack (`Dockerfile.telegram`).
+
+---
+
 Neko is a self-contained AI trading platform in three layers:
 
 1. **Paper-trading platform** — real market data (Hyperliquid, yfinance, Alpha Vantage, Polymarket) with simulated capital, fees, stops, leverage, funding, and honest statistics (F1, bootstrap CIs, walk-forward).
