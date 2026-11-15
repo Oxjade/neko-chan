@@ -31,6 +31,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import desk
+import market_data
 import web_core
 import web_email
 
@@ -122,6 +124,8 @@ def _write_conn() -> sqlite3.Connection:
         " bot_id INTEGER PRIMARY KEY, target_usd REAL NOT NULL,"
         " deadline TEXT NOT NULL, created_at TEXT NOT NULL);"
         "CREATE TABLE IF NOT EXISTS web_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS web_watchlist ("
+        " symbol TEXT PRIMARY KEY, added_at TEXT NOT NULL);"
     )
     return conn
 
@@ -175,6 +179,81 @@ def _report_loop() -> None:
             _send_daily_report()
         except Exception as exc:  # keep the loop alive; surface the reason in the log
             sys.stderr.write(f"[web] daily report failed: {exc}\n")
+
+
+# ------------------------------------------------------------------- the desk
+
+DESK_BOT_NAME = "Desk signals"
+DESK_CYCLE_SECONDS = 300
+
+
+def _watchlist() -> list[str]:
+    conn = _write_conn()
+    try:
+        return [r["symbol"] for r in
+                conn.execute("SELECT symbol FROM web_watchlist ORDER BY added_at").fetchall()]
+    finally:
+        conn.close()
+
+
+def _desk_bot_id(create: bool = False) -> int | None:
+    """The paper account that trades the desk's signals."""
+    conn = _write_conn()
+    try:
+        row = conn.execute("SELECT value FROM web_kv WHERE key = 'desk_bot_id'").fetchone()
+        if row and web_core.get_bot(int(row["value"])):
+            return int(row["value"])
+        if not create:
+            return None
+        svc = _svc()
+        owner = _operator_id()
+        svc["registry"].upsert_user(owner, "web-operator")
+        bot = svc["registry"].create_bot(
+            owner, DESK_BOT_NAME, None, None, agent_name=f"desk-{secrets.token_hex(4)}",
+            platform_token="", symbols={"perps": 1}, leverage=1.0, interval_sec=300,
+            risk_profile="balanced")
+        # paused + not running: the agent pool never spawns a process for it;
+        # the desk loop in this server trades it instead.
+        svc["registry"].update_bot(bot["id"], trading_mode="paper", trader_type="trend",
+                                   onboarding_complete=1, paused=1, is_running=0)
+        svc["paper"].ensure_portfolio(bot["id"])
+        conn.execute("INSERT INTO web_kv (key, value) VALUES ('desk_bot_id', ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(bot["id"]),))
+        conn.commit()
+        return bot["id"]
+    finally:
+        conn.close()
+
+
+def _desk_cycle() -> list[str]:
+    """Paper-trade the watchlist's signals once. Returns what it did."""
+    symbols = _watchlist()
+    bot_id = _desk_bot_id()
+    if not symbols or bot_id is None:
+        return []
+    svc = _svc()
+    agent_dir = str(REPO_ROOT / "service" / "agent")
+    if agent_dir not in sys.path:
+        sys.path.append(agent_dir)
+    import trend_agent
+    from paper_gateway import PaperGateway
+    rows = desk.watchlist_signals(symbols)
+    usable = [r["symbol"] for r in rows if not r.get("error")]
+    if not usable:
+        return []
+    return trend_agent.run_cycle(
+        bot_id, usable, PaperGateway(svc["paper"]), trend_agent.Journal(bot_id),
+        fetch_bars=desk.bars_for_agent, fetch_mids=desk.mids_for_agent,
+        allow=desk.allowed(rows))
+
+
+def _desk_loop() -> None:
+    while True:
+        time.sleep(DESK_CYCLE_SECONDS)
+        try:
+            _desk_cycle()
+        except Exception as exc:  # a data outage must not stop the loop
+            sys.stderr.write(f"[web] desk cycle failed: {exc}\n")
 
 
 # -------------------------------------------- registry / agent pool (lazy)
@@ -297,6 +376,10 @@ class AIKeyBody(BaseModel):
     api_key: str = Field(min_length=8, max_length=400)
     model: str | None = Field(default=None, max_length=120)
     base_url: str | None = Field(default=None, max_length=300)
+
+
+class WatchBody(BaseModel):
+    symbol: str = Field(min_length=1, max_length=40)
 
 
 class WaitlistBody(BaseModel):
@@ -491,6 +574,9 @@ def register_web_routes(app: FastAPI) -> None:
         if (bot.get("trading_mode") or "paper") != "paper":
             raise HTTPException(status_code=409,
                                 detail="This bot trades live. The web console only runs paper bots.")
+        if bot_id == _desk_bot_id():
+            raise HTTPException(status_code=409,
+                                detail="This account is traded by the desk. Manage it from the desk page.")
         svc = _svc()
         svc["registry"].update_bot(bot_id, paused=0, is_running=1)
         if _manages_agents():
@@ -563,6 +649,78 @@ def register_web_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=502, detail=f"The mail server refused: {exc}")
         return {"sent_to": web_email.email_settings()["to"]}
 
+    # ---- desk -------------------------------------------------------------
+
+    @app.get("/api/web/desk")
+    def desk_state(request: Request):
+        _require_operator(request)
+        symbols = _watchlist()
+        try:
+            rows = desk.watchlist_signals(symbols) if symbols else []
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        bot_id = _desk_bot_id()
+        paper = None
+        if bot_id is not None:
+            report = web_core.bot_report(bot_id)
+            paper = {"bot_id": bot_id, "performance": report["performance"],
+                     "account": report["account"], "positions": report["positions"],
+                     "trades": report["trades"][:50]}
+        return {"watchlist": rows, "lessons": desk.lessons(rows), "paper": paper,
+                "max_watchlist": desk.MAX_WATCHLIST, "setup_missing": _setup_missing(),
+                "rule": {"cost_pct": desk.COST_PCT, "stop_atr": desk.STOP_ATR}}
+
+    @app.get("/api/web/desk/markets")
+    def desk_markets(request: Request):
+        _require_operator(request)
+        try:
+            cat = market_data.catalogue()
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        rows = sorted(cat.values(), key=lambda r: (-r["day_volume_usd"], r["label"]))
+        return {"markets": [{"symbol": r["symbol"], "label": r["label"], "class": r["class"],
+                             "price": r["price"]} for r in rows]}
+
+    @app.post("/api/web/desk/watchlist")
+    def desk_watch(body: WatchBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        symbol = body.symbol.strip()
+        try:
+            known = symbol in market_data.catalogue()
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        if not known:
+            raise HTTPException(status_code=422, detail="That market is not available.")
+        if len(_watchlist()) >= desk.MAX_WATCHLIST and symbol not in _watchlist():
+            raise HTTPException(status_code=409,
+                                detail=f"The watchlist holds {desk.MAX_WATCHLIST} markets at most.")
+        try:
+            market_data.candles(symbol)      # refuse a market with no usable history
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        _desk_bot_id(create=True)
+        conn = _write_conn()
+        try:
+            conn.execute("INSERT OR IGNORE INTO web_watchlist (symbol, added_at) VALUES (?, ?)",
+                         (symbol, web_core.utcnow()))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"watching": symbol}
+
+    @app.post("/api/web/desk/watchlist/remove")
+    def desk_unwatch(body: WatchBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        conn = _write_conn()
+        try:
+            conn.execute("DELETE FROM web_watchlist WHERE symbol = ?", (body.symbol.strip(),))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"removed": body.symbol.strip()}
+
     @app.get("/api/web/console/waitlist")
     async def console_waitlist(request: Request):
         _require_operator(request)
@@ -577,6 +735,7 @@ def register_web_routes(app: FastAPI) -> None:
         return {"total": total, "entries": [dict(r) for r in rows]}
 
     threading.Thread(target=_report_loop, daemon=True, name="web-daily-report").start()
+    threading.Thread(target=_desk_loop, daemon=True, name="web-desk").start()
 
     # ---- pages ------------------------------------------------------------
 
@@ -588,6 +747,10 @@ def register_web_routes(app: FastAPI) -> None:
     @app.get("/", include_in_schema=False)
     async def public_page():
         return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/desk", include_in_schema=False)
+    async def desk_page():
+        return FileResponse(WEB_DIR / "desk.html", headers={"Cache-Control": "no-store"})
 
     @app.get("/console", include_in_schema=False)
     async def console_page():

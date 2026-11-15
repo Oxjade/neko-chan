@@ -5,6 +5,7 @@ The web app replaces Telegram as the interface. It has two sides:
 | Page | Who it is for | What it does |
 |---|---|---|
 | `/` | Clients and the public | Shows the paper-trading record: win rate against the break-even it needs, results after fees, equity line, recent trades, the four go-live checks, and the engine replay. Collects emails to notify. |
+| `/desk` | You, in a second tab | Signals for a watchlist you choose across crypto, stocks, indices, forex and commodities. Each market shows the rule's past record there; every unmuted signal is paper-traded automatically; sides that have lost money on a market are muted. Works out the position size for your account and risk. |
 | `/console` | You, the operator | Create, start and pause paper bots; see positions, decisions, closed trades and the go-live checks per bot; save the AI model key; choose which bots are public. |
 
 It is paper trading only. The console cannot switch a bot to live trading and
@@ -27,6 +28,29 @@ variables above and a volume on `/data`. Put it behind HTTPS before exposing it.
 
 Do not run it next to the Telegram master bot unless `WEB_MANAGE_AGENTS=0`:
 each has its own agent pool and two pools start two agents per bot.
+
+## The desk
+
+One rule makes every signal: on 4-hour bars, long when the 10-day average
+crosses above the 40-day average, short on the opposite cross, stop 4 ATR from
+entry. Prices come from Hyperliquid (crypto, plus the stock, index, forex and
+commodity perpetuals on its xyz venue), so the server needs
+`api.hyperliquid.xyz` reachable.
+
+- **Record.** The rule is replayed on each market's own history and shown
+  beside the signal. `service/server/tests/test_desk.py` checks the replay
+  against `research/scripts/strategy_search.py` trade for trade.
+- **Muting.** A side (long or short) is muted on a market once it has five or
+  more past trades there with a negative total after costs. The replay is
+  redone as bars arrive, so a muted side comes back if it starts working.
+- **Paper account.** A "Desk signals" paper account trades every unmuted
+  fresh cross on the watchlist, equal weight, no leverage.
+
+What the tests found: on crypto the rule made money over 2.3 years. On the
+stock, index, forex and commodity markets it lost over the one year of history
+available (268 trades, 18% won). A version with a target as close as the stop
+wins about half the time and nets roughly zero. Treat signals outside crypto
+as unproven.
 
 ## Trading styles
 
@@ -96,4 +120,5 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/server/web_core.py` trade pairing, statistics, go-live checks
 - `service/server/web_email.py` goals and the daily email
 - `service/agent/trend_agent.py` the slow trend agent
+- `service/server/desk.py`, `market_data.py` desk signals, records, muting; market data
 - `service/server/tests/test_web.py` tests

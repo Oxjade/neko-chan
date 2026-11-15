@@ -118,8 +118,11 @@ class Journal:
 
 
 def run_cycle(bot_id: int, symbols: list[str], gateway, journal: Journal,
-              fetch_bars=closed_bars, fetch_mids=mid_prices) -> list[str]:
-    """One pass over the watchlist. Returns a line per action taken."""
+              fetch_bars=closed_bars, fetch_mids=mid_prices, allow=None) -> list[str]:
+    """One pass over the watchlist. Returns a line per action taken.
+
+    allow(symbol, direction) -> bool lets the caller veto new entries, for
+    example a direction whose record on that market is negative."""
     store = gateway.store
     mids = fetch_mids()
     prices = {s: mids[s] for s in symbols if s in mids}
@@ -157,7 +160,9 @@ def run_cycle(bot_id: int, symbols: list[str], gateway, journal: Journal,
             else:
                 notes.append(f"{sym}: holding {pos['direction']}")
                 continue
-        if pos is None and sig["crossed"] and sig["atr"]:
+        if pos is None and sig["crossed"] and allow is not None and not allow(sym, want):
+            notes.append(f"{sym}: {want} signal skipped, that direction is muted on this market")
+        elif pos is None and sig["crossed"] and sig["atr"]:
             # keep 2% back so entry and exit fees never bounce the order
             notional = equity / len(symbols) * FEE_RESERVE
             qty = notional / price

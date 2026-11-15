@@ -140,7 +140,7 @@ export function gauge(p) {
   root.append(track, h("div", { class: "gauge-ends", "aria-hidden": "true" },
     h("span", null, "0%"), h("span", null, "100%")));
   return h("div", { class: "stack" },
-    h("p", { class: "verdict" }, VERDICT_TEXT[verdict]),
+    h("p", { class: "verdict" }, p.verdictText || VERDICT_TEXT[verdict]),
     root,
     p.trades
       ? h("p", { class: "soft small" },
@@ -149,8 +149,9 @@ export function gauge(p) {
       : null);
 }
 
-export function gaugeFromPerformance(perf) {
+export function gaugeFromPerformance(perf, verdictText) {
   return gauge({
+    verdictText,
     trades: perf.trades, wins: perf.wins, winRate: perf.win_rate,
     low: perf.win_rate_low, high: perf.win_rate_high, breakeven: perf.breakeven_win_rate,
   });
@@ -244,4 +245,82 @@ export function table(columns, rows, emptyText) {
 
 export function directionWord(direction) {
   return direction === "short" ? "Short" : "Long";
+}
+
+export function marketLabel(symbol) {
+  return String(symbol || "").split(":").pop();
+}
+
+export const positionColumns = [
+  { label: "Market", cell: (p) => marketLabel(p.symbol) },
+  { label: "Side", cell: (p) => directionWord(p.direction) },
+  { label: "Entry", num: true, cell: (p) => fmt.price(p.entry) },
+  { label: "Last price", num: true, cell: (p) => fmt.price(p.mark) },
+  { label: "Stop", num: true, cell: (p) => fmt.price(p.stop) },
+  { label: "Target", num: true, cell: (p) => fmt.price(p.target) },
+  { label: "Leverage", num: true, cell: (p) => `${p.leverage}x` },
+  { label: "Unrealised", num: true, cell: (p) => fmt.signedUsd(p.unrealized),
+    cls: (p) => tone(p.unrealized) },
+];
+
+export const tradeColumns = [
+  { label: "Closed", cell: (t) => fmt.when(t.closed_at) },
+  { label: "Market", cell: (t) => marketLabel(t.symbol) },
+  { label: "Side", cell: (t) => directionWord(t.direction) },
+  { label: "Entry", num: true, cell: (t) => fmt.price(t.entry) },
+  { label: "Exit", num: true, cell: (t) => fmt.price(t.exit) },
+  { label: "Size", num: true, cell: (t) => fmt.usd(t.notional) },
+  { label: "Leverage", num: true, cell: (t) => `${t.leverage}x` },
+  { label: "Before fees", num: true, cell: (t) => fmt.signedUsd(t.gross), cls: (t) => tone(t.gross) },
+  { label: "Fees", num: true, cell: (t) => fmt.usd(t.fees) },
+  { label: "After fees", num: true, cell: (t) => fmt.signedUsd(t.net), cls: (t) => tone(t.net) },
+];
+
+// ---- setup notice and sign-in, shared by the console and the desk -----------
+
+const SETUP_HELP = {
+  WEB_OPERATOR_PASSWORD: "the password for the console and the desk",
+  TG_VAULT_MASTER_KEY: "the key that encrypts stored secrets, needed to create bots",
+};
+
+export function setupNotice(missing) {
+  if (!missing || !missing.length) return null;
+  return h("div", { class: "notice stack" },
+    h("p", null, "Finish the server setup. Set these environment variables and restart:"),
+    h("ul", null, missing.map((name) =>
+      h("li", null, h("code", null, name), `: ${SETUP_HELP[name] || ""}`))));
+}
+
+export function signInForm(missing, onSignedIn) {
+  const error = h("p", { class: "loss small", role: "alert" });
+  const password = h("input", { type: "password", name: "password",
+                                autocomplete: "current-password", required: true });
+  const button = h("button", { class: "button", type: "submit" }, "Sign in");
+  const off = (missing || []).includes("WEB_OPERATOR_PASSWORD");
+  button.disabled = off;
+  const form = h("form", { class: "panel stack", novalidate: true,
+    onsubmit: async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      if (!password.value) {
+        error.textContent = "Enter the console password.";
+        password.focus();
+        return;
+      }
+      button.disabled = true;
+      try {
+        await api("/api/web/login", { password: password.value });
+        await onSignedIn();
+      } catch (err) {
+        error.textContent = err.message;
+        button.disabled = false;
+        password.select();
+      }
+    } },
+    h("h1", { style: "font-size:var(--t-h2)" }, "Sign in"),
+    off ? setupNotice(["WEB_OPERATOR_PASSWORD"]) : null,
+    h("label", { class: "field" }, h("span", null, "Console password"), password),
+    error, button);
+  if (!off) queueMicrotask(() => password.focus());
+  return h("div", { class: "signin" }, form);
 }

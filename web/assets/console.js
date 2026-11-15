@@ -1,6 +1,7 @@
 import {
   api, h, replace, fmt, tone, gaugeFromPerformance, performanceFigures,
-  gateList, equityChart, table, figures, directionWord,
+  gateList, equityChart, table, figures, directionWord, setupNotice, signInForm,
+  positionColumns, tradeColumns,
 } from "/web/common.js";
 
 const app = document.getElementById("app");
@@ -20,54 +21,9 @@ const INTERVALS = [[60, "Every minute"], [120, "Every 2 minutes"], [300, "Every 
 const PROVIDERS = [["openai", "OpenAI"], ["claude", "Anthropic"], ["openrouter", "OpenRouter"],
                    ["deepseek", "DeepSeek"]];
 
-const SETUP_HELP = {
-  WEB_OPERATOR_PASSWORD: "the password for this console",
-  TG_VAULT_MASTER_KEY: "the key that encrypts stored secrets, needed to create bots",
-};
-
-function setupNotice(missing) {
-  if (!missing.length) return null;
-  return h("div", { class: "notice stack" },
-    h("p", null, "Finish the server setup. Set these environment variables and restart:"),
-    h("ul", null, missing.map((name) =>
-      h("li", null, h("code", null, name), `: ${SETUP_HELP[name] || ""}`))));
-}
-
-// ---- sign in ---------------------------------------------------------------
-
 function renderSignIn(missing) {
   signout.hidden = true;
-  const error = h("p", { class: "loss small", role: "alert" });
-  const password = h("input", { type: "password", name: "password",
-                                autocomplete: "current-password", required: true });
-  const button = h("button", { class: "button", type: "submit" }, "Sign in");
-  const off = missing.includes("WEB_OPERATOR_PASSWORD");
-  button.disabled = off;
-  const form = h("form", { class: "panel stack", novalidate: true,
-    onsubmit: async (event) => {
-      event.preventDefault();
-      error.textContent = "";
-      if (!password.value) {
-        error.textContent = "Enter the console password.";
-        password.focus();
-        return;
-      }
-      button.disabled = true;
-      try {
-        await api("/api/web/login", { password: password.value });
-        await start();
-      } catch (err) {
-        error.textContent = err.message;
-        button.disabled = false;
-        password.select();
-      }
-    } },
-    h("h1", { style: "font-size:var(--t-h2)" }, "Sign in"),
-    off ? setupNotice(["WEB_OPERATOR_PASSWORD"]) : null,
-    h("label", { class: "field" }, h("span", null, "Console password"), password),
-    error, button);
-  replace(app, h("div", { class: "signin" }, form));
-  if (!off) password.focus();
+  replace(app, signInForm(missing, start));
 }
 
 // ---- data ------------------------------------------------------------------
@@ -302,31 +258,6 @@ function goalPanel(goal) {
 }
 
 // ---- right column ----------------------------------------------------------
-
-const positionColumns = [
-  { label: "Market", cell: (p) => p.symbol },
-  { label: "Side", cell: (p) => directionWord(p.direction) },
-  { label: "Entry", num: true, cell: (p) => fmt.price(p.entry) },
-  { label: "Last price", num: true, cell: (p) => fmt.price(p.mark) },
-  { label: "Stop", num: true, cell: (p) => fmt.price(p.stop) },
-  { label: "Target", num: true, cell: (p) => fmt.price(p.target) },
-  { label: "Leverage", num: true, cell: (p) => `${p.leverage}x` },
-  { label: "Unrealised", num: true, cell: (p) => fmt.signedUsd(p.unrealized),
-    cls: (p) => tone(p.unrealized) },
-];
-
-const tradeColumns = [
-  { label: "Closed", cell: (t) => fmt.when(t.closed_at) },
-  { label: "Market", cell: (t) => t.symbol },
-  { label: "Side", cell: (t) => directionWord(t.direction) },
-  { label: "Entry", num: true, cell: (t) => fmt.price(t.entry) },
-  { label: "Exit", num: true, cell: (t) => fmt.price(t.exit) },
-  { label: "Size", num: true, cell: (t) => fmt.usd(t.notional) },
-  { label: "Leverage", num: true, cell: (t) => `${t.leverage}x` },
-  { label: "Before fees", num: true, cell: (t) => fmt.signedUsd(t.gross), cls: (t) => tone(t.gross) },
-  { label: "Fees", num: true, cell: (t) => fmt.usd(t.fees) },
-  { label: "After fees", num: true, cell: (t) => fmt.signedUsd(t.net), cls: (t) => tone(t.net) },
-];
 
 function decisionList(decisions) {
   if (!decisions.length) {

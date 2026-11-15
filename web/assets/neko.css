@@ -730,3 +730,18 @@ footer.site {
 .stack > * + .figures {
   margin-top: var(--s4);
 }
+
+/* the selected row's button in a table of choices */
+.button.quiet[aria-pressed="true"] {
+  border-color: var(--ink);
+}
+
+td .button {
+  min-height: 36px;
+  padding: var(--s1) var(--s3);
+}
+
+/* the desk is a working screen: let it use a wide window */
+body.wide {
+  --page: 1440px;
+}
