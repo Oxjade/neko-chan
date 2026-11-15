@@ -1,0 +1,522 @@
+{
+ "BTC": {
+  "long": {
+   "allowed": true,
+   "suggested_leverage": 3,
+   "first_half": {
+    "right": 0.6545454545454545,
+    "avg_pct": 3.8471240814888343,
+    "coin_weeks": 55
+   },
+   "second_half": {
+    "right": 0.5428571428571428,
+    "avg_pct": 1.5171364720608753,
+    "coin_weeks": 70
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 125,
+     "ahead": 0.576,
+     "liquidated": 0,
+     "avg_per_week": 0.024535255093223417
+    },
+    "2x": {
+     "weeks": 125,
+     "ahead": 0.552,
+     "liquidated": 0,
+     "avg_per_week": 0.04487051018644684
+    },
+    "3x": {
+     "weeks": 125,
+     "ahead": 0.552,
+     "liquidated": 0,
+     "avg_per_week": 0.06730576527967029
+    },
+    "5x": {
+     "weeks": 125,
+     "ahead": 0.552,
+     "liquidated": 0.024,
+     "avg_per_week": 0.10355883602014009
+    },
+    "7x": {
+     "weeks": 125,
+     "ahead": 0.544,
+     "liquidated": 0.088,
+     "avg_per_week": 0.11923392551405688
+    },
+    "10x": {
+     "weeks": 125,
+     "ahead": 0.536,
+     "liquidated": 0.16,
+     "avg_per_week": 0.15865717810359922
+    },
+    "20x": {
+     "weeks": 125,
+     "ahead": 0.408,
+     "liquidated": 0.496,
+     "avg_per_week": 0.11721962842590733
+    },
+    "30x": {
+     "weeks": 125,
+     "ahead": 0.28,
+     "liquidated": 0.704,
+     "avg_per_week": -0.03132940264931815
+    }
+   }
+  },
+  "short": {
+   "allowed": false,
+   "suggested_leverage": 3,
+   "first_half": {
+    "right": 0.5230769230769231,
+    "avg_pct": 0.7064438821979095,
+    "coin_weeks": 65
+   },
+   "second_half": {
+    "right": 0.4782608695652174,
+    "avg_pct": 0.008634055613443128,
+    "coin_weeks": 46
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 110,
+     "ahead": 0.5,
+     "liquidated": 0,
+     "avg_per_week": 0.002018277344955675
+    },
+    "2x": {
+     "weeks": 110,
+     "ahead": 0.5,
+     "liquidated": 0,
+     "avg_per_week": 0.00403655468991135
+    },
+    "3x": {
+     "weeks": 110,
+     "ahead": 0.5,
+     "liquidated": 0,
+     "avg_per_week": 0.006054832034867043
+    },
+    "5x": {
+     "weeks": 110,
+     "ahead": 0.5,
+     "liquidated": 0.03636363636363636,
+     "avg_per_week": -0.0002874195534480211
+    },
+    "7x": {
+     "weeks": 110,
+     "ahead": 0.5,
+     "liquidated": 0.07272727272727272,
+     "avg_per_week": 0.0009664616009592564
+    },
+    "10x": {
+     "weeks": 110,
+     "ahead": 0.4909090909090909,
+     "liquidated": 0.23636363636363636,
+     "avg_per_week": -0.01102127372934435
+    },
+    "20x": {
+     "weeks": 110,
+     "ahead": 0.35454545454545455,
+     "liquidated": 0.5909090909090909,
+     "avg_per_week": -0.14199568783265012
+    },
+    "30x": {
+     "weeks": 110,
+     "ahead": 0.21818181818181817,
+     "liquidated": 0.7818181818181819,
+     "avg_per_week": -0.2788463301152523
+    }
+   }
+  }
+ },
+ "ETH": {
+  "long": {
+   "allowed": true,
+   "suggested_leverage": 3,
+   "first_half": {
+    "right": 0.6166666666666667,
+    "avg_pct": 4.627108561722041,
+    "coin_weeks": 60
+   },
+   "second_half": {
+    "right": 0.5079365079365079,
+    "avg_pct": 2.3613183422664643,
+    "coin_weeks": 63
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 123,
+     "ahead": 0.5528455284552846,
+     "liquidated": 0,
+     "avg_per_week": 0.033776179958173246
+    },
+    "2x": {
+     "weeks": 123,
+     "ahead": 0.5447154471544715,
+     "liquidated": 0,
+     "avg_per_week": 0.0633523599163465
+    },
+    "3x": {
+     "weeks": 123,
+     "ahead": 0.5447154471544715,
+     "liquidated": 0.008130081300813009,
+     "avg_per_week": 0.09346219597114358
+    },
+    "5x": {
+     "weeks": 123,
+     "ahead": 0.5447154471544715,
+     "liquidated": 0.04878048780487805,
+     "avg_per_week": 0.14121436128434955
+    },
+    "7x": {
+     "weeks": 123,
+     "ahead": 0.5203252032520326,
+     "liquidated": 0.17073170731707318,
+     "avg_per_week": 0.13618568923801122
+    },
+    "10x": {
+     "weeks": 123,
+     "ahead": 0.4796747967479675,
+     "liquidated": 0.3170731707317073,
+     "avg_per_week": 0.14144195560299533
+    },
+    "20x": {
+     "weeks": 123,
+     "ahead": 0.24390243902439024,
+     "liquidated": 0.7479674796747967,
+     "avg_per_week": -0.11779720203924819
+    },
+    "30x": {
+     "weeks": 123,
+     "ahead": 0.17073170731707318,
+     "liquidated": 0.8292682926829268,
+     "avg_per_week": -0.21482474074942773
+    }
+   }
+  },
+  "short": {
+   "allowed": true,
+   "suggested_leverage": 3,
+   "first_half": {
+    "right": 0.5573770491803278,
+    "avg_pct": 0.48156844400629195,
+    "coin_weeks": 61
+   },
+   "second_half": {
+    "right": 0.574468085106383,
+    "avg_pct": 1.7354835049353912,
+    "coin_weeks": 47
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 107,
+     "ahead": 0.5607476635514018,
+     "liquidated": 0,
+     "avg_per_week": 0.007936937139862555
+    },
+    "2x": {
+     "weeks": 107,
+     "ahead": 0.5607476635514018,
+     "liquidated": 0,
+     "avg_per_week": 0.01587387427972511
+    },
+    "3x": {
+     "weeks": 107,
+     "ahead": 0.5607476635514018,
+     "liquidated": 0.009345794392523364,
+     "avg_per_week": 0.018361501569118092
+    },
+    "5x": {
+     "weeks": 107,
+     "ahead": 0.5607476635514018,
+     "liquidated": 0.06542056074766354,
+     "avg_per_week": 0.02092985433340022
+    },
+    "7x": {
+     "weeks": 107,
+     "ahead": 0.5514018691588785,
+     "liquidated": 0.17757009345794392,
+     "avg_per_week": 0.021084946802655217
+    },
+    "10x": {
+     "weeks": 107,
+     "ahead": 0.48598130841121495,
+     "liquidated": 0.37383177570093457,
+     "avg_per_week": -0.045724880796462225
+    },
+    "20x": {
+     "weeks": 107,
+     "ahead": 0.24299065420560748,
+     "liquidated": 0.7102803738317757,
+     "avg_per_week": -0.263070254965117
+    },
+    "30x": {
+     "weeks": 107,
+     "ahead": 0.16822429906542055,
+     "liquidated": 0.8317757009345794,
+     "avg_per_week": -0.38851681167053503
+    }
+   }
+  }
+ },
+ "SOL": {
+  "long": {
+   "allowed": true,
+   "suggested_leverage": 2,
+   "first_half": {
+    "right": 0.5957446808510638,
+    "avg_pct": 11.327707986862801,
+    "coin_weeks": 47
+   },
+   "second_half": {
+    "right": 0.5230769230769231,
+    "avg_pct": 3.243881154652895,
+    "coin_weeks": 65
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 112,
+     "ahead": 0.5446428571428571,
+     "liquidated": 0,
+     "avg_per_week": 0.06545991792729608
+    },
+    "2x": {
+     "weeks": 112,
+     "ahead": 0.5178571428571429,
+     "liquidated": 0,
+     "avg_per_week": 0.12671983585459215
+    },
+    "3x": {
+     "weeks": 112,
+     "ahead": 0.5089285714285714,
+     "liquidated": 0.05357142857142857,
+     "avg_per_week": 0.15309839883239787
+    },
+    "5x": {
+     "weeks": 112,
+     "ahead": 0.4732142857142857,
+     "liquidated": 0.14285714285714285,
+     "avg_per_week": 0.1925002283349109
+    },
+    "7x": {
+     "weeks": 112,
+     "ahead": 0.4375,
+     "liquidated": 0.3482142857142857,
+     "avg_per_week": 0.16849427318017848
+    },
+    "10x": {
+     "weeks": 112,
+     "ahead": 0.3392857142857143,
+     "liquidated": 0.5714285714285714,
+     "avg_per_week": 0.08436791761086605
+    },
+    "20x": {
+     "weeks": 112,
+     "ahead": 0.10714285714285714,
+     "liquidated": 0.8839285714285714,
+     "avg_per_week": -0.43602969395833463
+    },
+    "30x": {
+     "weeks": 112,
+     "ahead": 0.10714285714285714,
+     "liquidated": 0.8839285714285714,
+     "avg_per_week": -0.43602969395833463
+    }
+   }
+  },
+  "short": {
+   "allowed": true,
+   "suggested_leverage": 1,
+   "first_half": {
+    "right": 0.6031746031746031,
+    "avg_pct": 1.4020428684392725,
+    "coin_weeks": 63
+   },
+   "second_half": {
+    "right": 0.5319148936170213,
+    "avg_pct": 0.31509235592558177,
+    "coin_weeks": 47
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 109,
+     "ahead": 0.5688073394495413,
+     "liquidated": 0,
+     "avg_per_week": 0.006805469790944164
+    },
+    "2x": {
+     "weeks": 109,
+     "ahead": 0.5688073394495413,
+     "liquidated": 0.027522935779816515,
+     "avg_per_week": 0.006196116099449158
+    },
+    "3x": {
+     "weeks": 109,
+     "ahead": 0.5688073394495413,
+     "liquidated": 0.045871559633027525,
+     "avg_per_week": 0.018259298992829517
+    },
+    "5x": {
+     "weeks": 109,
+     "ahead": 0.5504587155963303,
+     "liquidated": 0.1651376146788991,
+     "avg_per_week": 0.029181987771609155
+    },
+    "7x": {
+     "weeks": 109,
+     "ahead": 0.5137614678899083,
+     "liquidated": 0.29357798165137616,
+     "avg_per_week": 0.02439974281607961
+    },
+    "10x": {
+     "weeks": 109,
+     "ahead": 0.42201834862385323,
+     "liquidated": 0.5045871559633027,
+     "avg_per_week": -0.07014515399491335
+    },
+    "20x": {
+     "weeks": 109,
+     "ahead": 0.1743119266055046,
+     "liquidated": 0.8256880733944955,
+     "avg_per_week": -0.3121619099525941
+    },
+    "30x": {
+     "weeks": 109,
+     "ahead": 0.1743119266055046,
+     "liquidated": 0.8256880733944955,
+     "avg_per_week": -0.3121619099525941
+    }
+   }
+  }
+ },
+ "SUI": {
+  "long": {
+   "allowed": false,
+   "suggested_leverage": 1,
+   "first_half": {
+    "right": 0.5609756097560976,
+    "avg_pct": 5.807260030505617,
+    "coin_weeks": 41
+   },
+   "second_half": {
+    "right": 0.3333333333333333,
+    "avg_pct": 0.32406719709295106,
+    "coin_weeks": 21
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 62,
+     "ahead": 0.4838709677419355,
+     "liquidated": 0,
+     "avg_per_week": 0.038674992699577256
+    },
+    "2x": {
+     "weeks": 62,
+     "ahead": 0.4838709677419355,
+     "liquidated": 0.03225806451612903,
+     "avg_per_week": 0.05670992292279566
+    },
+    "3x": {
+     "weeks": 62,
+     "ahead": 0.4838709677419355,
+     "liquidated": 0.03225806451612903,
+     "avg_per_week": 0.101193916642258
+    },
+    "5x": {
+     "weeks": 62,
+     "ahead": 0.45161290322580644,
+     "liquidated": 0.3387096774193548,
+     "avg_per_week": 0.027820915800931368
+    },
+    "7x": {
+     "weeks": 62,
+     "ahead": 0.3709677419354839,
+     "liquidated": 0.5967741935483871,
+     "avg_per_week": -0.0794490726961867
+    },
+    "10x": {
+     "weeks": 62,
+     "ahead": 0.24193548387096775,
+     "liquidated": 0.7580645161290323,
+     "avg_per_week": -0.33918280442439075
+    },
+    "20x": {
+     "weeks": 62,
+     "ahead": 0.24193548387096775,
+     "liquidated": 0.7580645161290323,
+     "avg_per_week": -0.33918280442439075
+    },
+    "30x": {
+     "weeks": 62,
+     "ahead": 0.24193548387096775,
+     "liquidated": 0.7580645161290323,
+     "avg_per_week": -0.33918280442439075
+    }
+   }
+  },
+  "short": {
+   "allowed": false,
+   "suggested_leverage": null,
+   "first_half": {
+    "right": 0.3333333333333333,
+    "avg_pct": -6.773664896317583,
+    "coin_weeks": 15
+   },
+   "second_half": {
+    "right": 0.5434782608695652,
+    "avg_pct": 0.17331274194738058,
+    "coin_weeks": 46
+   },
+   "by_leverage": {
+    "1x": {
+     "weeks": 60,
+     "ahead": 0.48333333333333334,
+     "liquidated": 0,
+     "avg_per_week": -0.01907664921125091
+    },
+    "2x": {
+     "weeks": 60,
+     "ahead": 0.48333333333333334,
+     "liquidated": 0.03333333333333333,
+     "avg_per_week": -0.03156081175403035
+    },
+    "3x": {
+     "weeks": 60,
+     "ahead": 0.48333333333333334,
+     "liquidated": 0.06666666666666667,
+     "avg_per_week": -0.04100589727601358
+    },
+    "5x": {
+     "weeks": 60,
+     "ahead": 0.48333333333333334,
+     "liquidated": 0.3,
+     "avg_per_week": -0.10974554181016963
+    },
+    "7x": {
+     "weeks": 60,
+     "ahead": 0.45,
+     "liquidated": 0.4166666666666667,
+     "avg_per_week": -0.122045072414744
+    },
+    "10x": {
+     "weeks": 60,
+     "ahead": 0.31666666666666665,
+     "liquidated": 0.65,
+     "avg_per_week": -0.30062612070752515
+    },
+    "20x": {
+     "weeks": 60,
+     "ahead": 0.31666666666666665,
+     "liquidated": 0.65,
+     "avg_per_week": -0.30062612070752515
+    },
+    "30x": {
+     "weeks": 60,
+     "ahead": 0.31666666666666665,
+     "liquidated": 0.65,
+     "avg_per_week": -0.30062612070752515
+    }
+   }
+  }
+ }
+}
