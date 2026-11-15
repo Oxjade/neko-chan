@@ -5,6 +5,7 @@ The web app replaces Telegram as the interface. It has two sides:
 | Page | Who it is for | What it does |
 |---|---|---|
 | `/` | Clients and the public | Shows the paper-trading record: win rate against the break-even it needs, results after fees, equity line, recent trades, the four go-live checks, and the engine replay. Collects emails to notify. |
+| `/week` | Someone new to trading | One plain answer for the week: hold Bitcoin and Ether, or stay in cash. Shows the two checks behind it, the steps to take, the amounts for your money, and how the rule has done. No shorting, no leverage. |
 | `/desk` | You, in a second tab | Signals for a watchlist you choose across crypto, stocks, indices, forex and commodities. Each market shows the rule's past record there; every unmuted signal is paper-traded automatically; sides that have lost money on a market are muted. Works out the position size for your account and risk. |
 | `/weekly` | You, planning the week | For forex. You enter a pair, direction, stop and target; it shows what a plan of that shape has done in every week since 1999, the win rate it needs, the pair's normal weekly range, and the lot size for your risk. Includes a live TradingView chart. |
 | `/console` | You, the operator | Create, start and pause paper bots; see positions, decisions, closed trades and the go-live checks per bot; save the AI model key; choose which bots are public. |
@@ -87,6 +88,27 @@ and targets are checked on daily fixings, not intraday prices. The chart is
 TradingView's embeddable widget, loaded by the viewer's browser; no figures
 come from it.
 
+## This week: hold or cash
+
+For someone who does not trade. Once a week, per coin (Bitcoin, Ether): hold
+it only if the Fear & Greed index is 50 or more **and** the coin rose over
+the last four weeks; otherwise hold cash. Spot only, no leverage, no
+shorting.
+
+`research/scripts/crypto_in_or_out.py`, Aug 2020 to now, 0.1% per switch:
+
+| Bitcoin and Ether | 1 USD became | Worst fall | Weeks invested |
+|---|---|---|---|
+| Following the rule | 24.63 | -27% | 38% |
+| Always holding | 5.85 | -75% | 100% |
+
+It beat holding in each half of the history (8.37 against 3.48, then 2.94
+against 1.68) and on Bitcoin alone and a ten-coin basket. The simpler
+versions (mood only, or four weeks only) also beat holding in both halves.
+It is six years of one market with a few large cycles, so treat the size of
+the gain as luck-prone; the dependable part is that it sat out most of the
+large falls. The daily email starts with the week's answer.
+
 ## Crypto mood (weekly)
 
 `research/scripts/crypto_weekly_search.py` ran the weekly test on crypto: ten
@@ -167,6 +189,7 @@ python research/scripts/strategy_search.py        # rule search, choose/check sp
 python research/scripts/forex_weekly_search.py    # weekly forex rules, 27 years
 python research/scripts/forex_sentiment_search.py # positioning (sentiment) rules
 python research/scripts/crypto_weekly_search.py   # weekly crypto rules incl. mood and funding
+python research/scripts/crypto_in_or_out.py       # hold-or-cash rules against always holding
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```
@@ -181,4 +204,5 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/server/desk.py`, `market_data.py` desk signals, records, muting; market data
 - `service/server/forex_weekly.py` weekly forex planner
 - `service/server/crypto_mood.py` weekly crypto mood reading and its record
+- `service/server/in_or_out.py` the weekly hold-or-cash answer
 - `service/server/tests/test_web.py` tests

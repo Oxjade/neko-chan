@@ -149,6 +149,65 @@ class CryptoMoodTests(unittest.TestCase):
         self.assertGreater(ev["with_mood"]["check"]["avg_pct"], ev["holding"]["check"]["avg_pct"])
 
 
+    def test_on_a_sunday_the_week_is_still_last_sundays(self):
+        import crypto_mood
+        from datetime import date
+        readings = [{"date": date(2026, 11, 15), "value": 10, "label": "Extreme Fear"},   # today, a Sunday
+                    {"date": date(2026, 11, 14), "value": 12, "label": "Extreme Fear"},
+                    {"date": date(2026, 11, 8), "value": 28, "label": "Fear"},
+                    {"date": date(2026, 11, 1), "value": 45, "label": "Fear"}]
+        with mock.patch.object(crypto_mood, "_readings", lambda: readings):
+            week = crypto_mood.this_week()
+        self.assertEqual(week["week_reading"]["date"], "2026-11-08")
+        self.assertEqual(week["today"]["value"], 10)
+        self.assertEqual(week["change_from_last_week"], -17)
+
+
+class InOrOutTests(unittest.TestCase):
+    def closes(self, now, four_weeks_ago):
+        from datetime import date, timedelta
+        start = date(2026, 11, 8)
+        prices = [now, 1, 1, 1, four_weeks_ago, 1]
+        return [{"date": start - timedelta(days=7 * i), "close": p} for i, p in enumerate(prices)]
+
+    def test_hold_needs_both_greed_and_a_rise(self):
+        import in_or_out
+        self.assertTrue(in_or_out.decide(60, self.closes(110, 100))["hold"])
+        self.assertFalse(in_or_out.decide(49, self.closes(110, 100))["hold"])      # fearful
+        self.assertFalse(in_or_out.decide(60, self.closes(90, 100))["hold"])       # fell
+        d = in_or_out.decide(60, self.closes(110, 100))
+        self.assertAlmostEqual(d["four_week_change_pct"], 10.0)
+
+    def test_week_answer_and_email_line(self):
+        import crypto_mood
+        import in_or_out
+        mood = {"week_reading": {"value": 70, "label": "Greed", "date": "2026-11-08"}}
+        up, down = self.closes(110, 100), self.closes(90, 100)
+        with mock.patch.object(crypto_mood, "this_week", lambda: mood), \
+                mock.patch.object(in_or_out, "sunday_closes", lambda coin: up if coin == "BTC" else down):
+            week = in_or_out.this_week()
+            line = in_or_out.one_line()
+        self.assertEqual((week["answer"], week["hold"]), ("hold", ["BTC"]))
+        self.assertIn("hold BTC", line)
+        rec = week["record"]
+        self.assertGreater(rec["rule"]["all"]["grew_to"], rec["hold"]["all"]["grew_to"])
+        self.assertGreater(rec["rule"]["all"]["worst_fall_pct"], rec["hold"]["all"]["worst_fall_pct"])
+        fearful = {"week_reading": {"value": 10, "label": "Extreme Fear", "date": "2026-11-08"}}
+        with mock.patch.object(crypto_mood, "this_week", lambda: fearful), \
+                mock.patch.object(in_or_out, "sunday_closes", lambda coin: up):
+            self.assertEqual(in_or_out.this_week()["answer"], "cash")
+            self.assertIn("stay in cash", in_or_out.one_line())
+
+    def test_mismatched_weeks_are_refused(self):
+        import crypto_mood
+        import in_or_out
+        mood = {"week_reading": {"value": 70, "label": "Greed", "date": "2026-11-15"}}
+        with mock.patch.object(crypto_mood, "this_week", lambda: mood), \
+                mock.patch.object(in_or_out, "sunday_closes", lambda coin: self.closes(110, 100)):
+            with self.assertRaises(market_data.DataError):
+                in_or_out.this_week()
+
+
 class DeskEndpointTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -201,6 +260,11 @@ class DeskEndpointTests(unittest.TestCase):
         self.assertGreater(row["record"]["trades"], 10)
         self.assertEqual(state["paper"]["account"]["equity"], 1000.0)
         self.assertEqual(state["mood"], {"marker": "mood"})
+        import in_or_out
+        with mock.patch.object(in_or_out, "this_week", lambda: {"answer": "cash"}):
+            self.assertEqual(c.get("/api/web/week").json(), {"answer": "cash"})
+        fresh = type(c)(c.app)
+        self.assertEqual(fresh.get("/api/web/week").status_code, 401)
         # the desk's paper account cannot be started as an ordinary bot
         bot_id = state["paper"]["bot_id"]
         self.assertEqual(c.post(f"/api/web/console/bots/{bot_id}/start", json={}).status_code, 409)

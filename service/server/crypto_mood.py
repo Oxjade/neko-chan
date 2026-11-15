@@ -23,7 +23,7 @@ import requests
 
 import market_data as md
 
-FNG_URL = "https://api.alternative.me/fng/?limit=14&format=json"
+FNG_URL = "https://api.alternative.me/fng/?limit=21&format=json"
 EVIDENCE = (Path(__file__).resolve().parents[2] / "research" / "exports" / "tables"
             / "crypto_weekly_search.json")
 WITH_MOOD = "Long when greedy, short when fearful"
@@ -76,8 +76,10 @@ def _evidence() -> dict | None:
 def this_week() -> dict:
     readings = _readings()
     today = readings[0]
-    # The reading that governs the current week is the most recent Sunday's.
-    sunday = next((r for r in readings if r["date"].weekday() == 6), today)
+    # A week runs Monday to Monday and is governed by the Sunday reading before
+    # it. On a Sunday the current week is therefore still last Sunday's.
+    sunday = next((r for r in readings if r["date"].weekday() == 6 and r["date"] < today["date"]),
+                  today)
     week_ago = next((r for r in readings if (sunday["date"] - r["date"]).days == 7), None)
     return {
         "today": {"value": today["value"], "label": today["label"], "date": today["date"].isoformat()},

@@ -760,3 +760,20 @@ body.wide {
 .chart-embed .tradingview-widget-copyright {
   padding: var(--s1) var(--s3);
 }
+
+/* lists reset their own margin; give them the stack gap back */
+.stack > * + .gate,
+.stack > * + .steps {
+  margin-top: var(--s4);
+}
+
+/* the "This week" page: one column, sections well apart */
+.week {
+  max-width: 820px;
+  margin-top: var(--s5);
+  padding-bottom: var(--s8);
+}
+
+.week > section + section {
+  margin-top: var(--s6);
+}

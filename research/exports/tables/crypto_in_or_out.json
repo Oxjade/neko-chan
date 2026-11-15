@@ -1,0 +1,609 @@
+{
+ "generated_at": "2026-11-15T09:49:16+00:00",
+ "from": "2020-08-23",
+ "to": "2026-11-15",
+ "split": "2023-10-08",
+ "switch_cost_pct": 0.1,
+ "baskets": {
+  "BTC and ETH": [
+   {
+    "rule": "Always hold",
+    "all": {
+     "weeks": 325,
+     "grew_to": 5.845133519455317,
+     "per_year_pct": 32.64384723724496,
+     "worst_fall_pct": -74.71681073364685,
+     "worst_week_pct": -33.41230105646348,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5230769230769231
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 3.4805183429191686,
+     "per_year_pct": 48.86561008226779,
+     "worst_fall_pct": -74.71681073364685,
+     "worst_week_pct": -33.41230105646348,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5214723926380368
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 1.6793859257621122,
+     "per_year_pct": 18.105611847576043,
+     "worst_fall_pct": -58.89479410122631,
+     "worst_week_pct": -17.060206193895223,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5246913580246914
+    }
+   },
+   {
+    "rule": "In when the mood is greedy",
+    "all": {
+     "weeks": 325,
+     "grew_to": 13.46482233003915,
+     "per_year_pct": 51.59054011808648,
+     "worst_fall_pct": -35.75223900920339,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.5015384615384615,
+     "switches_per_year": 7.2,
+     "weeks_up_when_in": 0.5644171779141104
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 5.197520888274296,
+     "per_year_pct": 69.1812291097128,
+     "worst_fall_pct": -27.578504103896286,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.43558282208588955,
+     "switches_per_year": 7.337423312883436,
+     "weeks_up_when_in": 0.5774647887323944
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.5906239954544574,
+     "per_year_pct": 35.73683031157155,
+     "worst_fall_pct": -35.75223900920338,
+     "worst_week_pct": -16.351115410087942,
+     "time_invested": 0.5679012345679012,
+     "switches_per_year": 6.7407407407407405,
+     "weeks_up_when_in": 0.5543478260869565
+    }
+   },
+   {
+    "rule": "In when above the 10-week average",
+    "all": {
+     "weeks": 325,
+     "grew_to": 7.305567249202298,
+     "per_year_pct": 37.46262432808318,
+     "worst_fall_pct": -48.9788285896448,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.5276923076923077,
+     "switches_per_year": 8.16,
+     "weeks_up_when_in": 0.5404040404040404
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 3.6901236701805202,
+     "per_year_pct": 51.66888366533649,
+     "worst_fall_pct": -48.9788285896448,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.5184049079754601,
+     "switches_per_year": 7.337423312883436,
+     "weeks_up_when_in": 0.5319148936170213
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 1.9797621711808149,
+     "per_year_pct": 24.51140049023963,
+     "worst_fall_pct": -41.34459305401232,
+     "worst_week_pct": -13.17996535944445,
+     "time_invested": 0.5370370370370371,
+     "switches_per_year": 8.82716049382716,
+     "weeks_up_when_in": 0.5480769230769231
+    }
+   },
+   {
+    "rule": "In when the last 4 weeks were up",
+    "all": {
+     "weeks": 325,
+     "grew_to": 32.53447015861764,
+     "per_year_pct": 74.5721650755863,
+     "worst_fall_pct": -33.10880393113831,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.536923076923077,
+     "switches_per_year": 10.88,
+     "weeks_up_when_in": 0.565
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 9.883527142816426,
+     "per_year_pct": 107.68026356419354,
+     "worst_fall_pct": -33.10880393113831,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.5184049079754601,
+     "switches_per_year": 9.889570552147239,
+     "weeks_up_when_in": 0.5789473684210527
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 3.2917874042835473,
+     "per_year_pct": 46.58489256495342,
+     "worst_fall_pct": -27.893384222786153,
+     "worst_week_pct": -13.17996535944445,
+     "time_invested": 0.5555555555555556,
+     "switches_per_year": 11.876543209876543,
+     "weeks_up_when_in": 0.5523809523809524
+    }
+   },
+   {
+    "rule": "In when mood and 4 weeks agree",
+    "all": {
+     "weeks": 325,
+     "grew_to": 24.62833606553886,
+     "per_year_pct": 66.96660300439687,
+     "worst_fall_pct": -26.709980108261234,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.38153846153846155,
+     "switches_per_year": 7.2,
+     "weeks_up_when_in": 0.5985401459854015
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 8.371541886428977,
+     "per_year_pct": 96.96629880123658,
+     "worst_fall_pct": -24.02756678387994,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.35276073619631904,
+     "switches_per_year": 6.061349693251533,
+     "weeks_up_when_in": 0.6451612903225806
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.9419115856618463,
+     "per_year_pct": 41.39183191671112,
+     "worst_fall_pct": -26.709980108261245,
+     "worst_week_pct": -13.17996535944445,
+     "time_invested": 0.4104938271604938,
+     "switches_per_year": 8.024691358024691,
+     "weeks_up_when_in": 0.56
+    }
+   },
+   {
+    "rule": "In when mood or 4 weeks say so",
+    "all": {
+     "weeks": 325,
+     "grew_to": 17.839663030682047,
+     "per_year_pct": 58.5703057162811,
+     "worst_fall_pct": -37.30410513743222,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.6569230769230769,
+     "switches_per_year": 10.4,
+     "weeks_up_when_in": 0.5442477876106194
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 6.135935146276926,
+     "per_year_pct": 78.38094631377832,
+     "worst_fall_pct": -37.30410513743222,
+     "worst_week_pct": -24.027566783879934,
+     "time_invested": 0.6012269938650306,
+     "switches_per_year": 11.16564417177914,
+     "weeks_up_when_in": 0.5384615384615384
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.907407364223289,
+     "per_year_pct": 40.857399804987374,
+     "worst_fall_pct": -35.45060526651005,
+     "worst_week_pct": -16.351115410087942,
+     "time_invested": 0.7129629629629629,
+     "switches_per_year": 9.62962962962963,
+     "weeks_up_when_in": 0.5491803278688525
+    }
+   }
+  ],
+  "BTC only": [
+   {
+    "rule": "Always hold",
+    "all": {
+     "weeks": 325,
+     "grew_to": 5.496671270152284,
+     "per_year_pct": 31.345731131562115,
+     "worst_fall_pct": -75.18225242647371,
+     "worst_week_pct": -25.366955780078538,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5169230769230769
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 2.3922461111028936,
+     "per_year_pct": 32.08273110398019,
+     "worst_fall_pct": -75.18225242647371,
+     "worst_week_pct": -25.366955780078538,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5214723926380368
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.297703085247428,
+     "per_year_pct": 30.608332223387237,
+     "worst_fall_pct": -51.809500687869246,
+     "worst_week_pct": -14.841703136663686,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5123456790123457
+    }
+   },
+   {
+    "rule": "In when the mood is greedy",
+    "all": {
+     "weeks": 325,
+     "grew_to": 7.063161306393702,
+     "per_year_pct": 36.72245875679303,
+     "worst_fall_pct": -38.37860729616032,
+     "worst_week_pct": -21.437741139797595,
+     "time_invested": 0.5015384615384615,
+     "switches_per_year": 7.2,
+     "weeks_up_when_in": 0.5276073619631901
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 2.897117657718967,
+     "per_year_pct": 40.402777389270696,
+     "worst_fall_pct": -36.56223710816706,
+     "worst_week_pct": -21.437741139797595,
+     "time_invested": 0.43558282208588955,
+     "switches_per_year": 7.337423312883436,
+     "weeks_up_when_in": 0.5492957746478874
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.43799601565193,
+     "per_year_pct": 33.11678254267476,
+     "worst_fall_pct": -33.57610220782624,
+     "worst_week_pct": -14.841703136663686,
+     "time_invested": 0.5679012345679012,
+     "switches_per_year": 6.7407407407407405,
+     "weeks_up_when_in": 0.5108695652173914
+    }
+   },
+   {
+    "rule": "In when above the 10-week average",
+    "all": {
+     "weeks": 325,
+     "grew_to": 5.176057818198174,
+     "per_year_pct": 30.08878545769964,
+     "worst_fall_pct": -54.269382894571706,
+     "worst_week_pct": -21.908133971291864,
+     "time_invested": 0.5261538461538462,
+     "switches_per_year": 8.32,
+     "weeks_up_when_in": 0.5146198830409356
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 2.392785064782003,
+     "per_year_pct": 32.09222346072262,
+     "worst_fall_pct": -53.01681215030787,
+     "worst_week_pct": -21.908133971291864,
+     "time_invested": 0.48466257668711654,
+     "switches_per_year": 7.337423312883436,
+     "weeks_up_when_in": 0.5316455696202531
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.163193800555483,
+     "per_year_pct": 28.103647596295843,
+     "worst_fall_pct": -37.27080441375672,
+     "worst_week_pct": -14.841703136663686,
+     "time_invested": 0.5679012345679012,
+     "switches_per_year": 9.308641975308642,
+     "weeks_up_when_in": 0.5
+    }
+   },
+   {
+    "rule": "In when the last 4 weeks were up",
+    "all": {
+     "weeks": 325,
+     "grew_to": 24.027301050793028,
+     "per_year_pct": 66.30786887157447,
+     "worst_fall_pct": -30.581733616189133,
+     "worst_week_pct": -21.908133971291864,
+     "time_invested": 0.5353846153846153,
+     "switches_per_year": 11.52,
+     "weeks_up_when_in": 0.5574712643678161
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 9.28686369514891,
+     "per_year_pct": 103.59544027542191,
+     "worst_fall_pct": -30.581733616189133,
+     "worst_week_pct": -21.908133971291864,
+     "time_invested": 0.49079754601226994,
+     "switches_per_year": 9.889570552147239,
+     "weeks_up_when_in": 0.6
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.5872352431902192,
+     "per_year_pct": 35.679811988665854,
+     "worst_fall_pct": -25.53232110617254,
+     "worst_week_pct": -14.841703136663686,
+     "time_invested": 0.5802469135802469,
+     "switches_per_year": 13.160493827160494,
+     "weeks_up_when_in": 0.5212765957446809
+    }
+   },
+   {
+    "rule": "In when mood and 4 weeks agree",
+    "all": {
+     "weeks": 325,
+     "grew_to": 15.530654092605674,
+     "per_year_pct": 55.09234390857565,
+     "worst_fall_pct": -25.60678878506635,
+     "worst_week_pct": -21.437741139797595,
+     "time_invested": 0.38461538461538464,
+     "switches_per_year": 6.4,
+     "weeks_up_when_in": 0.584
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 6.269553199674255,
+     "per_year_pct": 79.61108893227231,
+     "worst_fall_pct": -21.437741139797595,
+     "worst_week_pct": -21.437741139797595,
+     "time_invested": 0.3374233128834356,
+     "switches_per_year": 5.104294478527607,
+     "weeks_up_when_in": 0.6363636363636364
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.4771548462835593,
+     "per_year_pct": 33.79937943176798,
+     "worst_fall_pct": -25.606788785066335,
+     "worst_week_pct": -14.841703136663686,
+     "time_invested": 0.43209876543209874,
+     "switches_per_year": 7.382716049382716,
+     "weeks_up_when_in": 0.5428571428571428
+    }
+   },
+   {
+    "rule": "In when mood or 4 weeks say so",
+    "all": {
+     "weeks": 325,
+     "grew_to": 10.993463316252083,
+     "per_year_pct": 46.751153992243076,
+     "worst_fall_pct": -36.09575664116919,
+     "worst_week_pct": -21.908133971291864,
+     "time_invested": 0.6523076923076923,
+     "switches_per_year": 11.36,
+     "weeks_up_when_in": 0.5188679245283019
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 4.291396203072813,
+     "per_year_pct": 59.1514502160809,
+     "worst_fall_pct": -36.09575664116919,
+     "worst_week_pct": -21.908133971291864,
+     "time_invested": 0.588957055214724,
+     "switches_per_year": 12.122699386503067,
+     "weeks_up_when_in": 0.5416666666666666
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.5617451281660513,
+     "per_year_pct": 35.24928763430148,
+     "worst_fall_pct": -32.95274667604562,
+     "worst_week_pct": -14.841703136663686,
+     "time_invested": 0.7160493827160493,
+     "switches_per_year": 10.592592592592592,
+     "weeks_up_when_in": 0.5
+    }
+   }
+  ],
+  "Ten coins": [
+   {
+    "rule": "Always hold",
+    "all": {
+     "weeks": 325,
+     "grew_to": 14.07553219426091,
+     "per_year_pct": 52.67023423556447,
+     "worst_fall_pct": -78.5342144852431,
+     "worst_week_pct": -45.772975109014155,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.49846153846153846
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 8.154149999122296,
+     "per_year_pct": 95.3199380817739,
+     "worst_fall_pct": -78.5342144852431,
+     "worst_week_pct": -45.772975109014155,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.5337423312883436
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 1.726180189937149,
+     "per_year_pct": 19.152105264063145,
+     "worst_fall_pct": -68.17085381841822,
+     "worst_week_pct": -24.330257602468993,
+     "time_invested": 1.0,
+     "switches_per_year": 0.0,
+     "weeks_up_when_in": 0.46296296296296297
+    }
+   },
+   {
+    "rule": "In when the mood is greedy",
+    "all": {
+     "weeks": 325,
+     "grew_to": 74.38944154175077,
+     "per_year_pct": 99.2699481229882,
+     "worst_fall_pct": -49.69403160275662,
+     "worst_week_pct": -17.909037212190665,
+     "time_invested": 0.5015384615384615,
+     "switches_per_year": 7.2,
+     "weeks_up_when_in": 0.5521472392638037
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 27.20428678777517,
+     "per_year_pct": 186.8637803072178,
+     "worst_fall_pct": -32.08453716424625,
+     "worst_week_pct": -16.890473829807913,
+     "time_invested": 0.43558282208588955,
+     "switches_per_year": 7.337423312883436,
+     "weeks_up_when_in": 0.647887323943662
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.734474978964686,
+     "per_year_pct": 38.11191456428118,
+     "worst_fall_pct": -49.694031602756596,
+     "worst_week_pct": -17.909037212190665,
+     "time_invested": 0.5679012345679012,
+     "switches_per_year": 6.7407407407407405,
+     "weeks_up_when_in": 0.4782608695652174
+    }
+   },
+   {
+    "rule": "In when above the 10-week average",
+    "all": {
+     "weeks": 325,
+     "grew_to": 15.600946383103247,
+     "per_year_pct": 55.20444355116929,
+     "worst_fall_pct": -58.48054916531702,
+     "worst_week_pct": -43.2462795310063,
+     "time_invested": 0.4572307692307692,
+     "switches_per_year": 8.192,
+     "weeks_up_when_in": 0.5138339920948617
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 6.401363466585032,
+     "per_year_pct": 80.80721748485935,
+     "worst_fall_pct": -58.04232991442524,
+     "worst_week_pct": -43.2462795310063,
+     "time_invested": 0.44110429447852767,
+     "switches_per_year": 7.656441717791411,
+     "weeks_up_when_in": 0.5354330708661418
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.4371286624388437,
+     "per_year_pct": 33.10157928680981,
+     "worst_fall_pct": -37.71708681516252,
+     "worst_week_pct": -17.909037212190665,
+     "time_invested": 0.4734567901234567,
+     "switches_per_year": 8.698765432098766,
+     "weeks_up_when_in": 0.49206349206349204
+    }
+   },
+   {
+    "rule": "In when the last 4 weeks were up",
+    "all": {
+     "weeks": 325,
+     "grew_to": 35.285293886809214,
+     "per_year_pct": 76.85404532636477,
+     "worst_fall_pct": -49.19448181693509,
+     "worst_week_pct": -43.236279531006296,
+     "time_invested": 0.47784615384615386,
+     "switches_per_year": 11.232000000000001,
+     "weeks_up_when_in": 0.5135135135135135
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 12.5665522935236,
+     "per_year_pct": 124.21784828563038,
+     "worst_fall_pct": -49.19448181693509,
+     "worst_week_pct": -43.236279531006296,
+     "time_invested": 0.44601226993865034,
+     "switches_per_year": 9.985276073619632,
+     "weeks_up_when_in": 0.5546875
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.8078738752389674,
+     "per_year_pct": 39.29119774524909,
+     "worst_fall_pct": -35.90679140012968,
+     "worst_week_pct": -15.95394060458671,
+     "time_invested": 0.5098765432098765,
+     "switches_per_year": 12.390123456790123,
+     "weeks_up_when_in": 0.4732824427480916
+    }
+   },
+   {
+    "rule": "In when mood and 4 weeks agree",
+    "all": {
+     "weeks": 325,
+     "grew_to": 74.4371770729279,
+     "per_year_pct": 99.29040198085977,
+     "worst_fall_pct": -34.674061424508665,
+     "worst_week_pct": -18.531916380401274,
+     "time_invested": 0.3375384615384615,
+     "switches_per_year": 7.68,
+     "weeks_up_when_in": 0.535483870967742
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 24.07848493573224,
+     "per_year_pct": 175.90853154079338,
+     "worst_fall_pct": -23.793920448329832,
+     "worst_week_pct": -18.531916380401274,
+     "time_invested": 0.29325153374233126,
+     "switches_per_year": 6.38036809815951,
+     "weeks_up_when_in": 0.6086956521739131
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 3.091439402088954,
+     "per_year_pct": 43.65989527748753,
+     "worst_fall_pct": -34.67406142450865,
+     "worst_week_pct": -15.95394060458671,
+     "time_invested": 0.38209876543209875,
+     "switches_per_year": 8.730864197530863,
+     "weeks_up_when_in": 0.47674418604651164
+    }
+   },
+   {
+    "rule": "In when mood or 4 weeks say so",
+    "all": {
+     "weeks": 325,
+     "grew_to": 35.49337817075102,
+     "per_year_pct": 77.0205043725329,
+     "worst_fall_pct": -50.29813227381628,
+     "worst_week_pct": -43.2462795310063,
+     "time_invested": 0.6418461538461537,
+     "switches_per_year": 9.728,
+     "weeks_up_when_in": 0.5243445692883895
+    },
+    "first_half": {
+     "weeks": 163,
+     "grew_to": 14.230960016378681,
+     "per_year_pct": 133.29365888758585,
+     "worst_fall_pct": -50.29813227381628,
+     "worst_week_pct": -43.2462795310063,
+     "time_invested": 0.5883435582822086,
+     "switches_per_year": 10.240490797546013,
+     "weeks_up_when_in": 0.5769230769230769
+    },
+    "second_half": {
+     "weeks": 162,
+     "grew_to": 2.494095839627194,
+     "per_year_pct": 34.09241643111285,
+     "worst_fall_pct": -48.39146021960218,
+     "worst_week_pct": -17.909037212190665,
+     "time_invested": 0.6956790123456791,
+     "switches_per_year": 9.180246913580246,
+     "weeks_up_when_in": 0.4744525547445255
+    }
+   }
+  ]
+ }
+}
