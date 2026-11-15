@@ -752,6 +752,18 @@ def register_web_routes(app: FastAPI) -> None:
         except market_data.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 
+    @app.get("/api/web/week/scoreboard")
+    def week_scoreboard(request: Request, stake: float = 18.0, leverage: float = 1.0):
+        _require_operator(request)
+        if not (0 < stake <= 1_000_000_000):
+            raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
+        if leverage not in in_or_out.LEVERAGES:
+            raise HTTPException(status_code=422, detail="Choose one of the listed leverage levels.")
+        try:
+            return in_or_out.scoreboard(stake, leverage)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
     # ---- weekly forex planner ---------------------------------------------
 
     @app.get("/api/web/weekly")

@@ -45,6 +45,20 @@ def _readings() -> list[dict]:
     return md.cached("fear_greed", 3600, load)
 
 
+def history(days: int = 200) -> dict:
+    """Daily readings by date, for looking back over past weeks."""
+    def load():
+        try:
+            resp = requests.get(f"https://api.alternative.me/fng/?limit={days}&format=json", timeout=20)
+            resp.raise_for_status()
+            data = resp.json()["data"]
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            raise md.DataError(f"The mood index is unavailable right now ({type(exc).__name__}).") from exc
+        return {datetime.fromtimestamp(int(d["timestamp"]), timezone.utc).date(): int(d["value"])
+                for d in data}
+    return md.cached(f"fear_greed_history:{days}", 3600, load)
+
+
 def rule_direction(value: int) -> dict:
     """What the two tested rules say for a reading."""
     return {

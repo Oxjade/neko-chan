@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-15T10:20:50+00:00",
+ "generated_at": "2026-11-15T10:39:47+00:00",
  "coin": "BTC",
  "rule": "In when mood and 4 weeks agree",
  "stake_usd": 18.0,
@@ -19,7 +19,18 @@
    "best_week": 4.60510348493259,
    "total": 55.2043239597527,
    "put_in": 2250.0,
-   "per_year": 9.173511977388387
+   "per_year": 9.173511977388387,
+   "picture": {
+    "all_weeks": 325,
+    "weeks_ahead": 0.22153846153846155,
+    "weeks_behind": 0.16307692307692306,
+    "weeks_no_trade": 0.6153846153846154,
+    "months_ahead": 0.32919254658385094,
+    "months_behind": 0.21739130434782608,
+    "quarters_ahead": 0.4728434504792332,
+    "quarters_behind": 0.25878594249201275,
+    "longest_losing_run_weeks": 4
+   }
   },
   "3x": {
    "weeks": 125,
@@ -30,7 +41,18 @@
    "best_week": 13.701910454797769,
    "total": 151.43797187925807,
    "put_in": 2250.0,
-   "per_year": 25.165022397133306
+   "per_year": 25.165022397133306,
+   "picture": {
+    "all_weeks": 325,
+    "weeks_ahead": 0.2123076923076923,
+    "weeks_behind": 0.1723076923076923,
+    "weeks_no_trade": 0.6153846153846154,
+    "months_ahead": 0.3136645962732919,
+    "months_behind": 0.2329192546583851,
+    "quarters_ahead": 0.46645367412140576,
+    "quarters_behind": 0.26517571884984026,
+    "longest_losing_run_weeks": 4
+   }
   },
   "5x": {
    "weeks": 125,
@@ -41,7 +63,18 @@
    "best_week": 22.83651742466295,
    "total": 233.0073810453152,
    "put_in": 2250.0,
-   "per_year": 38.71972062183866
+   "per_year": 38.71972062183866,
+   "picture": {
+    "all_weeks": 325,
+    "weeks_ahead": 0.2123076923076923,
+    "weeks_behind": 0.1723076923076923,
+    "weeks_no_trade": 0.6153846153846154,
+    "months_ahead": 0.30745341614906835,
+    "months_behind": 0.2391304347826087,
+    "quarters_ahead": 0.46645367412140576,
+    "quarters_behind": 0.26517571884984026,
+    "longest_losing_run_weeks": 4
+   }
   },
   "10x": {
    "weeks": 125,
@@ -52,7 +85,18 @@
    "best_week": 45.6730348493259,
    "total": 356.9786507330982,
    "put_in": 2250.0,
-   "per_year": 59.32049689729942
+   "per_year": 59.32049689729942,
+   "picture": {
+    "all_weeks": 325,
+    "weeks_ahead": 0.20615384615384616,
+    "weeks_behind": 0.17846153846153845,
+    "weeks_no_trade": 0.6153846153846154,
+    "months_ahead": 0.2826086956521739,
+    "months_behind": 0.2639751552795031,
+    "quarters_ahead": 0.46006389776357826,
+    "quarters_behind": 0.2715654952076677,
+    "longest_losing_run_weeks": 4
+   }
   },
   "20x": {
    "weeks": 125,
@@ -63,7 +107,18 @@
    "best_week": 91.3460696986518,
    "total": 263.7441639582914,
    "put_in": 2250.0,
-   "per_year": 43.82736846486166
+   "per_year": 43.82736846486166,
+   "picture": {
+    "all_weeks": 325,
+    "weeks_ahead": 0.15692307692307692,
+    "weeks_behind": 0.2276923076923077,
+    "weeks_no_trade": 0.6153846153846154,
+    "months_ahead": 0.2546583850931677,
+    "months_behind": 0.2919254658385093,
+    "quarters_ahead": 0.3450479233226837,
+    "quarters_behind": 0.3865814696485623,
+    "longest_losing_run_weeks": 4
+   }
   },
   "30x": {
    "weeks": 125,
@@ -74,7 +129,18 @@
    "best_week": 137.0191045479777,
    "total": -70.49115596096583,
    "put_in": 2250.0,
-   "per_year": -11.713782854751031
+   "per_year": -11.713782854751031,
+   "picture": {
+    "all_weeks": 325,
+    "weeks_ahead": 0.1076923076923077,
+    "weeks_behind": 0.27692307692307694,
+    "weeks_no_trade": 0.6153846153846154,
+    "months_ahead": 0.19875776397515527,
+    "months_behind": 0.34782608695652173,
+    "quarters_ahead": 0.25878594249201275,
+    "quarters_behind": 0.4728434504792332,
+    "longest_losing_run_weeks": 8
+   }
   }
  }
 }

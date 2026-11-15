@@ -96,6 +96,26 @@ def summarise(result: pd.Series, stake: float, years: float) -> dict:
     }
 
 
+def weekly_picture(weeks: pd.DataFrame, result: pd.Series, refresh: bool) -> dict:
+    """What a week, a month and a quarter looked like, counting cash weeks too."""
+    close = cws.daily_closes(refresh).resample("W-SUN").last().dropna(how="all")
+    every = pd.Series(0.0, index=close.index[:-1] + pd.Timedelta(days=1))    # each week's Monday
+    every.loc[weeks["week"].values] = result.values
+    month, quarter = every.rolling(4).sum().dropna(), every.rolling(13).sum().dropna()
+    return {
+        "all_weeks": int(len(every)),
+        "weeks_ahead": float((every > 0).mean()),
+        "weeks_behind": float((every < 0).mean()),
+        "weeks_no_trade": float((every == 0).mean()),
+        "months_ahead": float((month > 0).mean()),
+        "months_behind": float((month < 0).mean()),
+        "quarters_ahead": float((quarter > 0).mean()),
+        "quarters_behind": float((quarter < 0).mean()),
+        "longest_losing_run_weeks": int(max((len(list(g)) for k, g in __import__("itertools").groupby(
+            every[every != 0] < 0) if k), default=0)),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--stake", type=float, default=18.0)
@@ -106,8 +126,11 @@ def main() -> int:
     weeks = weeks_in(args.refresh)
     years = (weeks["week"].iloc[-1] - weeks["week"].iloc[0]).days / 365.25
     levels = sorted({1.0, 3.0, 5.0, 10.0, 20.0, args.leverage})
-    table = {f"{lev:g}x": summarise(outcomes(weeks, lev, args.stake), args.stake, years)
-             for lev in levels}
+    table = {}
+    for lev in levels:
+        res = outcomes(weeks, lev, args.stake)
+        table[f"{lev:g}x"] = {**summarise(res, args.stake, years),
+                              "picture": weekly_picture(weeks, res, args.refresh)}
     result = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "coin": COIN, "rule": RULE, "stake_usd": args.stake,
@@ -125,6 +148,14 @@ def main() -> int:
         print(f"{name:>8} {s['lost_whole_stake'] * 100:>11.0f}% {s['weeks_with_a_gain'] * 100:>8.0f}% "
               f"{s['average_per_week']:>+12.2f}$ {s['typical_week']:>+12.2f}$ {s['best_week']:>+9.2f}$ "
               f"{s['total']:>+12.2f}$ {s['put_in']:>12.2f}$")
+    print(f"\n{'leverage':>8} {'weeks ahead':>12} {'behind':>7} {'no trade':>9} | {'months ahead':>13} "
+          f"{'behind':>7} | {'quarters ahead':>15} {'behind':>7} | longest losing run")
+    for name, s in table.items():
+        p = s["picture"]
+        print(f"{name:>8} {p['weeks_ahead'] * 100:>11.0f}% {p['weeks_behind'] * 100:>6.0f}% "
+              f"{p['weeks_no_trade'] * 100:>8.0f}% | {p['months_ahead'] * 100:>12.0f}% "
+              f"{p['months_behind'] * 100:>6.0f}% | {p['quarters_ahead'] * 100:>14.0f}% "
+              f"{p['quarters_behind'] * 100:>6.0f}% | {p['longest_losing_run_weeks']} weeks")
     print(f"wrote {OUT}")
     return 0
 

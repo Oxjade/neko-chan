@@ -109,6 +109,21 @@ It is six years of one market with a few large cycles, so treat the size of
 the gain as luck-prone; the dependable part is that it sat out most of the
 large falls. The daily email starts with the week's answer.
 
+### Week by week
+
+The page also scores each finished week: what a fresh weekly amount would
+have made following the answer on perps, at 1x to 30x, with a running total.
+Liquidation is checked against each day's low using the exchange's
+maintenance margin; fees and a typical funding cost are included.
+
+`research/scripts/leverage_on_rule.py` (Bitcoin, six years): about 62% of
+weeks have no trade, 21% end ahead and 17% behind at up to 10x; a month ends
+ahead 31% of the time and behind 24%; three months, 47% and 27%. At 30x the
+weekly amount was lost in 70% of the weeks traded and the six-year total was
+a loss. A version that trades every week (long or short by mood) ended ahead
+in about half of weeks with an average gain of a few cents on 18 USD. No rule
+tested made a profit every week.
+
 ## Crypto mood (weekly)
 
 `research/scripts/crypto_weekly_search.py` ran the weekly test on crypto: ten
@@ -190,6 +205,7 @@ python research/scripts/forex_weekly_search.py    # weekly forex rules, 27 years
 python research/scripts/forex_sentiment_search.py # positioning (sentiment) rules
 python research/scripts/crypto_weekly_search.py   # weekly crypto rules incl. mood and funding
 python research/scripts/crypto_in_or_out.py       # hold-or-cash rules against always holding
+python research/scripts/leverage_on_rule.py       # the weekly rule on perps with leverage
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```

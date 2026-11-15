@@ -198,6 +198,69 @@ class InOrOutTests(unittest.TestCase):
             self.assertEqual(in_or_out.this_week()["answer"], "cash")
             self.assertIn("stay in cash", in_or_out.one_line())
 
+    def week(self, monday, moves, before=100.0, month_ago=90.0):
+        """Daily candles for one week: opens at 100, with the given (low, close) moves in percent."""
+        from datetime import timedelta
+        candles = {monday - timedelta(days=1): {"open": before, "low": before, "close": before},
+                   monday - timedelta(days=29): {"open": month_ago, "low": month_ago, "close": month_ago}}
+        for i, (low, close) in enumerate(moves):
+            candles[monday + timedelta(days=i)] = {"open": 100.0, "low": 100.0 * (1 + low / 100),
+                                                   "close": 100.0 * (1 + close / 100)}
+        return candles
+
+    def test_week_result_cash_gain_and_liquidation(self):
+        import in_or_out
+        from datetime import date
+        monday = date(2026, 9, 14)
+        calm = self.week(monday, [(-0.5, 0.2)] * 6 + [(-0.5, 4.0)])        # ends +4%, dips 0.5%
+        # fearful mood: no trade
+        self.assertEqual(in_or_out.week_result(calm, monday, 40, 9.0, 5, 40)["result"], 0.0)
+        # greedy, unleveraged: 4% of 9 USD less two small fees
+        spot = in_or_out.week_result(calm, monday, 60, 9.0, 1, 40)
+        self.assertTrue(spot["hold"])
+        self.assertAlmostEqual(spot["result"], 9.0 * (0.04 - 2 * in_or_out.FEE_PER_SIDE))
+        # 5x multiplies the move and adds funding
+        lev = in_or_out.week_result(calm, monday, 60, 9.0, 5, 40)
+        self.assertGreater(lev["result"], 4 * spot["result"])
+        self.assertLess(lev["result"], 5 * spot["result"])
+        # a 2.5% dip liquidates 30x even though the week ends up 4%
+        dip = self.week(monday, [(-2.5, 1.0)] + [(-0.5, 0.2)] * 5 + [(-0.5, 4.0)])
+        wiped = in_or_out.week_result(dip, monday, 60, 9.0, 30, 40)
+        self.assertTrue(wiped["wiped"])
+        self.assertEqual(wiped["result"], -9.0)
+        self.assertFalse(in_or_out.week_result(dip, monday, 60, 9.0, 5, 40)["wiped"])
+        # leverage above the exchange's limit is capped
+        self.assertEqual(in_or_out.week_result(calm, monday, 60, 9.0, 30, 25)["leverage_used"], 25)
+        # missing days: the week is not scored
+        short = dict(calm)
+        short.pop(monday)
+        self.assertFalse(in_or_out.week_result(short, monday, 60, 9.0, 1, 40)["known"])
+
+    def test_scoreboard_totals(self):
+        import crypto_mood
+        import in_or_out
+        from datetime import date, timedelta
+        mondays = [date(2026, 9, 14), date(2026, 9, 7)]
+        # The older week's last day is also the newer week's "Sunday before", so
+        # build the newer week first and let the older week's real days win.
+        candles = {}
+        candles.update(self.week(mondays[0], [(-0.5, 0.2)] * 6 + [(-0.5, 4.0)]))     # newer week: +4%
+        candles.update(self.week(mondays[1], [(-0.5, 0.2)] * 6 + [(-0.5, -3.0)]))    # older week: -3%
+        moods = {m - timedelta(days=1): 60 for m in mondays}
+        live = {c: {"max_leverage": 40 if c == "BTC" else 25} for c in in_or_out.COINS}
+        with mock.patch.object(crypto_mood, "history", lambda: moods), \
+                mock.patch.object(market_data, "catalogue", lambda: live), \
+                mock.patch.object(in_or_out, "daily_candles", lambda coin: candles):
+            board = in_or_out.scoreboard(18, 1, weeks=2)
+            high = in_or_out.scoreboard(18, 30, weeks=2)
+        self.assertEqual([r["week_of"] for r in board["rows"]], ["2026-09-14", "2026-09-07"])
+        self.assertEqual((board["ahead"], board["behind"], board["no_trade"]), (1, 1, 0))
+        self.assertAlmostEqual(board["rows"][1]["running_total"], board["rows"][1]["result"])
+        self.assertAlmostEqual(board["rows"][0]["running_total"], board["total"])
+        self.assertAlmostEqual(board["total"], 18 * (0.04 - 0.03 - 4 * in_or_out.FEE_PER_SIDE))
+        self.assertEqual(high["capped"], {"ETH": 25})
+        self.assertGreater(high["expect"]["lost_whole_stake"], 0.5)
+
     def test_mismatched_weeks_are_refused(self):
         import crypto_mood
         import in_or_out
@@ -265,6 +328,12 @@ class DeskEndpointTests(unittest.TestCase):
             self.assertEqual(c.get("/api/web/week").json(), {"answer": "cash"})
         fresh = type(c)(c.app)
         self.assertEqual(fresh.get("/api/web/week").status_code, 401)
+        self.assertEqual(fresh.get("/api/web/week/scoreboard").status_code, 401)
+        with mock.patch.object(in_or_out, "scoreboard", lambda stake, leverage: {"stake": stake, "lev": leverage}):
+            self.assertEqual(c.get("/api/web/week/scoreboard?stake=18&leverage=5").json(),
+                             {"stake": 18.0, "lev": 5.0})
+        self.assertEqual(c.get("/api/web/week/scoreboard?stake=18&leverage=7").status_code, 422)
+        self.assertEqual(c.get("/api/web/week/scoreboard?stake=0&leverage=5").status_code, 422)
         # the desk's paper account cannot be started as an ordinary bot
         bot_id = state["paper"]["bot_id"]
         self.assertEqual(c.post(f"/api/web/console/bots/{bot_id}/start", json={}).status_code, 409)
