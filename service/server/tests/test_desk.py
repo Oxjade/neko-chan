@@ -173,7 +173,9 @@ class DeskEndpointTests(unittest.TestCase):
         bot_id = state["paper"]["bot_id"]
         self.assertEqual(c.post(f"/api/web/console/bots/{bot_id}/start", json={}).status_code, 409)
         # one paper-trading pass runs against the same data without error
-        self.assertIsInstance(self.routes_web._desk_cycle(), list)
+        import trend_agent
+        with mock.patch.object(trend_agent, "EXPORT_DIR", Path(self.tmp.name)):
+            self.assertIsInstance(self.routes_web._desk_cycle(), list)
         c.post("/api/web/desk/watchlist/remove", json={"symbol": "BTC"})
         self.assertEqual(c.get("/api/web/desk").json()["watchlist"], [])
 
