@@ -46,7 +46,6 @@ PAIRS = {
     "EURAUD": ("AUD", None), "AUDNZD": ("NZD", "AUD"),
 }
 VOL_WEEKS = 26            # the "normal week" is measured over the last half year
-COST_PCT = 0.04           # spread and commission for one round trip
 LOT_UNITS = 100_000
 
 _lock = threading.Lock()
@@ -112,8 +111,12 @@ def weekly_frame(series: pd.Series) -> pd.DataFrame:
                          "normal": ret.rolling(VOL_WEEKS).std()}).dropna()
 
 
-def replay_shape(series: pd.Series, direction: str, stop_mult: float, target_mult: float) -> list[dict]:
+def replay_shape(series: pd.Series, direction: str, stop_mult: float, target_mult: float,
+                 cost_pct: float = 0.0) -> list[dict]:
     """Every past week traded with this shape, in units of that week's normal move.
+
+    cost_pct is the round-trip trading cost as a percent of the position; it
+    is zero unless the trader supplies their broker's spread.
 
     Entry at one Friday's fixing; each later daily fixing up to the next
     Friday is checked for the stop, then the target; otherwise the trade is
@@ -145,7 +148,7 @@ def replay_shape(series: pd.Series, direction: str, stop_mult: float, target_mul
             result = (days.iloc[-1] / entry - 1) * 100 * sign / normal
         t = trend.iloc[k]
         out.append({"closed_at": end.isoformat(), "how": how, "gross": float(result),
-                    "net": float(result - COST_PCT / normal), "fees": float(COST_PCT / normal),
+                    "net": float(result - cost_pct / normal), "fees": float(cost_pct / normal),
                     "with_trend": None if np.isnan(t) or t == 0 else bool(t == sign)})
     return out
 
@@ -190,18 +193,18 @@ def overview() -> dict:
             "trend_52w": "up" if close.iloc[-1] > close.iloc[-53] else "down",
         })
     return {"pairs": rows, "as_of": max(r["as_of"] for r in rows) if rows else None,
-            "cost_pct": COST_PCT, "history_from": str(daily.index[0].date())}
+            "history_from": str(daily.index[0].date())}
 
 
 def plan(pair: str, direction: str, stop_pct: float, target_pct: float,
-         account: float, risk_pct: float) -> dict:
+         account: float, risk_pct: float, cost_pct: float = 0.0) -> dict:
     daily = daily_rates()
     series = pair_series(daily, pair)
     weeks = weekly_frame(series)
     price = float(series.iloc[-1])
     normal = float(weeks["normal"].iloc[-1])
     stop_mult, target_mult = stop_pct / normal, target_pct / normal
-    rows = replay_shape(series, direction, stop_mult, target_mult)
+    rows = replay_shape(series, direction, stop_mult, target_mult, cost_pct)
     if len(rows) < 50:
         raise DataError(f"{pair} has too little history to judge a plan.")
     sign = 1.0 if direction == "long" else -1.0
@@ -209,7 +212,7 @@ def plan(pair: str, direction: str, stop_pct: float, target_pct: float,
     with_now = bool(trend_now == (direction == "long"))
 
     risk_usd = account * risk_pct / 100
-    position_usd = risk_usd / ((stop_pct + COST_PCT) / 100)
+    position_usd = risk_usd / ((stop_pct + cost_pct) / 100)
     units = position_usd / base_in_usd(daily, pair)
     result = {
         "pair": pair, "direction": direction, "price": price,
@@ -225,10 +228,10 @@ def plan(pair: str, direction: str, stop_pct: float, target_pct: float,
         "sizing": {
             "position_usd": position_usd, "units": units, "lots": units / LOT_UNITS,
             "leverage": position_usd / account,
-            "loss_at_stop_usd": position_usd * (stop_pct + COST_PCT) / 100,
-            "gain_at_target_usd": position_usd * (target_pct - COST_PCT) / 100,
+            "loss_at_stop_usd": position_usd * (stop_pct + cost_pct) / 100,
+            "gain_at_target_usd": position_usd * (target_pct - cost_pct) / 100,
         },
-        "cost_pct": COST_PCT, "history_from": str(weeks.index[0].date()),
+        "cost_pct": cost_pct, "history_from": str(weeks.index[0].date()),
     }
     result["avg_result_usd"] = position_usd * result["all"]["avg_result_pct"] / 100
     return result

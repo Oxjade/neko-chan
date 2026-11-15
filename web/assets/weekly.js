@@ -7,7 +7,7 @@ const app = document.getElementById("app");
 const signout = document.getElementById("signout");
 
 const state = { overview: null, result: null, flash: null, sizing: loadSizing(),
-                form: { pair: "EURUSD", direction: "long", stop: "", target: "" },
+                form: { pair: "EURUSD", direction: "long", stop: "", target: "", cost: "0" },
                 chartPair: null, chartNode: null };
 
 // Shared with the desk: a per-browser convenience, nothing depends on it.
@@ -60,6 +60,7 @@ function planForm() {
                                value: String(state.sizing.account) });
   const risk = h("input", { type: "text", name: "risk", inputmode: "decimal",
                             value: String(state.sizing.risk) });
+  const cost = h("input", { type: "text", name: "cost", inputmode: "decimal", value: f.cost });
   const normal = h("p", { class: "soft small" });
   const describe = () => {
     const row = pairRow(pair.value);
@@ -82,7 +83,8 @@ function planForm() {
       event.preventDefault();
       error.textContent = "";
       const values = { stop: Number(stop.value), target: Number(target.value),
-                       account: Number(account.value), risk: Number(risk.value) };
+                       account: Number(account.value), risk: Number(risk.value),
+                       cost: Number(cost.value || 0) };
       const need = (ok, field, text) => {
         if (ok) return false;
         error.textContent = text;
@@ -96,8 +98,10 @@ function planForm() {
       if (need(values.account > 0, account, "Enter your account size in USD.")) return;
       if (need(values.risk > 0 && values.risk <= 100, risk,
                "Enter the risk per trade as a percentage between 0 and 100.")) return;
+      if (need(values.cost >= 0 && values.cost <= 5, cost,
+               "Enter the trading cost as a percentage between 0 and 5, or 0 for none.")) return;
       Object.assign(f, { pair: pair.value, direction: direction.value,
-                         stop: stop.value, target: target.value });
+                         stop: stop.value, target: target.value, cost: cost.value || "0" });
       state.sizing = { account: values.account, risk: values.risk };
       saveSizing();
       button.disabled = true;
@@ -105,7 +109,7 @@ function planForm() {
       try {
         state.result = await api("/api/web/weekly/plan", {
           pair: f.pair, direction: f.direction, stop_pct: values.stop, target_pct: values.target,
-          account_usd: values.account, risk_pct: values.risk });
+          account_usd: values.account, risk_pct: values.risk, cost_pct: values.cost });
       } catch (err) {
         if (err.status === 401) {
           renderSignIn([]);
@@ -125,6 +129,9 @@ function planForm() {
     h("label", { class: "field" }, h("span", null, "Target distance (%)"), target),
     h("label", { class: "field" }, h("span", null, "Account size (USD)"), account),
     h("label", { class: "field" }, h("span", null, "Risk per trade (%)"), risk),
+    h("label", { class: "field" }, h("span", null, "Trading cost per trade (%, optional)"), cost),
+    h("p", { class: "soft small" },
+      "Leave at 0 to see results before costs, or enter your broker's spread and commission."),
     error, button);
 }
 
@@ -133,7 +140,7 @@ function planForm() {
 function verdictText(r) {
   const a = r.all;
   const won = share(a.win_rate);
-  const needed = share(a.breakeven_win_rate);
+  const needed = `${share(a.breakeven_win_rate)}${r.cost_pct > 0 ? "" : " before trading costs"}`;
   if (a.breakeven_win_rate === null) return `This shape won ${won} of past weeks on ${r.pair}.`;
   if (a.win_rate_low > a.breakeven_win_rate) {
     return `This shape has beaten break-even on ${r.pair}: it won ${won} of weeks and needed ${needed}.`;
@@ -202,7 +209,9 @@ function resultSection() {
       `Your plan is ${r.plan_is_with_trend ? "with" : "against"} the current 13-week trend, which is ` +
       `${r.trend_13w}. Stops and targets are checked on one central-bank fixing a day since ` +
       `${r.history_from.slice(0, 4)}, so real intraday touches happen a little more often. ` +
-      `Costs of ${r.cost_pct}% per trade are included; overnight financing is not.`));
+      (r.cost_pct > 0
+        ? `Trading costs of ${r.cost_pct}% per trade are included; overnight financing is not.`
+        : "No trading costs are included, so real results will be a little lower.")));
 }
 
 function rangesSection() {

@@ -71,6 +71,17 @@ direction. It measures the trader's own plan:
   across shapes the average result is close to zero, minus costs.
 - **Size.** Lots and units for the chosen account risk.
 
+Trading costs are left out by default; the form has an optional cost field for
+a broker's spread and commission. Without costs the 14 rules average almost
+exactly zero per week (`--no-costs`), so costs are not what hides an edge.
+
+Sentiment was tested too (`research/scripts/forex_sentiment_search.py`): the
+US regulator's weekly Commitments of Traders report, 1999 to now, seven
+currencies, nine rules (trade with or against large speculators, fade or join
+their extremes, follow their changes, fade small traders, follow hedgers).
+None was right more than half the time in both halves of the history; each
+worked in one half and reversed in the other. It is therefore not used.
+
 Rates come from `www.ecb.europa.eu` (one fixing per business day), so stops
 and targets are checked on daily fixings, not intraday prices. The chart is
 TradingView's embeddable widget, loaded by the viewer's browser; no figures
@@ -134,6 +145,7 @@ random-direction baseline. The public page shows the result.
 ```bash
 python research/scripts/strategy_search.py        # rule search, choose/check split
 python research/scripts/forex_weekly_search.py    # weekly forex rules, 27 years
+python research/scripts/forex_sentiment_search.py # positioning (sentiment) rules
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```

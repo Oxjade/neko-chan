@@ -386,6 +386,7 @@ class WeeklyPlanBody(BaseModel):
     target_pct: float = Field(ge=0.05, le=50)
     account_usd: float = Field(gt=0, le=1_000_000_000)
     risk_pct: float = Field(gt=0, le=100)
+    cost_pct: float = Field(default=0.0, ge=0, le=5)
 
 
 class WatchBody(BaseModel):
@@ -752,7 +753,7 @@ def register_web_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="Choose long or short.")
         try:
             return forex_weekly.plan(pair, direction, body.stop_pct, body.target_pct,
-                                     body.account_usd, body.risk_pct)
+                                     body.account_usd, body.risk_pct, body.cost_pct)
         except forex_weekly.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 

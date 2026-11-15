@@ -18,6 +18,7 @@ and lows and no stops are modelled; overnight financing (swap) is not
 included.
 
     python research/scripts/forex_weekly_search.py
+    python research/scripts/forex_weekly_search.py --no-costs
 """
 
 from __future__ import annotations
@@ -113,12 +114,12 @@ def rules() -> list[tuple[str, callable]]:
     return out
 
 
-def evaluate(close: pd.DataFrame, position: pd.DataFrame) -> dict:
+def evaluate(close: pd.DataFrame, position: pd.DataFrame, cost: float = COST_PCT) -> dict:
     """Judge positions decided at week t on the move to week t+1."""
     fwd = close.pct_change().shift(-1) * 100            # next week's move, percent
     pos = position.where(fwd.notna(), 0.0).fillna(0.0)
     gross = pos * fwd
-    net = gross - COST_PCT * (pos != 0)
+    net = gross - cost * (pos != 0)
     out = {}
     for name, mask in (("choose", close.index < SPLIT), ("check", close.index >= SPLIT)):
         g, n_, p = gross[mask], net[mask], pos[mask]
@@ -142,9 +143,10 @@ def evaluate(close: pd.DataFrame, position: pd.DataFrame) -> dict:
 
 def main() -> int:
     close = weekly_closes(load_daily(refresh="--refresh" in sys.argv))
+    cost = 0.0 if "--no-costs" in sys.argv else COST_PCT
     rows = []
     for name, fn in rules():
-        stats = evaluate(close, fn(close))
+        stats = evaluate(close, fn(close), cost)
         passed = all(stats[k]["avg_net_pct"] is not None and stats[k]["avg_net_pct"] > 0
                      for k in ("choose", "check"))
         rows.append({"rule": name, **stats, "passed": passed})
@@ -152,13 +154,14 @@ def main() -> int:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "ECB euro foreign exchange reference rates",
         "pairs": list(PAIRS), "from": str(close.index[0].date()), "to": str(close.index[-1].date()),
-        "cost_pct_per_week": COST_PCT, "split": SPLIT,
+        "cost_pct_per_week": cost, "split": SPLIT,
         "passed": sum(r["passed"] for r in rows), "tried": len(rows), "rows": rows,
     }
-    OUT.write_text(json.dumps(result, indent=1) + "\n")
+    out = OUT.with_name("forex_weekly_search_no_costs.json") if cost == 0 else OUT
+    out.write_text(json.dumps(result, indent=1) + "\n")
 
     print(f"{len(PAIRS)} pairs, weekly, {result['from']} to {result['to']}, "
-          f"cost {COST_PCT}% per week traded")
+          f"cost {cost}% per week traded")
     print(f"{'rule':<40} {'1999-2012: right   avg     t':>30} {'2013-now: right   avg     t':>30}  pass")
     for r in sorted(rows, key=lambda r: -(r["check"]["avg_net_pct"] or -9)):
         a, b = r["choose"], r["check"]
@@ -166,7 +169,7 @@ def main() -> int:
               f"{b['accuracy'] * 100:>16.1f}% {b['avg_net_pct']:+.3f}% {b['t']:+5.1f}  "
               f"{'YES' if r['passed'] else ''}")
     print(f"passed both periods: {result['passed']} of {result['tried']}")
-    print(f"wrote {OUT}")
+    print(f"wrote {out}")
     return 0
 
 

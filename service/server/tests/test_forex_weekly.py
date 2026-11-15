@@ -29,7 +29,7 @@ def steady_noise(n=600, seed=3):
 
 class ReplayShapeTests(unittest.TestCase):
     def test_outcomes_are_bounded_by_the_stop_and_target(self):
-        rows = fw.replay_shape(steady_noise(), "long", 0.75, 1.5)
+        rows = fw.replay_shape(steady_noise(), "long", 0.75, 1.5, cost_pct=0.04)
         self.assertGreater(len(rows), 60)
         for r in rows:
             self.assertGreaterEqual(r["gross"], -0.75 - 1e-9)
@@ -39,6 +39,10 @@ class ReplayShapeTests(unittest.TestCase):
             if r["how"] == "target":
                 self.assertAlmostEqual(r["gross"], 1.5)
             self.assertLess(r["net"], r["gross"])          # costs always charged
+
+    def test_no_costs_by_default(self):
+        rows = fw.replay_shape(steady_noise(), "long", 0.75, 1.5)
+        self.assertTrue(all(r["net"] == r["gross"] and r["fees"] == 0 for r in rows))
 
     def test_long_and_short_mirror_when_the_week_runs_out(self):
         series = steady_noise()
@@ -89,6 +93,9 @@ class PlanTests(unittest.TestCase):
         self.assertGreater(p["stop_price"], p["price"])     # a short's stop is above
         self.assertLess(p["target_price"], p["price"])
         self.assertAlmostEqual(p["sizing"]["loss_at_stop_usd"], 10.0, places=6)
+        self.assertEqual(p["cost_pct"], 0.0)
+        costly = fw.plan("EURUSD", "short", 0.5, 1.0, 1000, 1, cost_pct=0.05)
+        self.assertLess(costly["all"]["avg_result_pct"], p["all"]["avg_result_pct"])
         self.assertAlmostEqual(p["sizing"]["units"] * fw.base_in_usd(self.daily, "EURUSD"),
                                p["sizing"]["position_usd"], places=4)
         self.assertGreater(p["all"]["weeks"], 1000)
