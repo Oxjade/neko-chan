@@ -32,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import desk
+import forex_weekly
 import market_data
 import web_core
 import web_email
@@ -378,6 +379,15 @@ class AIKeyBody(BaseModel):
     base_url: str | None = Field(default=None, max_length=300)
 
 
+class WeeklyPlanBody(BaseModel):
+    pair: str = Field(max_length=10)
+    direction: str = Field(max_length=5)
+    stop_pct: float = Field(ge=0.05, le=20)
+    target_pct: float = Field(ge=0.05, le=50)
+    account_usd: float = Field(gt=0, le=1_000_000_000)
+    risk_pct: float = Field(gt=0, le=100)
+
+
 class WatchBody(BaseModel):
     symbol: str = Field(min_length=1, max_length=40)
 
@@ -721,6 +731,31 @@ def register_web_routes(app: FastAPI) -> None:
             conn.close()
         return {"removed": body.symbol.strip()}
 
+    # ---- weekly forex planner ---------------------------------------------
+
+    @app.get("/api/web/weekly")
+    def weekly_overview(request: Request):
+        _require_operator(request)
+        try:
+            return forex_weekly.overview()
+        except forex_weekly.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.post("/api/web/weekly/plan")
+    def weekly_plan(body: WeeklyPlanBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        pair, direction = body.pair.strip().upper(), body.direction.strip().lower()
+        if pair not in forex_weekly.PAIRS:
+            raise HTTPException(status_code=422, detail="That pair is not on the list.")
+        if direction not in ("long", "short"):
+            raise HTTPException(status_code=422, detail="Choose long or short.")
+        try:
+            return forex_weekly.plan(pair, direction, body.stop_pct, body.target_pct,
+                                     body.account_usd, body.risk_pct)
+        except forex_weekly.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
     @app.get("/api/web/console/waitlist")
     async def console_waitlist(request: Request):
         _require_operator(request)
@@ -747,6 +782,10 @@ def register_web_routes(app: FastAPI) -> None:
     @app.get("/", include_in_schema=False)
     async def public_page():
         return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/weekly", include_in_schema=False)
+    async def weekly_page():
+        return FileResponse(WEB_DIR / "weekly.html", headers={"Cache-Control": "no-store"})
 
     @app.get("/desk", include_in_schema=False)
     async def desk_page():

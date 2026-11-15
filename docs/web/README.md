@@ -6,6 +6,7 @@ The web app replaces Telegram as the interface. It has two sides:
 |---|---|---|
 | `/` | Clients and the public | Shows the paper-trading record: win rate against the break-even it needs, results after fees, equity line, recent trades, the four go-live checks, and the engine replay. Collects emails to notify. |
 | `/desk` | You, in a second tab | Signals for a watchlist you choose across crypto, stocks, indices, forex and commodities. Each market shows the rule's past record there; every unmuted signal is paper-traded automatically; sides that have lost money on a market are muted. Works out the position size for your account and risk. |
+| `/weekly` | You, planning the week | For forex. You enter a pair, direction, stop and target; it shows what a plan of that shape has done in every week since 1999, the win rate it needs, the pair's normal weekly range, and the lot size for your risk. Includes a live TradingView chart. |
 | `/console` | You, the operator | Create, start and pause paper bots; see positions, decisions, closed trades and the go-live checks per bot; save the AI model key; choose which bots are public. |
 
 It is paper trading only. The console cannot switch a bot to live trading and
@@ -51,6 +52,29 @@ stock, index, forex and commodity markets it lost over the one year of history
 available (268 trades, 18% won). A version with a target as close as the stop
 wins about half the time and nets roughly zero. Treat signals outside crypto
 as unproven.
+
+## The weekly forex planner
+
+`research/scripts/forex_weekly_search.py` tested 14 weekly rules (follow the
+trend, fade the last move, breakouts, moving averages) on 14 pairs over 27
+years of European Central Bank daily rates. None picked the week's direction
+better than a coin flip: 48.6% to 51.6% right, all slightly negative after
+costs, in both halves of the history. So the planner does not pick a
+direction. It measures the trader's own plan:
+
+- **Normal week.** How far the pair has been moving in a week (last 26
+  weeks). The week closed inside that range in about 69% of past weeks.
+- **Shape replay.** The stop and target are expressed in normal weeks and
+  replayed on every week since 1999: how often the target came first, the
+  stop came first, or the week ran out, with the win rate the shape needs to
+  break even. A closer target wins more often and needs a higher win rate;
+  across shapes the average result is close to zero, minus costs.
+- **Size.** Lots and units for the chosen account risk.
+
+Rates come from `www.ecb.europa.eu` (one fixing per business day), so stops
+and targets are checked on daily fixings, not intraday prices. The chart is
+TradingView's embeddable widget, loaded by the viewer's browser; no figures
+come from it.
 
 ## Trading styles
 
@@ -109,6 +133,7 @@ random-direction baseline. The public page shows the result.
 
 ```bash
 python research/scripts/strategy_search.py        # rule search, choose/check split
+python research/scripts/forex_weekly_search.py    # weekly forex rules, 27 years
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```
@@ -121,4 +146,5 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/server/web_email.py` goals and the daily email
 - `service/agent/trend_agent.py` the slow trend agent
 - `service/server/desk.py`, `market_data.py` desk signals, records, muting; market data
+- `service/server/forex_weekly.py` weekly forex planner
 - `service/server/tests/test_web.py` tests

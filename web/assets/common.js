@@ -324,3 +324,26 @@ export function signInForm(missing, onSignedIn) {
   if (!off) queueMicrotask(() => password.focus());
   return h("div", { class: "signin" }, form);
 }
+
+// ---- live chart (TradingView's free embeddable widget) ----------------------
+// The chart is drawn by TradingView in the viewer's browser. It is for looking
+// at the market; none of the numbers on these pages come from it.
+
+export function tradingViewChart(symbol, interval = "D") {
+  const config = {
+    autosize: true, symbol, interval, timezone: "Etc/UTC", theme: "light", style: "1",
+    locale: "en", allow_symbol_change: true, hide_side_toolbar: true, calendar: false,
+    support_host: "https://www.tradingview.com",
+  };
+  const script = document.createElement("script");
+  script.type = "text/javascript";
+  script.async = true;
+  script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  script.textContent = JSON.stringify(config);
+  return h("div", { class: "tradingview-widget-container chart-embed" },
+    h("div", { class: "tradingview-widget-container__widget" }),
+    h("div", { class: "tradingview-widget-copyright soft small" },
+      h("a", { href: "https://www.tradingview.com/", rel: "noopener nofollow", target: "_blank" },
+        "Chart by TradingView")),
+    script);
+}

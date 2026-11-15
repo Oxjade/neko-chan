@@ -1,6 +1,6 @@
 import {
   api, h, replace, fmt, tone, gaugeFromPerformance, table, figures, directionWord,
-  setupNotice, signInForm, positionColumns, tradeColumns, marketLabel,
+  setupNotice, signInForm, positionColumns, tradeColumns, marketLabel, tradingViewChart,
 } from "/web/common.js";
 
 const app = document.getElementById("app");
@@ -36,6 +36,21 @@ function day(iso) {
 
 function pct(v, digits = 1) {
   return v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
+}
+
+// TradingView names for the markets whose names differ; the chart lets the
+// viewer change the symbol if a guess is wrong.
+const CHART_NAMES = { SP500: "SPX", XYZ100: "NDX", JP225: "NI225", GOLD: "XAUUSD", SILVER: "XAGUSD",
+                      CL: "USOIL", BRENTOIL: "UKOIL", EUR: "EURUSD", GBP: "GBPUSD", JPY: "USDJPY" };
+const chart = { symbol: null, node: null };
+
+function chartFor(row) {
+  if (chart.symbol !== row.symbol || !chart.node) {
+    const name = row.class === "crypto" ? `${row.label}USD` : (CHART_NAMES[row.label] || row.label);
+    chart.symbol = row.symbol;
+    chart.node = tradingViewChart(name, "240");
+  }
+  return chart.node;
 }
 
 // ---- data ------------------------------------------------------------------
@@ -338,6 +353,7 @@ function detail() {
     h("p", { class: "soft small" },
       `Results are a replay of the rule on this market's past prices, after ${state.data.rule.cost_pct}% ` +
       `costs per round trip. A replay is not a promise.`),
+    chartFor(row),
     h("h3", null, "Past signals on this market"),
     table(pastColumns, row.recent_trades, "The rule has not closed a trade on this market yet."));
 }

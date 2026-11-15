@@ -745,3 +745,18 @@ td .button {
 body.wide {
   --page: 1440px;
 }
+
+/* embedded live chart */
+.chart-embed {
+  height: 420px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.chart-embed .tradingview-widget-copyright {
+  padding: var(--s1) var(--s3);
+}
