@@ -6,9 +6,10 @@
 // and clock are swapped for the recording) and compares every field.
 //
 // Numbers must agree to 1e-9 (relative or absolute); everything else exactly.
-// The fixtures are large and not committed; without them the test is skipped.
+// The recordings are large and not committed; without one the test is skipped.
+// Every recording found is checked (fixtures/, fixtures-monday/, ...).
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
@@ -19,8 +20,10 @@ import { settled } from "../../src/core/history";
 import { FNG_URL, HL_URL } from "../../src/core/runtime";
 import type { ChartInterval } from "../../src/core/types";
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
-const recorded = existsSync(join(FIXTURES, "meta.json"));
+const HERE = dirname(fileURLToPath(import.meta.url));
+const RECORDINGS = readdirSync(HERE)
+  .filter((name) => /^fixtures(-[\w-]+)?$/.test(name) && existsSync(join(HERE, name, "meta.json")))
+  .sort();
 const TOLERANCE = 1e-9;
 
 const canonical = (value: unknown): string => JSON.stringify(sortKeys(value));
@@ -40,12 +43,11 @@ interface Tally {
   worst: number;
   worstAt: string;
   problems: string[];
+  /** Numbers that agree within the tolerance but not to the last bit, by field (list positions removed). */
+  inexact: Map<string, { count: number; worst: number }>;
 }
 
-const totals: Tally = { fields: 0, numbers: 0, worst: 0, worstAt: "", problems: [] };
-// Numbers that agree within the tolerance but not to the last bit, by field (list positions removed).
-const inexact = new Map<string, { count: number; worst: number }>();
-const perResult: Array<{ name: string; fields: number; worst: number; worstAt: string; problems: number }> = [];
+const emptyTally = (): Tally => ({ fields: 0, numbers: 0, worst: 0, worstAt: "", problems: [], inexact: new Map() });
 
 /** Walk both values together, counting every leaf and noting every disagreement. */
 function compare(mine: unknown, theirs: unknown, path: string, tally: Tally): void {
@@ -67,8 +69,7 @@ function compare(mine: unknown, theirs: unknown, path: string, tally: Tally): vo
     }
     const a = mine as Record<string, unknown>;
     const b = theirs as Record<string, unknown>;
-    // undefined is how TypeScript says "absent"; JSON would drop it.
-    const mineKeys = Object.keys(a).filter((key) => a[key] !== undefined);
+    const mineKeys = Object.keys(a);
     const theirKeys = Object.keys(b);
     for (const key of theirKeys) if (!mineKeys.includes(key)) tally.problems.push(`${path}.${key}: missing`);
     for (const key of mineKeys) if (!theirKeys.includes(key)) tally.problems.push(`${path}.${key}: not in Python`);
@@ -93,8 +94,8 @@ function compare(mine: unknown, theirs: unknown, path: string, tally: Tally): vo
     }
     if (relative > 0) {
       const field = path.replace(/\[\d+\]/g, "[]");
-      const seen = inexact.get(field) ?? { count: 0, worst: 0 };
-      inexact.set(field, { count: seen.count + 1, worst: Math.max(seen.worst, relative) });
+      const seen = tally.inexact.get(field) ?? { count: 0, worst: 0 };
+      tally.inexact.set(field, { count: seen.count + 1, worst: Math.max(seen.worst, relative) });
     }
     if (relative > TOLERANCE && gap > TOLERANCE) tally.problems.push(`${path}: ${mine} vs ${theirs}`);
     return;
@@ -102,22 +103,22 @@ function compare(mine: unknown, theirs: unknown, path: string, tally: Tally): vo
   if (mine !== theirs) tally.problems.push(`${path}: ${JSON.stringify(mine)} vs ${JSON.stringify(theirs)}`);
 }
 
-describe.skipIf(!recorded)("parity with the Python reference on recorded data", () => {
-  const meta = recorded ? JSON.parse(readFileSync(join(FIXTURES, "meta.json"), "utf8")) as {
+function checkRecording(recording: string): void {
+  const dir = join(HERE, recording);
+  const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as {
     now_ms: number; stake: number; charts: Array<[string, ChartInterval]>; books: string[];
-  } : { now_ms: 0, stake: 18, charts: [], books: [] };
+  };
   const hl = new Map<string, string>();
   const http = new Map<string, string>();
   const asked: string[] = [];
   const unanswered: string[] = [];
+  const totals = emptyTally();
+  const perResult: Array<{ name: string; fields: number; worst: number; problems: number }> = [];
 
-  if (recorded) {
-    const index = JSON.parse(readFileSync(join(FIXTURES, "raw/hl/index.json"), "utf8")) as
-      Array<{ payload: unknown; file: string }>;
-    for (const entry of index) hl.set(canonical(entry.payload), join(FIXTURES, "raw/hl", entry.file));
-    const files = JSON.parse(readFileSync(join(FIXTURES, "raw/http.json"), "utf8")) as Record<string, string>;
-    for (const [url, file] of Object.entries(files)) http.set(url, join(FIXTURES, "raw", file));
-  }
+  const index = JSON.parse(readFileSync(join(dir, "raw/hl/index.json"), "utf8")) as Array<{ payload: unknown; file: string }>;
+  for (const entry of index) hl.set(canonical(entry.payload), join(dir, "raw/hl", entry.file));
+  const files = JSON.parse(readFileSync(join(dir, "raw/http.json"), "utf8")) as Record<string, string>;
+  for (const [url, file] of Object.entries(files)) http.set(url, join(dir, "raw", file));
 
   const ecbFetch: typeof fetch = async (input) => {
     const file = http.get(String(input));
@@ -160,10 +161,11 @@ describe.skipIf(!recorded)("parity with the Python reference on recorded data", 
     return new Response("not recorded", { status: 500 });
   };
 
-  const expected = (name: string): unknown => JSON.parse(readFileSync(join(FIXTURES, "expected", `${name}.json`), "utf8"));
+  const expected = (name: string): unknown => JSON.parse(readFileSync(join(dir, "expected", `${name}.json`), "utf8"));
 
   function check(name: string, mine: unknown): void {
-    const tally: Tally = { fields: 0, numbers: 0, worst: 0, worstAt: "", problems: [] };
+    const tally = emptyTally();
+    // Through JSON, as the screens of the Python version received it (undefined fields drop out).
     compare(JSON.parse(JSON.stringify(mine)), expected(name), name, tally);
     totals.fields += tally.fields;
     totals.numbers += tally.numbers;
@@ -172,7 +174,11 @@ describe.skipIf(!recorded)("parity with the Python reference on recorded data", 
       totals.worst = tally.worst;
       totals.worstAt = tally.worstAt;
     }
-    perResult.push({ name, fields: tally.fields, worst: tally.worst, worstAt: tally.worstAt, problems: tally.problems.length });
+    for (const [field, seen] of tally.inexact) {
+      const sum = totals.inexact.get(field) ?? { count: 0, worst: 0 };
+      totals.inexact.set(field, { count: sum.count + seen.count, worst: Math.max(sum.worst, seen.worst) });
+    }
+    perResult.push({ name, fields: tally.fields, worst: tally.worst, problems: tally.problems.length });
     expect(tally.problems, `${name}: fields that differ from Python`).toEqual([]);
   }
 
@@ -180,61 +186,69 @@ describe.skipIf(!recorded)("parity with the Python reference on recorded data", 
     fetch: replay, now: () => meta.now_ms, storage: null, weightPerMinute: Infinity, fxUrl: "/api/fx",
   });
 
-  afterAll(() => {
-    if (!recorded) return;
-    const lines = perResult.map((r) =>
-      `  ${r.name.padEnd(22)} ${String(r.fields).padStart(6)} fields  largest gap ${r.worst.toExponential(2)}` +
-      `${r.problems ? `  ${r.problems} DIFFER` : ""}`);
-    console.log([
-      `Parity at ${new Date(meta.now_ms).toISOString()}: ${totals.fields} fields compared ` +
-      `(${totals.numbers} numbers), ${totals.problems.length} differ.`,
-      `Largest relative gap ${totals.worst.toExponential(3)} at ${totals.worstAt || "(none)"}`,
-      ...lines,
-      `Hyperliquid requests made by the TypeScript core: ${new Set(asked).size} distinct ` +
-      `(${asked.length} in all), ${unanswered.length} not in the recording.`,
-      `Numbers equal within the tolerance but not to the last bit: ` +
-      `${[...inexact.values()].reduce((sum, f) => sum + f.count, 0)} of ${totals.numbers}` +
-      `${inexact.size ? ", in these fields:" : "."}`,
-      ...[...inexact.entries()].map(([field, f]) => `  ${field}: ${f.count} numbers, largest gap ${f.worst.toExponential(2)}`),
-      ...totals.problems.slice(0, 40).map((p) => `  differs: ${p}`),
-    ].join("\n"));
-  });
+  describe(`parity with the Python reference, recorded ${new Date(meta.now_ms).toISOString()} (${recording})`, () => {
+    afterAll(() => {
+      const inexactCount = [...totals.inexact.values()].reduce((sum, f) => sum + f.count, 0);
+      console.log([
+        `Parity at ${new Date(meta.now_ms).toISOString()} (${recording}): ${totals.fields} fields compared ` +
+        `(${totals.numbers} numbers), ${totals.problems.length} differ.`,
+        `Largest relative gap ${totals.worst.toExponential(3)} at ${totals.worstAt || "(none)"}`,
+        ...perResult.map((r) => `  ${r.name.padEnd(22)} ${String(r.fields).padStart(6)} fields  largest gap ` +
+          `${r.worst.toExponential(2)}${r.problems ? `  ${r.problems} DIFFER` : ""}`),
+        `Hyperliquid requests made by the TypeScript core: ${new Set(asked).size} distinct ` +
+        `(${asked.length} in all), ${unanswered.length} not in the recording.`,
+        `Numbers equal within the tolerance but not to the last bit: ${inexactCount} of ${totals.numbers}` +
+        `${inexactCount ? ", in these fields:" : "."}`,
+        ...[...totals.inexact.entries()].map(([field, f]) =>
+          `  ${field}: ${f.count} numbers, largest gap ${f.worst.toExponential(2)}`),
+        ...totals.problems.slice(0, 40).map((p) => `  differs: ${p}`),
+      ].join("\n"));
+    });
 
-  it("makes the same week's calls", async () => {
-    start();
-    check("week", await getWeek());
-  });
+    it("makes the same week's calls", async () => {
+      start();
+      check("week", await getWeek());
+    });
 
-  it("scores the last weeks the same, at the suggested leverage and at 5x", async () => {
-    start();
-    check("scoreboard_0", await getScoreboard(meta.stake, 0));
-    check("scoreboard_5", await getScoreboard(meta.stake, 5));
-  });
+    it("scores the last weeks the same, at the suggested leverage and at 5x", async () => {
+      start();
+      check("scoreboard_0", await getScoreboard(meta.stake, 0));
+      check("scoreboard_5", await getScoreboard(meta.stake, 5));
+    });
 
-  it("builds the same terminal and advanced screens once every history has loaded", async () => {
-    start();
-    let advanced = await getAdvanced(meta.stake);            // starts the history downloads
-    await settled();
-    advanced = await getAdvanced(meta.stake);
-    expect(advanced.pending).toBe(0);
-    check("terminal", await getTerminal(meta.stake));
-    const { pending: _pending, ...panels } = advanced;        // `pending` is the one field Python does not have
-    check("advanced", panels);
-  }, 120_000);
+    it("builds the same terminal and advanced screens once every history has loaded", async () => {
+      start();
+      let advanced = await getAdvanced(meta.stake);            // starts the history downloads
+      await settled();
+      advanced = await getAdvanced(meta.stake);
+      expect(advanced.pending).toBe(0);
+      check("terminal", await getTerminal(meta.stake));
+      const { pending: _pending, ...panels } = advanced;        // `pending` is the one field Python does not have
+      check("advanced", panels);
+    }, 120_000);
 
-  it("draws the same charts", async () => {
-    start();
-    for (const [symbol, interval] of meta.charts) {
-      check(`chart_${symbol.replace(":", "_")}_${interval}`, await getChart(symbol, interval));
-    }
-  });
+    it("draws the same charts", async () => {
+      start();
+      for (const [symbol, interval] of meta.charts) {
+        check(`chart_${symbol.replace(":", "_")}_${interval}`, await getChart(symbol, interval));
+      }
+    });
 
-  it("reads the same order book", async () => {
-    start();
-    for (const symbol of meta.books) check(`book_${symbol.replace(":", "_")}`, await getBook(symbol));
-  });
+    it("reads the same order book", async () => {
+      start();
+      for (const symbol of meta.books) check(`book_${symbol.replace(":", "_")}`, await getBook(symbol));
+    });
 
-  it("asked only for responses that were recorded", () => {
-    expect(unanswered).toEqual([]);
+    it("asked only for responses that were recorded", () => {
+      expect(unanswered).toEqual([]);
+    });
   });
-});
+}
+
+if (RECORDINGS.length) {
+  for (const recording of RECORDINGS) checkRecording(recording);
+} else {
+  describe.skip("parity with the Python reference (no recording: run tests/parity/make_fixtures.py)", () => {
+    it("is skipped", () => {});
+  });
+}

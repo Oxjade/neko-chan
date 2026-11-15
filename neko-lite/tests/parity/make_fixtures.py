@@ -18,6 +18,10 @@ long price histories are fetched slowly to stay inside Hyperliquid's limit):
     .venv/bin/python neko-lite/tests/parity/make_fixtures.py
 
 Output goes to neko-lite/tests/parity/fixtures/ (git-ignored, about 15 MB).
+Give a name to keep more than one moment side by side; the test checks every
+recording it finds:
+
+    .venv/bin/python neko-lite/tests/parity/make_fixtures.py monday     # -> fixtures-monday/
 """
 
 from __future__ import annotations
@@ -36,7 +40,10 @@ import requests
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-OUT = HERE / "fixtures"
+NAME = sys.argv[1] if len(sys.argv) > 1 else ""
+if NAME and not NAME.replace("-", "").isalnum():
+    raise SystemExit("the recording's name may only have letters, digits and dashes")
+OUT = HERE / (f"fixtures-{NAME}" if NAME else "fixtures")
 sys.path.insert(0, str(REPO / "service" / "server"))
 
 import crypto_mood  # noqa: E402
