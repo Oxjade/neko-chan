@@ -258,6 +258,43 @@ function newSignals() {
       : null);
 }
 
+function share(v) {
+  return v === null || v === undefined ? "–" : `${(v * 100).toFixed(0)}%`;
+}
+
+function moodSection() {
+  const mood = state.data.mood;
+  if (!mood) return null;
+  const reading = mood.week_reading;
+  const side = mood.rules.with_mood;
+  const ev = mood.evidence;
+  const record = ev && ev.with_mood && ev.holding ? [
+    { name: "Going with the mood", ...ev.with_mood },
+    { name: "Simply holding", ...ev.holding },
+  ] : [];
+  return h("section", { class: "panel stack" },
+    h("h2", { style: "font-size:var(--t-h3)" }, "Crypto mood this week"),
+    h("p", { class: "verdict" },
+      `${reading.label} (${reading.value} of 100). The tested mood rule is ${side} on crypto this week.`),
+    h("p", { class: "soft small" },
+      `Reading from ${reading.date}` +
+      (mood.change_from_last_week === null ? "" : `, ${mood.change_from_last_week > 0 ? "up" : "down"} ` +
+        `${Math.abs(mood.change_from_last_week)} from the week before`) +
+      `. Today it is ${mood.today.value}. The rule goes long when the index is 50 or more and short below; ` +
+      (mood.rules.extreme
+        ? `it is also at an extreme, where the rule was right most often.`
+        : `it is not at an extreme (under 25 or over 75), where the rule was right most often.`)),
+    record.length ? table([
+      { label: `Tested on ${ev.coins} coins`, cell: (r) => r.name },
+      { label: `Weeks right, to ${ev.split.slice(0, 4)}`, num: true, cell: (r) => share(r.choose.accuracy) },
+      { label: "Average week", num: true, cell: (r) => pct(r.choose.avg_pct, 2), cls: (r) => tone(r.choose.avg_pct) },
+      { label: `Weeks right, since ${ev.split.slice(0, 4)}`, num: true, cell: (r) => share(r.check.accuracy) },
+      { label: "Average week", num: true, cell: (r) => pct(r.check.avg_pct, 2), cls: (r) => tone(r.check.avg_pct) },
+    ], record, "") : null,
+    h("p", { class: "soft small" },
+      "One direction for all coins, for the whole week. Buying fear and selling greed was the worst rule tested. The index is partly built from recent price moves, so it overlaps with the trend signals below, and the more recent half of the record is too short to be sure of."));
+}
+
 function watchTable() {
   const rows = state.data.watchlist;
   const columns = [
@@ -398,7 +435,7 @@ function render() {
     h("div", { class: "console", style: "margin-top:var(--s5)" },
       h("aside", null, addForm(), sizingForm(), lessonsPanel()),
       h("main", null, h("div", { class: "stack" },
-        newSignals(), watchTable(), detail(), paperSection()))));
+        newSignals(), moodSection(), watchTable(), detail(), paperSection()))));
 }
 
 // ---- start -----------------------------------------------------------------

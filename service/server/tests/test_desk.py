@@ -120,6 +120,35 @@ class MutedSignalIsNotPaperTraded(unittest.TestCase):
             self.assertEqual(len(gw.store.positions(3)), 1)
 
 
+class CryptoMoodTests(unittest.TestCase):
+    def test_rule_directions(self):
+        import crypto_mood
+        self.assertEqual(crypto_mood.rule_direction(10), {"with_mood": "short", "extreme": "short"})
+        self.assertEqual(crypto_mood.rule_direction(49), {"with_mood": "short", "extreme": None})
+        self.assertEqual(crypto_mood.rule_direction(50), {"with_mood": "long", "extreme": None})
+        self.assertEqual(crypto_mood.rule_direction(80), {"with_mood": "long", "extreme": "long"})
+
+    def test_week_uses_sundays_reading_and_carries_the_record(self):
+        import crypto_mood
+        from datetime import date
+        readings = [  # newest first; 2026-11-15 is a Sunday
+            {"date": date(2026, 11, 17), "value": 30, "label": "Fear"},
+            {"date": date(2026, 11, 16), "value": 20, "label": "Extreme Fear"},
+            {"date": date(2026, 11, 15), "value": 60, "label": "Greed"},
+            {"date": date(2026, 11, 14), "value": 55, "label": "Greed"},
+            {"date": date(2026, 11, 8), "value": 40, "label": "Fear"},
+        ]
+        with mock.patch.object(crypto_mood, "_readings", lambda: readings):
+            week = crypto_mood.this_week()
+        self.assertEqual(week["week_reading"]["value"], 60)
+        self.assertEqual(week["today"]["value"], 30)
+        self.assertEqual(week["rules"]["with_mood"], "long")
+        self.assertEqual(week["change_from_last_week"], 20)
+        ev = week["evidence"]
+        self.assertGreater(ev["with_mood"]["choose"]["accuracy"], 0.5)
+        self.assertGreater(ev["with_mood"]["check"]["avg_pct"], ev["holding"]["check"]["avg_pct"])
+
+
 class DeskEndpointTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -136,8 +165,10 @@ class DeskEndpointTests(unittest.TestCase):
         live = {"symbol": "BTC", "label": "BTC", "class": "crypto", "price": float(bars["close"][-1]),
                 "day_change_pct": 1.0, "funding_hourly": 0.0, "max_leverage": 40,
                 "day_volume_usd": 1.0}
+        import crypto_mood
         cls.patches = [mock.patch.object(market_data, "catalogue", lambda: {"BTC": live}),
-                       mock.patch.object(market_data, "candles", lambda symbol: bars)]
+                       mock.patch.object(market_data, "candles", lambda symbol: bars),
+                       mock.patch.object(crypto_mood, "this_week", lambda: {"marker": "mood"})]
         for p in cls.patches:
             p.start()
         import routes_web
@@ -169,6 +200,7 @@ class DeskEndpointTests(unittest.TestCase):
         self.assertIn(row["signal"]["state"], {"new", "active", "stopped", "waiting"})
         self.assertGreater(row["record"]["trades"], 10)
         self.assertEqual(state["paper"]["account"]["equity"], 1000.0)
+        self.assertEqual(state["mood"], {"marker": "mood"})
         # the desk's paper account cannot be started as an ordinary bot
         bot_id = state["paper"]["bot_id"]
         self.assertEqual(c.post(f"/api/web/console/bots/{bot_id}/start", json={}).status_code, 409)

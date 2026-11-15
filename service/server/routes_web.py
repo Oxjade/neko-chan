@@ -31,6 +31,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import crypto_mood
 import desk
 import forex_weekly
 import market_data
@@ -677,7 +678,11 @@ def register_web_routes(app: FastAPI) -> None:
             paper = {"bot_id": bot_id, "performance": report["performance"],
                      "account": report["account"], "positions": report["positions"],
                      "trades": report["trades"][:50]}
-        return {"watchlist": rows, "lessons": desk.lessons(rows), "paper": paper,
+        try:
+            mood = crypto_mood.this_week()
+        except market_data.DataError:
+            mood = None                      # the desk still works without the mood panel
+        return {"watchlist": rows, "lessons": desk.lessons(rows), "paper": paper, "mood": mood,
                 "max_watchlist": desk.MAX_WATCHLIST, "setup_missing": _setup_missing(),
                 "rule": {"cost_pct": desk.COST_PCT, "stop_atr": desk.STOP_ATR}}
 

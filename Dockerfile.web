@@ -13,6 +13,7 @@ COPY service/ ./service/
 COPY web/ ./web/
 COPY skills/ ./skills/
 COPY research/exports/tables/live_engine_replay.json ./research/exports/tables/live_engine_replay.json
+COPY research/exports/tables/crypto_weekly_search.json ./research/exports/tables/crypto_weekly_search.json
 
 # Persist this directory: it holds the registry (bots, paper trades, encrypted keys).
 ENV TG_REGISTRY_PATH=/data/registry.db

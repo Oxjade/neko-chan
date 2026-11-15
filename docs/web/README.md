@@ -87,6 +87,26 @@ and targets are checked on daily fixings, not intraday prices. The chart is
 TradingView's embeddable widget, loaded by the viewer's browser; no figures
 come from it.
 
+## Crypto mood (weekly)
+
+`research/scripts/crypto_weekly_search.py` ran the weekly test on crypto: ten
+coins, Aug 2020 to now, 14 price rules plus the Fear & Greed index and funding
+rates as sentiment, each judged on the first and second half of the history.
+
+- Going **with** the mood (long when the index is 50 or more, short below)
+  was right 55% of weeks in the first half and 50% in the second, averaging
+  +2.8% and +1.0% per week, against +2.0% and +0.75% for simply holding.
+- At extremes (under 25 or over 75) it was right 55% and 59% of weeks.
+- Buying fear and selling greed was the worst rule tested (45% and 41%).
+- Following the last four weeks' move was right 54% and 51%.
+- Funding rates showed nothing dependable (three coins, history from 2023).
+
+Two of 23 rules beat holding in both halves, both of them the mood rule. The
+second half is not statistically solid, the ten coins move together, and the
+index is partly built from price momentum, so it overlaps with the trend
+rule. The desk shows this week's reading, the rule's direction and this
+record; it needs `api.alternative.me` reachable.
+
 ## Trading styles
 
 - **Slow trend** (default, no AI key needed): on 4-hour bars, long when the
@@ -146,6 +166,7 @@ random-direction baseline. The public page shows the result.
 python research/scripts/strategy_search.py        # rule search, choose/check split
 python research/scripts/forex_weekly_search.py    # weekly forex rules, 27 years
 python research/scripts/forex_sentiment_search.py # positioning (sentiment) rules
+python research/scripts/crypto_weekly_search.py   # weekly crypto rules incl. mood and funding
 python research/scripts/test_llm_decisions.py     # does the AI model add anything
 python research/scripts/replay_live_engine.py     # the scenario engine with costs
 ```
@@ -159,4 +180,5 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/agent/trend_agent.py` the slow trend agent
 - `service/server/desk.py`, `market_data.py` desk signals, records, muting; market data
 - `service/server/forex_weekly.py` weekly forex planner
+- `service/server/crypto_mood.py` weekly crypto mood reading and its record
 - `service/server/tests/test_web.py` tests
