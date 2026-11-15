@@ -5,6 +5,7 @@ The web app replaces Telegram as the interface. It has two sides:
 | Page | Who it is for | What it does |
 |---|---|---|
 | `/` | Clients and the public | Shows the paper-trading record: win rate against the break-even it needs, results after fees, equity line, recent trades, the four go-live checks, and the engine replay. Collects emails to notify. |
+| `/terminal` | You, in a second tab, all week | A live dark terminal: model positions for this week's calls with live profit and distance to the stop, a candlestick chart with the entry, stop and target drawn on it, a market dashboard, a recommendation gauge, and a desk feed that says what to do right now. |
 | `/week` | Someone new to trading | The week's calls on perps: long, short or stay out for Bitcoin and Ether, each with a suggested leverage. Shows why, the steps to take with your amount, a week-by-week scoreboard, and how far to trust it. |
 | `/desk` | You, in a second tab | Signals for a watchlist you choose across crypto, stocks, indices, forex and commodities. Each market shows the rule's past record there; every unmuted signal is paper-traded automatically; sides that have lost money on a market are muted. Works out the position size for your account and risk. |
 | `/weekly` | You, planning the week | For forex. You enter a pair, direction, stop and target; it shows what a plan of that shape has done in every week since 1999, the win rate it needs, the pair's normal weekly range, and the lot size for your risk. Includes a live TradingView chart. |
@@ -92,6 +93,29 @@ Rates come from `www.ecb.europa.eu` (one fixing per business day), so stops
 and targets are checked on daily fixings, not intraday prices. The chart is
 TradingView's embeddable widget, loaded by the viewer's browser; no figures
 come from it.
+
+## The live terminal
+
+`/terminal` keeps the week's calls on screen and live. The server recomputes
+positions, advice and recommendations every five seconds
+(`service/server/terminal.py`); a direct price stream from Hyperliquid moves
+the numbers and the chart in between, falling back to the five-second poll if
+the stream cannot connect.
+
+- **Position tracker.** Model positions: what the weekly amount would be
+  doing had the calls been followed from Monday's open. Live profit, and how
+  far the price is from the stop. The terminal does not know what you hold.
+- **Desk feed.** What to do now, most urgent first: stop hit (closed, do not
+  re-enter), close to the stop (leave it), in profit (hold to Monday), the
+  weekly close coming up, do not enter late, and a preview of Monday's call.
+- **Take profit and stop advice is tested.** Moving the stop to break-even
+  made no real difference and trailing it closely made results worse, so the
+  feed never says to tighten a stop.
+- **Recommendation.** For the selected market: which way the tested signals
+  lean (mood, last four weeks, 10-day against 40-day average) and whether the
+  platform makes the call. Stocks, forex and commodities show "no call".
+- **Chart.** 1h, 4h or 1d candles with the two averages and this week's
+  entry, stop and optional target.
 
 ## This week: long, short or stay out
 
@@ -270,4 +294,6 @@ python research/scripts/replay_live_engine.py     # the scenario engine with cos
 - `service/server/forex_weekly.py` weekly forex planner
 - `service/server/crypto_mood.py` weekly crypto mood reading and its record
 - `service/server/weekly_calls.py` the week's long, short or stay-out calls and the scoreboard
+- `service/server/terminal.py` live model positions, advice, recommendations and chart data
+- `web/assets/terminal.css`, `terminal.js` the terminal's dark theme and live page
 - `service/server/tests/test_web.py` tests

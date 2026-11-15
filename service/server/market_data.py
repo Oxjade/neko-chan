@@ -74,8 +74,10 @@ def label(symbol: str) -> str:
     return symbol.split(":", 1)[-1]
 
 
-def catalogue() -> dict[str, dict]:
-    """Every market the desk can watch, with its live price."""
+def catalogue(max_age: float = MARKET_TTL) -> dict[str, dict]:
+    """Every market the desk can watch, with its live price.
+
+    max_age: how stale the prices may be, in seconds (the terminal asks for a few)."""
     def load():
         out = {}
         for dex in ("", XYZ):
@@ -100,7 +102,25 @@ def catalogue() -> dict[str, dict]:
                     "day_volume_usd": float(ctx.get("dayNtlVlm") or 0.0),
                 }
         return out
-    return cached("catalogue", MARKET_TTL, load)
+    return cached("catalogue", max_age, load)
+
+
+INTERVAL_MS = {"1h": 3600 * 1000, "4h": H4_MS, "1d": 24 * 3600 * 1000}
+
+
+def chart_candles(symbol: str, interval: str, bars: int) -> list[dict]:
+    """Recent candles for a chart, oldest first, including the one still forming."""
+    if interval not in INTERVAL_MS:
+        raise DataError("Unknown chart interval.")
+    ms = INTERVAL_MS[interval]
+
+    def load():
+        now = int(time.time() * 1000)
+        rows = _post({"type": "candleSnapshot", "req": {
+            "coin": symbol, "interval": interval, "startTime": now - bars * ms, "endTime": now}})
+        return [{"t": int(r["t"]), "o": float(r["o"]), "h": float(r["h"]), "l": float(r["l"]),
+                 "c": float(r["c"]), "v": float(r["v"])} for r in rows]
+    return cached(f"chart:{symbol}:{interval}:{bars}", 20, load)
 
 
 def candles(symbol: str) -> dict[str, np.ndarray]:

@@ -36,6 +36,7 @@ import desk
 import forex_weekly
 import weekly_calls
 import market_data
+import terminal
 import web_core
 import web_email
 
@@ -764,6 +765,30 @@ def register_web_routes(app: FastAPI) -> None:
         except market_data.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 
+    # ---- live terminal ----------------------------------------------------
+
+    @app.get("/api/web/terminal")
+    def terminal_snapshot(request: Request, stake: float = 18.0):
+        _require_operator(request)
+        if not (0 < stake <= 1_000_000_000):
+            raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
+        try:
+            return terminal.snapshot(stake)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/terminal/chart")
+    def terminal_chart(request: Request, symbol: str, interval: str = "4h"):
+        _require_operator(request)
+        if interval not in terminal.CHART_BARS:
+            raise HTTPException(status_code=422, detail="Choose 1h, 4h or 1d.")
+        try:
+            if symbol not in market_data.catalogue():
+                raise HTTPException(status_code=422, detail="That market is not available.")
+            return terminal.chart(symbol, interval)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
     # ---- weekly forex planner ---------------------------------------------
 
     @app.get("/api/web/weekly")
@@ -815,6 +840,10 @@ def register_web_routes(app: FastAPI) -> None:
     @app.get("/", include_in_schema=False)
     async def public_page():
         return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/terminal", include_in_schema=False)
+    async def terminal_page():
+        return FileResponse(WEB_DIR / "terminal.html", headers={"Cache-Control": "no-store"})
 
     @app.get("/week", include_in_schema=False)
     async def week_page():
