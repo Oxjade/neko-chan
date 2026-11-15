@@ -115,7 +115,14 @@ the stream cannot connect.
   lean (mood, last four weeks, 10-day against 40-day average) and whether the
   platform makes the call. Stocks, forex and commodities show "no call".
 - **Chart.** 1h, 4h or 1d candles with the two averages and this week's
-  entry, stop and optional target.
+  entry, stop and optional target. **1S** is a one-second chart: the exchange
+  keeps no one-second history, so the browser builds those candles itself from
+  the live stream (best bid and offer, plus trades for volume), starting when
+  the terminal opens and keeping the last five minutes.
+- **Live feed.** Every market on screen is followed on the exchange's best
+  bid and offer feed, which updates several times a second, so prices, profit
+  and the chart move continuously. The all-markets price feed alone only
+  ticks about every ten seconds.
 
 ### Basic and Advanced
 
