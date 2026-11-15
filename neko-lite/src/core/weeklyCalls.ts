@@ -39,6 +39,7 @@ export const FEE_PER_SIDE = 0.00045;         // exchange fee, share of the posit
 export const FUNDING_PER_DAY = 0.0003;       // typical cost of holding a leveraged long, per day
 const DAILY_DAYS = 330;
 const SUNDAY_DAYS = 70;
+const OUT_OF_STEP = "This week's mood and prices are out of step; try again shortly.";
 
 export interface Day {
   open: number;
@@ -174,7 +175,7 @@ export function buildWeek(inputs: WeekInputs): Week {
     if (closes.length < 5) throw new DataError("Not enough weekly prices to decide.");
     if (isoDay(closes[0].day) !== mood.week_reading.date) {
       // Mood and price must describe the same week's end.
-      throw new DataError("This week's mood and prices are out of step; try again shortly.");
+      throw new DataError(OUT_OF_STEP);
     }
     const now = closes[0].close;
     const before = closes[4].close;
@@ -258,11 +259,19 @@ export async function thisWeek(): Promise<Week> {
     cryptoMood.thisWeek(), catalogue(),
     Promise.all(coins.map(sundayCloses)), Promise.all(coins.map(dailyCandles)),
   ]);
-  return buildWeek({
-    config, exits: exitRule(), mood, live,
-    closes: Object.fromEntries(coins.map((coin, i) => [coin, closes[i]])),
-    candles: Object.fromEntries(coins.map((coin, i) => [coin, candles[i]])),
-  });
+  try {
+    const week = buildWeek({
+      config, exits: exitRule(), mood, live,
+      closes: Object.fromEntries(coins.map((coin, i) => [coin, closes[i]])),
+      candles: Object.fromEntries(coins.map((coin, i) => [coin, candles[i]])),
+    });
+    cryptoMood.expectUpdate(false);
+    return week;
+  } catch (error) {
+    // The prices have moved on to a new week and the mood index has not yet: look for it more often.
+    if (error instanceof DataError && error.message === OUT_OF_STEP) cryptoMood.expectUpdate(true);
+    throw error;
+  }
 }
 
 // ---- week by week ----------------------------------------------------------------

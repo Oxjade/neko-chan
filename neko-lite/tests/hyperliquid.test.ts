@@ -63,11 +63,17 @@ describe("requests to the exchange", () => {
     expect(calls.map((c) => c.payload.n)).toEqual([1, 2, 3, 99]);   // not behind downloads 4 and 5
     calls[0].answer();
     await flush();
+    expect(calls.length).toBe(4);                                // no new download while the screen is waiting
+    calls[3].answer();
+    await urgent;
+    await flush();
     expect(calls.map((c) => c.payload.n)).toEqual([1, 2, 3, 99, 4]);
-    for (const call of calls.slice(1)) call.answer();
+    calls[1].answer();
+    calls[2].answer();
+    calls[4].answer();
     await flush();
     calls[5].answer();
-    await Promise.all([...downloads, urgent]);
+    await Promise.all(downloads);
     expect(backgroundBusy()).toBe(false);
   });
 

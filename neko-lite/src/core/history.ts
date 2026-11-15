@@ -21,9 +21,13 @@ export interface Bars {
   close: Float64Array;
 }
 
-/** What is written to storage: the bars, and the open time of the newest bar the exchange was asked about. */
+/**
+ * What is written to storage: the bars, the open time of the newest bar the
+ * exchange was asked about, and when it was asked.
+ */
 export interface StoredBars extends Bars {
   through: number;
+  checkedAt: number;
 }
 
 /** A candle as Hyperliquid sends it: times as numbers, prices as text. */
@@ -56,6 +60,7 @@ export type HistoryStatus =
   | { state: "failed"; error: DataError };
 
 const RETRY_AFTER_MS = 60_000;         // leave a market that failed to load alone for a minute
+const SETTLE_MS = 60_000;              // how long after its close a bar is given to become final
 const STORAGE_VERSION = "v1";
 
 let series = new Map<string, Series>();
@@ -84,12 +89,16 @@ function lastClosedOpen(interval: BarInterval, now: number): number {
 }
 
 function isFresh(s: Series, now: number): boolean {
-  return s.bars !== null && s.bars.through >= lastClosedOpen(s.interval, now);
+  if (s.bars === null || s.bars.through < lastClosedOpen(s.interval, now)) return false;
+  // A bar fetched in the first minute after it closed is fetched once more when that
+  // minute is up, in case the exchange was still adding its last trades.
+  const settledAt = s.bars.through + BAR_MS[s.interval] + SETTLE_MS;
+  return !(s.bars.checkedAt < settledAt && now >= settledAt);
 }
 
 function usable(value: unknown): value is StoredBars {
   const bars = value as StoredBars | null;
-  if (!bars || typeof bars.through !== "number") return false;
+  if (!bars || typeof bars.through !== "number" || typeof bars.checkedAt !== "number") return false;
   const columns = [bars.t, bars.open, bars.high, bars.low, bars.close];
   return columns.every((column) => column instanceof Float64Array && column.length === bars.t.length);
 }
@@ -114,10 +123,10 @@ function hydrate(s: Series): Promise<void> {
   return s.hydrating;
 }
 
-function toBars(rows: RawCandle[], through: number): StoredBars {
+function toBars(rows: RawCandle[], through: number, checkedAt: number): StoredBars {
   const n = rows.length;
   const out: StoredBars = { t: new Float64Array(n), open: new Float64Array(n), high: new Float64Array(n),
-                            low: new Float64Array(n), close: new Float64Array(n), through };
+                            low: new Float64Array(n), close: new Float64Array(n), through, checkedAt };
   rows.forEach((row, i) => {
     out.t[i] = Number(row.t);
     out.open[i] = Number(row.o);
@@ -138,7 +147,8 @@ function join(older: Bars, upTo: number, newer: StoredBars): StoredBars {
     return out;
   };
   return { t: merge(older.t, newer.t), open: merge(older.open, newer.open), high: merge(older.high, newer.high),
-           low: merge(older.low, newer.low), close: merge(older.close, newer.close), through: newer.through };
+           low: merge(older.low, newer.low), close: merge(older.close, newer.close),
+           through: newer.through, checkedAt: newer.checkedAt };
 }
 
 /** The bars a fresh request would return now: Hyperliquid includes the bar that contains the start time. */
@@ -172,22 +182,27 @@ async function fetchBars(s: Series, background: boolean): Promise<void> {
   if (mine !== generation) return;
   if (!Array.isArray(rows)) throw new DataError("Market data is unavailable right now (ValueError).");
   const closed = rows.filter((row) => Number(row.t) + ms <= now);
-  let next = toBars(closed, lastClosedOpen(s.interval, now));
+  let next = toBars(closed, lastClosedOpen(s.interval, now), now);
   if (from !== start && stored) next = join(stored, closed.length ? Number(closed[0].t) : Infinity, next);
   const kept = inWindow(next, s.interval, s.count, now);
   s.bars = { t: kept.t.slice(), open: kept.open.slice(), high: kept.high.slice(), low: kept.low.slice(),
-             close: kept.close.slice(), through: next.through };
+             close: kept.close.slice(), through: next.through, checkedAt: now };
   s.error = null;
   const storage = runtime.storage;
   if (storage) void storage.put(s.key, s.bars).catch(() => { /* storage full or blocked: memory still has it */ });
 }
 
+/** True when the stored bars only need the newest few added, not a whole download. */
+function needsOnlyTail(s: Series): boolean {
+  const ms = BAR_MS[s.interval];
+  const last = s.bars && s.bars.t.length ? s.bars.t[s.bars.t.length - 1] : null;
+  return last !== null && last + ms > runtime.now() - s.count * ms;
+}
+
 /** Start loading if the stored bars are out of date. Returns at once; `s.loading` is the work. */
 function refresh(s: Series, background: boolean): void {
   if (s.loading || isFresh(s, runtime.now())) return;
-  const ms = BAR_MS[s.interval];
-  const last = s.bars && s.bars.t.length ? s.bars.t[s.bars.t.length - 1] : null;
-  s.tailOnly = last !== null && last + ms > runtime.now() - s.count * ms;
+  s.tailOnly = needsOnlyTail(s);
   // A short catch-up is cheap, so it does not queue behind the long downloads.
   const work = fetchBars(s, background && !s.tailOnly).catch((error: unknown) => {
     s.error = error instanceof DataError ? error : new DataError("Market data is unavailable right now (Error).");
@@ -247,14 +262,17 @@ export function historyStatus(symbol: string): HistoryStatus {
 }
 
 /**
- * Give stored histories a moment to arrive: read them from storage, and wait
- * (briefly) for the short catch-up requests. Long first-time downloads are
- * not waited for.
+ * Give stored histories a moment to arrive: read them from storage, top them
+ * up with the newest bars, and wait (briefly) for that. Long first-time
+ * downloads are neither started nor waited for here: `want` starts those,
+ * once the screen has what it needs to draw.
  */
 export async function settleQuick(symbols: readonly string[], patienceMs: number): Promise<void> {
   const mine = symbols.map((symbol) => seriesFor(symbol, "4h", HISTORY_BARS));
   await Promise.all(mine.map(hydrate));
-  want(symbols);
+  for (const s of mine) {
+    if (needsOnlyTail(s) && !(s.error && Date.now() - s.failedAt < RETRY_AFTER_MS)) refresh(s, false);
+  }
   const quick = mine.filter((s) => s.loading && s.tailOnly).map((s) => s.loading);
   if (!quick.length) return;
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -54,6 +54,20 @@ export function configure(options: Partial<Runtime>): void {
   for (const reset of resets) reset();
 }
 
+/** The promise's value if it arrives within `ms`, otherwise the fallback (the work carries on regardless). */
+export function within<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    work.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    }, (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
 /** Run a panel's calculation; one failing panel must never take the page down. */
 export async function soft<T>(work: () => T | Promise<T>, fallback: T): Promise<T> {
   try {

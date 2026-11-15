@@ -176,6 +176,8 @@ async function poll(): Promise<void> {
   }
 }
 
+let forexLooks = 0;
+
 async function pollAdvanced(): Promise<void> {
   if (state.mode !== "advanced") return;
   if (timers.advSoon) clearTimeout(timers.advSoon);
@@ -185,7 +187,10 @@ async function pollAdvanced(): Promise<void> {
     watchMarkets();
     paintAdvanced(el, state, helpers);
     // Worksheet rows appear as each market's history arrives: look again soon while some are loading.
-    if (state.adv.pending && state.mode === "advanced" && !paused) {
+    // The forex board may also take a moment longer than the rest the first time.
+    const forexDue = !state.adv.forex.length && forexLooks < 3;
+    if (forexDue) forexLooks += 1;
+    if ((state.adv.pending || forexDue) && state.mode === "advanced" && !paused) {
       timers.advSoon = setTimeout(pollAdvanced, ADV_LOADING_MS);
     }
   } catch (err) {

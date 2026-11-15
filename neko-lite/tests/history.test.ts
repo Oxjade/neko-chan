@@ -87,6 +87,25 @@ describe("price history between visits", () => {
     expect(bars("BTC").t.length).toBe(HISTORY_BARS);
   });
 
+  it("checks a bar once more a minute after its close, in case it was fetched too early to be final", async () => {
+    const boundary = Math.ceil(NOW / H4) * H4;
+    up.now = boundary + 5_000;                               // five seconds after a bar closed
+    visit();
+    await load(["BTC"]);
+    expect(up.candleRequests("4h").length).toBe(1);
+    up.now = boundary + 40_000;
+    await load(["BTC"]);
+    expect(up.candleRequests("4h").length).toBe(1);
+    up.now = boundary + 65_000;                              // the minute is up: look at the newest bars again
+    const rows = up.rowsReturned;
+    await load(["BTC"]);
+    expect(up.candleRequests("4h").length).toBe(2);
+    expect(up.rowsReturned - rows).toBeLessThanOrEqual(2);
+    up.now = boundary + 3 * 3600 * 1000;                     // and then not again until the next bar closes
+    await load(["BTC"]);
+    expect(up.candleRequests("4h").length).toBe(2);
+  });
+
   it("serves only closed bars", async () => {
     await load(["BTC"]);
     const t = bars("BTC").t;

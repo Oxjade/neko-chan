@@ -5,7 +5,7 @@
 // the difference is in how often the network is used, not in what comes back.
 
 import { cached } from "./cache";
-import { BAR_MS, HISTORY_BARS, historyStatus, type Bars, type RawCandle } from "./history";
+import { BAR_MS, historyStatus, type Bars, type RawCandle } from "./history";
 import { backgroundBusy, candleWeight, info } from "./hyperliquid";
 import { DataError, onReset, runtime } from "./runtime";
 import type { AssetClass, Candle, ChartInterval, Market, OrderBook } from "./types";
@@ -188,5 +188,3 @@ export function candles(symbol: string): CandleStatus {
   }
   return status;
 }
-
-export { HISTORY_BARS };

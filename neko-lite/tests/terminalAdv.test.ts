@@ -274,6 +274,29 @@ describe("snapshot", () => {
   });
 });
 
+describe("a slow forex function", () => {
+  it("does not hold the other panels back; the board fills in on a later look", async () => {
+    const up = makeUpstream(Date.UTC(2026, 10, 15, 21, 30));
+    let answer: () => void = () => {};
+    const slow = new Promise<void>((resolve) => { answer = resolve; });
+    const real = up.fetch;
+    configure({ fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/fx") await slow;
+      return real(input, init);
+    }) as typeof fetch, now: () => up.now, storage: null, weightPerMinute: Infinity });
+    const started = Date.now();
+    const first = await getAdvanced(18);
+    expect(Date.now() - started).toBeLessThan(4000);
+    expect(first.forex).toEqual([]);
+    expect(first.funding.length).toBeGreaterThan(0);
+    answer();
+    await settled();
+    const later = await getAdvanced(18);
+    expect(later.forex.map((p) => p.pair)).toEqual(["EURUSD"]);
+    expect(up.sent.filter((s) => s.url === "/api/fx").length).toBe(1);    // the same request, not a second one
+  });
+});
+
 describe("what the server used to refuse", () => {
   const NOW = Date.UTC(2026, 10, 15, 21, 30);
   let up = makeUpstream(NOW);

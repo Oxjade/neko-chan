@@ -50,6 +50,7 @@ interface Job {
 let waiting: Job[] = [];
 let spent: Array<{ at: number; weight: number }> = [];
 let activeBackground = 0;
+let activeForeground = 0;
 let pausedUntil = 0;
 let wake: ReturnType<typeof setTimeout> | null = null;
 let generation = 0;
@@ -60,6 +61,7 @@ onReset(() => {
   waiting = [];
   spent = [];
   activeBackground = 0;
+  activeForeground = 0;
   pausedUntil = 0;
   if (wake) clearTimeout(wake);
   wake = null;
@@ -107,7 +109,9 @@ function pump(): void {
   for (const job of ordered) {
     if (job.notBefore > now) continue;
     if (job.background) {
-      if (activeBackground >= MAX_BACKGROUND || now < pausedUntil) continue;
+      // A long download is not started while the screen is waiting for an answer:
+      // on a slow connection it would take the bandwidth the screen needs.
+      if (activeForeground > 0 || activeBackground >= MAX_BACKGROUND || now < pausedUntil) continue;
       if (used + job.weight > limit * BACKGROUND_SHARE) continue;
     } else if (used + job.weight > limit && used > 0) {
       continue;
@@ -124,6 +128,7 @@ function pump(): void {
 async function run(job: Job, entry: { weight: number }): Promise<void> {
   const mine = generation;
   if (job.background) activeBackground += 1;
+  else activeForeground += 1;
   try {
     const data = await send(job.payload, job.timeoutMs);
     if (job.actualWeight) entry.weight = job.actualWeight(data);
@@ -148,6 +153,7 @@ async function run(job: Job, entry: { weight: number }): Promise<void> {
   } finally {
     if (mine === generation) {
       if (job.background) activeBackground -= 1;
+      else activeForeground -= 1;
       pump();
     }
   }

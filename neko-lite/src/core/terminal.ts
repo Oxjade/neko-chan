@@ -281,13 +281,14 @@ function note(row: DashboardRow, rec: Recommendation): string {
 
 export async function snapshot(stake: number): Promise<TerminalSnapshot> {
   const now = runtime.now();
-  want(DASHBOARD);                                  // start the slow downloads before anything else
   const [week, live] = await Promise.all([wc.thisWeek(), md.catalogue(), settleQuick(DASHBOARD, HISTORY_PATIENCE_MS)]);
   const coins = Object.keys(wc.callsConfig());
   const share = stake / coins.length;
   const monday = parseDay(week.week_of);
   const called = week.coins.filter((c) => c.side);
   const dailies = await Promise.all(called.map((c) => md.chartCandles(c.coin, "1d", 12)));
+  // The long downloads start only now, so they do not slow down what the screen needs first.
+  want(DASHBOARD);
   const positions = called.map((c, i) => {
     const price = live.get(c.coin)?.price || (c.price as number);
     const days = dailies[i].filter((d) => dayOf(d.t) >= monday).map((d) => ({ high: d.h, low: d.l }));

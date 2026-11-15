@@ -7,7 +7,7 @@
 import { cached } from "./cache";
 import evidenceTable from "./data/mood_evidence.json";
 import { SUNDAY, dayOf, isoDay, weekday } from "./dates";
-import { DataError, FNG_URL, runtime } from "./runtime";
+import { DataError, FNG_URL, onReset, runtime } from "./runtime";
 import type { MoodReading, Side } from "./types";
 
 const HISTORY_DAYS = 200;
@@ -50,13 +50,27 @@ interface RawReading {
   timestamp: string;
 }
 
+const KEEP_SECONDS = 3600;
+const KEEP_WHEN_DUE_SECONDS = 60;
+let updateDue = false;
+onReset(() => { updateDue = false; });
+
+/**
+ * Just after midnight on Monday the week's prices are in but the index has not
+ * published the new day yet. While that is so, look for the new reading every
+ * minute instead of every hour, so the new call appears as soon as it can.
+ */
+export function expectUpdate(due: boolean): void {
+  updateDue = due;
+}
+
 /**
  * The last 200 daily readings, newest first. One request serves both the
  * week's reading and the look back over past weeks; it is repeated hourly
  * because the index changes once a day.
  */
 function download(): Promise<Reading[]> {
-  return cached("fear_greed", 3600, async () => {
+  return cached("fear_greed", updateDue ? KEEP_WHEN_DUE_SECONDS : KEEP_SECONDS, async () => {
     const fail = (reason: string) => new DataError(`The mood index is unavailable right now (${reason}).`);
     let response: Response;
     try {

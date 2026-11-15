@@ -33,6 +33,8 @@ export interface Upstream {
   listedSince: Map<string, number>;
   /** Fear & Greed value for a day number. */
   mood: (day: number) => number;
+  /** How long after midnight UTC the index publishes the new day's reading. */
+  moodDelayMs: number;
   /** What the forex function answers, or null for "down". */
   forex: unknown | null;
   candleRequests: (interval?: string) => Sent[];
@@ -73,6 +75,7 @@ export function makeUpstream(now: number): Upstream {
     fetch: (async () => new Response("unset")) as typeof fetch,
     now, sent: [], failWith: () => null, fixed: new Map(), listedSince: new Map(),
     mood: (day) => Math.round(50 + 30 * Math.sin(day / 11)),
+    moodDelayMs: 0,
     forex: { pairs: [{ pair: "EURUSD", price: 1.1, as_of: "2026-11-13", last_week_pct: 0.2, normal_week_pct: 1.0,
                        range_low: 1.089, range_high: 1.111, range_held: 0.7, trend_13w: "up", trend_52w: "down" }] },
     candleRequests: (interval) => up.sent.filter((s) => s.payload?.type === "candleSnapshot"
@@ -132,7 +135,7 @@ export function makeUpstream(now: number): Upstream {
     }
     if (url.startsWith(FNG_URL)) {
       const limit = Number(new URL(url).searchParams.get("limit") ?? 1);
-      const today = Math.floor(up.now / DAY);
+      const today = Math.floor((up.now - up.moodDelayMs) / DAY);
       const data = Array.from({ length: limit }, (_, i) => {
         const value = up.mood(today - i);
         return { value: String(value), value_classification: label(value), timestamp: String((today - i) * 86400) };

@@ -342,6 +342,33 @@ describe("the week from the data sources", () => {
     expect(board.rows.every((r) => r.week_of < "2026-11-09")).toBe(true);    // finished weeks only
   });
 
+  it("on Monday, waits for the mood index to publish the new day, checking every minute", async () => {
+    const monday = Date.UTC(2026, 10, 16);                    // 00:00 UTC, the moment the week turns
+    up.now = monday - 30 * 60 * 1000;                         // Sunday 23:30: still last week's call
+    up.moodDelayMs = 10 * 60 * 1000;                          // the index publishes ten minutes after midnight
+    const sunday = await getWeek();
+    expect(sunday.week_of).toBe("2026-11-09");
+    const moodRequests = () => up.sent.filter((s) => s.url.includes("alternative.me")).length;
+
+    up.now = monday + 2 * 60 * 1000;                          // 00:02: Sunday's candle has closed, the index has not moved
+    await expect(getWeek()).rejects.toThrow("This week's mood and prices are out of step; try again shortly.");
+    up.now += 5 * 1000;
+    await expect(getWeek()).rejects.toThrow("out of step");   // looks again at once: the reading held is an hour-old kind
+    const asked = moodRequests();
+    expect(asked).toBe(2);
+    up.now += 20 * 1000;
+    await expect(getWeek()).rejects.toThrow("out of step");
+    expect(moodRequests()).toBe(asked);                       // then not more than once a minute
+    up.now = monday + 11 * 60 * 1000;                         // 00:11: the new reading is out
+    const week = await getWeek();
+    expect([week.week_of, week.next_call, week.mood.date]).toEqual(["2026-11-16", "2026-11-23", "2026-11-15"]);
+    // and from then on the index is asked for hourly again
+    const settledAt = moodRequests();
+    up.now += 30 * 60 * 1000;
+    await getWeek();
+    expect(moodRequests()).toBe(settledAt);
+  });
+
   it("says so in plain words when the mood index cannot be read", async () => {
     up.failWith = (sent) => (sent.url.includes("alternative.me") ? 503 : null);
     await expect(getWeek()).rejects.toThrow("The mood index is unavailable right now (HTTPError).");
