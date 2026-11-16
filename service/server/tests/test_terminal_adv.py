@@ -68,6 +68,31 @@ class MoversAndBreadthTests(unittest.TestCase):
         self.assertEqual(terminal_adv.breadth(rows)["crypto"], {"up": 1, "down": 1, "flat": 1})
 
 
+class LiveReferenceTests(unittest.TestCase):
+    """What the screens need to work figures out again from a live price."""
+
+    def test_universe_lists_every_market_with_what_counting_it_again_needs(self):
+        rows = terminal_adv.universe(live(market("BTC", "crypto", 1.0, prev_day_price=99.0),
+                                          market("xyz:EUR", "forex", -0.2, volume=10.0)))
+        self.assertEqual([r["symbol"] for r in rows], ["BTC", "xyz:EUR"])
+        self.assertEqual(list(rows[0]), ["symbol", "label", "class", "price", "prev_day_price", "day_volume_usd"])
+        self.assertEqual(rows[0]["prev_day_price"], 99.0)
+        self.assertIsNone(rows[1]["prev_day_price"])          # a market without one is still listed
+        self.assertEqual(rows[1]["day_volume_usd"], 10.0)
+
+    def test_the_catalogue_carries_the_price_today_is_measured_from(self):
+        market_data._cache.clear()
+        answers = {None: [{"universe": [{"name": "ETH", "maxLeverage": 25}]},
+                          [{"markPx": "1818.0", "prevDayPx": "1800.0", "funding": "0.00001", "openInterest": "10",
+                            "dayNtlVlm": "5"}]],
+                   "xyz": [{"universe": []}, []]}
+        with mock.patch.object(market_data, "_post", lambda payload: answers[payload.get("dex")]):
+            eth = market_data.catalogue()["ETH"]
+        market_data._cache.clear()
+        self.assertEqual(eth["prev_day_price"], 1800.0)
+        self.assertAlmostEqual(eth["day_change_pct"], (eth["price"] / eth["prev_day_price"] - 1) * 100)
+
+
 class RiskTests(unittest.TestCase):
     def position(self, **over):
         p = {"coin": "ETH", "side": "short", "status": "open", "leverage": 3, "share": 4.5,
@@ -148,6 +173,29 @@ class SeriesTests(unittest.TestCase):
         self.assertEqual(len(series), 61)
         self.assertAlmostEqual(series[0], 100.0)
         self.assertAlmostEqual(series[-1], 200.0)
+        # where each line starts, so a screen can carry it on to the live price
+        with mock.patch.object(market_data, "candles", lambda symbol: self.bars(ramp)):
+            start = terminal_adv.performance_start()
+        self.assertEqual(set(start), set(out))
+        self.assertEqual(start["BTC"], {"symbol": "BTC", "price": 50.0})
+        self.assertAlmostEqual(75.0 / start["BTC"]["price"] * 100, 150.0)     # a live price of 75 puts the line at 150
+
+    def test_worksheet_figures_carry_the_prices_they_are_measured_from(self):
+        close = np.linspace(80.0, 120.0, 400)
+        row = {"label": "BTC", "class": "crypto", "trend": "up", "trend_days": 3.0, "atr_pct": 1.0,
+               "signal": {"direction": "long", "state": "active"}, "record": {"wins": 1, "trades": 2, "expectancy": 0.1}}
+        with mock.patch.object(market_data, "candles", lambda symbol: self.bars(close)), \
+                mock.patch.object(terminal_adv.desk, "market_signal", lambda symbol: row):
+            stats = terminal_adv._stats("BTC")
+        week, month = 7 * terminal_adv.BARS_PER_DAY, 30 * terminal_adv.BARS_PER_DAY
+        self.assertEqual(stats["week_ref_price"], close[-week - 1])
+        self.assertEqual(stats["month_ref_price"], close[-month - 1])
+        self.assertAlmostEqual((close[-1] / stats["week_ref_price"] - 1) * 100, stats["week_pct"])
+        self.assertAlmostEqual((close[-1] / stats["month_ref_price"] - 1) * 100, stats["month_pct"])
+        short = self.bars(close[:20])
+        with mock.patch.object(market_data, "candles", lambda symbol: short), \
+                mock.patch.object(terminal_adv.desk, "market_signal", lambda symbol: row):
+            self.assertIsNone(terminal_adv._stats("BTC")["week_ref_price"])
 
     def test_performance_skips_markets_with_too_little_history(self):
         def candles(symbol):

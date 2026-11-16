@@ -1,6 +1,7 @@
 // Small helpers shared by the terminal's basic and advanced screens.
 
 import type { AdvancedSnapshot, Candle, ChartData, OrderBook, TerminalSnapshot } from "../core/api";
+import type { MarketContext } from "./terminal_live";
 
 export const COLORS = { up: "#22e07a", down: "#ff4d5e", amber: "#ffa028", cyan: "#35d6e6", grid: "#12262c",
                         text: "#8296a3", ink: "#d9e4ea", bg: "#0a1016", violet: "#b48cff" };
@@ -54,6 +55,15 @@ export interface TapeTrade {
   px: number;
   sz: number;
   buy: boolean;
+  /** The price and size as the exchange wrote them. */
+  text: string;
+  size: string;
+}
+
+/** One side of the best bid and offer, as the exchange wrote it. */
+export interface QuoteSide {
+  px: string;
+  sz: string;
 }
 
 export interface TerminalState {
@@ -78,6 +88,22 @@ export interface TerminalState {
   tradeSymbol: string | null;
   tradeBacklog: boolean;
   watch: Set<string>;
+  // live: what the exchange sent
+  quotes: Record<string, { bid: QuoteSide | null; ask: QuoteSide | null }>;
+  context: Record<string, MarketContext>;   // funding, open interest and volume from the stream
+  prev: Record<string, number>;             // the price today's change is measured from
+  places: Record<string, number>;           // decimals a market's mid price is shown with
+  priceAt: Record<string, number>;          // when a market's last price arrived
+  feedAt: number;                           // when any price last arrived
+  openedAt: number;
+  outageAt: number;                         // the last moment prices were found not to be arriving
+  streamAt: number;                         // when the stream last said anything
+  notLiveSince: number;                     // since when the stream has not been delivering
+  directAt: number;                         // when prices asked for directly last arrived
+  messages: number;
+  rates: number[];
+  rate: number;
+  dirty: Set<string>;                       // markets whose price moved since the last repaint
 }
 
 /** The parts of the page the painters fill, by name. */
@@ -92,3 +118,50 @@ export interface Helpers {
 }
 
 export type { Candle };
+
+// A brief green or red wash behind a figure that moved. It is run as an animation of its
+// own, which costs no layout, and not at all where the reader has asked for less motion.
+const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+let washes: [string, string] | null = null;
+const lastFlash = new WeakMap<HTMLElement, number>();
+const FLASH_MS = 350;
+
+function tint(hex: string, fallback: string): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  const rgb = m ? m.slice(1).map((part) => parseInt(part, 16)).join(", ") : fallback;
+  return `rgba(${rgb}, 0.33)`;
+}
+
+function flash(node: HTMLElement, up: boolean): void {
+  if (calm || typeof node.animate !== "function") return;
+  if (!washes) {
+    // the theme's own green and red, at a third of their strength
+    const css = getComputedStyle(document.body);
+    washes = [tint(css.getPropertyValue("--gain"), "34, 224, 122"), tint(css.getPropertyValue("--loss"), "255, 77, 94")];
+  }
+  // Held, then gone: a fade would repaint the figure on every frame, and with dozens of
+  // figures moving each second that alone kept the page busy.
+  const now = performance.now();
+  if (now - (lastFlash.get(node) || 0) < FLASH_MS) return;
+  lastFlash.set(node, now);
+  node.animate([{ backgroundColor: up ? washes[0] : washes[1] }, { backgroundColor: "transparent" }],
+               { duration: FLASH_MS, easing: "steps(1, end)" });
+}
+
+/**
+ * Put a new figure on the page and, if it moved, flash it green or red for a
+ * moment. Returns whether the text changed.
+ */
+export function cue(node: HTMLElement | null | undefined, text: string, value: number): boolean {
+  if (!node) return false;
+  const known = node.dataset.value !== undefined;
+  if (node.textContent === text) {
+    if (!known) node.dataset.value = String(value);
+    return false;
+  }
+  const was = Number(node.dataset.value);
+  node.textContent = text;
+  node.dataset.value = String(value);
+  if (known && node.dataset.flash !== "off" && value !== was) flash(node, value > was);
+  return true;
+}

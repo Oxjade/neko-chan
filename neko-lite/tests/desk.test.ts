@@ -83,7 +83,7 @@ describe("replay", () => {
   it("a fresh cross is a new signal at the live price, and an older one becomes active", () => {
     const closes = Array.from({ length: 400 }, (_, i) => 200 - i * 0.2);
     while (desk.replay(synthetic(closes)).trend === "down") closes.push(closes[closes.length - 1] * 1.01);
-    const live: Market = { symbol: "X", label: "X", class: "crypto", price: 150, day_change_pct: 0,
+    const live: Market = { symbol: "X", label: "X", class: "crypto", price: 150, day_change_pct: 0, prev_day_price: 150,
                            funding_hourly: 0, max_leverage: 20, day_volume_usd: 1, open_interest_usd: 1 };
     const fresh = desk.marketSignal(live, desk.replay(synthetic(closes)));
     expect([fresh.signal.state, fresh.signal.direction, fresh.signal.entry]).toEqual(["new", "long", 150]);

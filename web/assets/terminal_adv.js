@@ -13,9 +13,17 @@ const SESSIONS = [
 ];
 const NS = "http://www.w3.org/2000/svg";
 
-function panel(area, title, body, extra) {
+// How fast a panel's figures truly change. Nothing is animated to look busier than it is.
+const PACE = { live: "live", seconds: "every few seconds", minutes: "every few minutes", daily: "daily",
+               record: "tested record" };
+
+function paceTag(pace) {
+  return h("span", { class: "t-pace", "data-pace": pace, title: "How often these figures change" }, PACE[pace]);
+}
+
+function panel(area, title, body, extra, pace) {
   return h("section", { class: `t-panel a-${area}` },
-    h("div", { class: "t-title" }, title, extra || null), body);
+    h("div", { class: "t-title" }, h("span", null, title, pace ? paceTag(pace) : null), extra || null), body);
 }
 
 // A dense table. columns: { label, cell(row), num, heat(row) -> css, cls(row), amber }
@@ -54,24 +62,25 @@ export function buildAdvanced(el, parts) {
   const chart = parts.chartPanel();
   chart.classList.add("a-cht");
   return h("div", { class: "t-frame", "data-mode": "advanced" },
-    el.bar,
-    panel("clk", "Sessions", el.clk),
-    panel("mov", "Movers today, by asset class", el.mov),
-    panel("brd", "Breadth", el.brd, h("span", { class: "dim" }, "up / down today")),
-    panel("mood", "Market mood", el.mood),
-    panel("wks", "Market worksheet", el.wks, h("span", { class: "dim" }, "select a row")),
+    el.top || el.bar,
+    panel("clk", "Sessions", el.clk, null, "live"),
+    panel("mov", "Movers today, by asset class", el.mov, null, "live"),
+    panel("brd", "Breadth", el.brd, h("span", { class: "dim" }, "up / down today"), "live"),
+    panel("mood", "Market mood", el.mood, null, "daily"),
+    panel("wks", "Market worksheet", el.wks, h("span", { class: "dim" }, "select a row"), "live"),
     chart,
-    panel("bok", "Order book and trades", el.book),
+    panel("bok", "Order book and trades", el.book, null, "live"),
     h("section", { class: "t-panel a-feed" },
-      h("div", { class: "t-title" }, "Desk feed", h("span", { class: "dim" }, "what to do now")), el.feed),
-    panel("sig", "Signal matrix", el.sig, h("span", { class: "dim" }, "weeks right, each half of history")),
-    panel("risk", "Positions and risk", el.risk, parts.stakeForm()),
-    panel("perf", "Thirty days, rebased to 100", el.perf),
-    panel("corr", "Correlation, 30 days", el.corr),
-    panel("lev", "Liquidation rate by leverage", el.lev, h("span", { class: "dim" }, "share of traded weeks")),
-    panel("score", "Week by week", el.score),
-    panel("fund", "Funding and open interest", el.fund),
-    panel("fx", "Forex board", el.fx, h("span", { class: "dim" }, "central-bank rates")));
+      h("div", { class: "t-title" }, h("span", null, "Desk feed", paceTag("seconds")),
+        h("span", { class: "dim" }, "what to do now")), el.feed),
+    panel("sig", "Signal matrix", el.sig, h("span", { class: "dim" }, "weeks right, each half of history"), "record"),
+    panel("risk", "Positions and risk", el.risk, parts.stakeForm(), "live"),
+    panel("perf", "Thirty days, rebased to 100", el.perf, null, "live"),
+    panel("corr", "Correlation, 30 days", el.corr, null, "minutes"),
+    panel("lev", "Liquidation rate by leverage", el.lev, h("span", { class: "dim" }, "share of traded weeks"), "record"),
+    panel("score", "Week by week", el.score, null, "record"),
+    panel("fund", "Funding and open interest", el.fund, null, "live"),
+    panel("fx", "Forex board", el.fx, h("span", { class: "dim" }, "central-bank rates"), "daily"));
 }
 
 // ---- sessions ----------------------------------------------------------------
@@ -205,15 +214,24 @@ function paintWorksheet(el, state, helpers) {
   replace(el.wks, dense([
     { label: "Market", amber: true, cell: (r) => h("button", { type: "button", class: "t-rowbtn" }, r.label) },
     { label: "Last", num: true,
-      cell: (r) => h("span", { "data-live": r.symbol, "data-flash": "off" }, px(helpers.live(r.symbol, r.price))) },
-    { label: "Day", num: true, cell: (r) => pct(r.day_change_pct), heat: (r) => heat(r.day_change_pct, 6) },
-    { label: "7d", num: true, cell: (r) => pct(r.week_pct, 1), heat: (r) => heat(r.week_pct, 15) },
-    { label: "30d", num: true, cell: (r) => pct(r.month_pct, 1), heat: (r) => heat(r.month_pct, 30) },
+      cell: (r) => h("span", { "data-live": r.symbol }, px(helpers.live(r.symbol, r.price))) },
+    // the three changes are worked out again from the live price on every tick, heat and all
+    { label: "Day", num: true, heat: (r) => heat(r.day_change_pct, 6),
+      cell: (r) => h("span", { "data-change": r.symbol, "data-heat": "6", "data-flash": "off" }, pct(r.day_change_pct)) },
+    { label: "7d", num: true, heat: (r) => heat(r.week_pct, 15),
+      cell: (r) => h("span", { "data-change": r.symbol, "data-from": r.week_ref_price, "data-digits": "1",
+                               "data-heat": "15", "data-flash": "off" }, pct(r.week_pct, 1)) },
+    { label: "30d", num: true, heat: (r) => heat(r.month_pct, 30),
+      cell: (r) => h("span", { "data-change": r.symbol, "data-from": r.month_ref_price, "data-digits": "1",
+                               "data-heat": "30", "data-flash": "off" }, pct(r.month_pct, 1)) },
     { label: "Trend", cell: (r) => `${r.trend === "up" ? "▲" : "▼"} ${r.trend_days.toFixed(0)}d`,
       cls: (r) => (r.trend === "up" ? "up" : "down") },
     { label: "Vol 30d", num: true, cell: (r) => (r.vol_30d === null ? "–" : `${r.vol_30d.toFixed(0)}%`) },
-    { label: "Fund/yr", num: true, cell: (r) => pct(r.funding_apr, 1), cls: (r) => tone(r.funding_apr) },
-    { label: "Open int.", num: true, cell: (r) => compact(r.open_interest_usd) },
+    { label: "Fund/yr", num: true,
+      cell: (r) => h("span", { class: tone(r.funding_apr), "data-fund": r.symbol, "data-flash": "off" },
+        pct(r.funding_apr, 1)) },
+    { label: "Open int.", num: true,
+      cell: (r) => h("span", { "data-oi": r.symbol, "data-flash": "off" }, compact(r.open_interest_usd)) },
     { label: "Trend rule", cell: (r) => (r.signal ? r.signal.toUpperCase() : "—"),
       cls: (r) => (r.signal === "long" ? "up" : r.signal === "short" ? "down" : "dim") },
     { label: "Won", num: true, cell: (r) => `${r.record_wins}/${r.record_trades}` },
@@ -291,9 +309,9 @@ function paintRisk(el, adv) {
     { label: "Exposure", num: true, cell: (r) => `$${r.exposure_usd.toFixed(2)}` },
     { label: "P&L", num: true, cell: (r) => usd(r.pnl_usd), cls: (r) => tone(r.pnl_usd) },
     { label: "To stop", num: true, cell: (r) => (r.stop_distance_pct === null || r.stop_distance_pct === undefined
-        ? (r.status === "target" ? "profit taken" : r.status) : `${r.stop_distance_pct.toFixed(1)}%`) },
+        ? (r.status === "target" ? "profit taken" : r.status) : `${r.stop_distance_pct.toFixed(2)}%`) },
     { label: "To liq.", num: true, cell: (r) => (r.liquidation_distance_pct === null
-        ? "–" : `${r.liquidation_distance_pct.toFixed(0)}%`) },
+        ? "–" : `${r.liquidation_distance_pct.toFixed(1)}%`) },
     { label: "At stop", num: true, cell: (r) => (r.loss_at_stop_usd ? usd(-r.loss_at_stop_usd) : "–"),
       cls: () => "down" },
   ], risk.rows, { empty: "No open positions this week." }),
@@ -462,6 +480,24 @@ function paintForex(el, adv) {
   ], adv.forex),
     h("p", { class: "dim t-pad t-micro" }, "No rule tested has an edge on a forex direction. Ranges are for sizing your own idea. " +
       "A pip is the fourth decimal place of the price (the second for yen pairs)."));
+}
+
+// The panels that follow live prices by being rebuilt: movers, breadth, risk, the thirty-day
+// lines and funding. `live` carries the same shapes the server sends, worked out again from
+// live figures. A panel whose figures have not moved is left alone.
+const LIVE_PANELS = [["movers", "mov", paintMovers], ["breadth", "brd", paintBreadth], ["risk", "risk", paintRisk],
+                     ["performance", "perf", paintPerformance], ["funding", "fund", paintFunding]];
+
+export function paintLivePanels(el, live) {
+  if (!el.mov) return;
+  el.liveKeys = el.liveKeys || {};
+  for (const [name, key, paintOne] of LIVE_PANELS) {
+    if (live[name] === undefined || live[name] === null) continue;
+    const shown = JSON.stringify(live[name]);
+    if (el.liveKeys[key] === shown) continue;
+    el.liveKeys[key] = shown;
+    paintOne(el, live);
+  }
 }
 
 export function paintAdvanced(el, state, helpers) {

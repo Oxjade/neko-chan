@@ -171,6 +171,40 @@ the stream cannot connect.
   and the chart move continuously. The all-markets price feed alone only
   ticks about every ten seconds.
 
+### What is live
+
+The exchange's stream is followed for every market a screen shows: its best
+bid and offer (several times a second) and its own figures (about once a
+second: mid price, funding, open interest, the previous day's price). Every
+figure that hangs off a price is worked out again in the browser from those,
+by the same arithmetic the server uses, and flashes green or red when it
+moves:
+
+- the ticker strip under the top bar, the chart header (mid price to one more
+  decimal than the tick) and the quote line (bid, ask, sizes, spread, last
+  trade, exactly as the exchange writes them);
+- position cards and the week's profit, dashboard prices, day changes and the
+  last point of each sparkline, the trade tape under the Basic chart;
+- on Advanced: the worksheet's price, Day, 7d and 30d (from the reference
+  prices the server sends: `prev_day_price`, `week_ref_price`,
+  `month_ref_price`), funding and open interest; movers and breadth, counted
+  again over every market (`universe`); positions and risk; the thirty-day
+  lines (`performance_start`); the funding panel.
+
+Rebuilt panels are refreshed at most twice a second and not at all in a
+hidden tab. Each Advanced panel's title says its true pace: live, every few
+minutes (correlation), daily (mood, forex board) or tested record (signal
+matrix, liquidation rate, week by week). Nothing is animated for its own sake.
+
+The status chip reads "Live · N updates/s" (stream messages received in the
+last second or so). If the stream cannot connect (a firewall, proxy or VPN
+can block websockets), the page asks the exchange for all mid prices once a
+second instead and the chip reads "Every 1s"; the quote line then shows the
+mid alone, and the one-second chart says its candles have no volume. If no
+price arrives for five seconds, the one-second chart stops and says "No live
+prices are arriving." A stream that goes silent for ten seconds is closed and
+reconnected.
+
 ### Basic and Advanced
 
 The switch in the top bar chooses the screen; the choice is remembered in the

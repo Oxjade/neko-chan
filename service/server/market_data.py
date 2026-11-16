@@ -97,6 +97,8 @@ def catalogue(max_age: float = MARKET_TTL) -> dict[str, dict]:
                     "symbol": name, "label": label(name), "class": asset_class(name),
                     "price": price,
                     "day_change_pct": (price / prev - 1) * 100 if prev else None,
+                    # what "today" is measured from, so a screen can redo it from a live price
+                    "prev_day_price": prev,
                     "funding_hourly": float(ctx.get("funding") or 0.0),
                     "max_leverage": int(asset.get("maxLeverage") or 1),
                     "day_volume_usd": float(ctx.get("dayNtlVlm") or 0.0),

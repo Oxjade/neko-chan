@@ -39,3 +39,48 @@ export function heat(value, full) {
   const rgb = value >= 0 ? "34,224,122" : "255,77,94";
   return `background:rgba(${rgb},${strength.toFixed(3)})`;
 }
+
+// A brief green or red wash behind a figure that moved. It is run as an animation of its
+// own, which costs no layout, and not at all where the reader has asked for less motion.
+const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+let washes = null;
+const lastFlash = new WeakMap();
+const FLASH_MS = 350;
+
+function tint(hex, fallback) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  const rgb = m ? m.slice(1).map((part) => parseInt(part, 16)).join(", ") : fallback;
+  return `rgba(${rgb}, 0.33)`;
+}
+
+function flash(node, up) {
+  if (calm || typeof node.animate !== "function") return;
+  if (!washes) {
+    // the theme's own green and red, at a third of their strength
+    const css = getComputedStyle(document.body);
+    washes = [tint(css.getPropertyValue("--gain"), "34, 224, 122"), tint(css.getPropertyValue("--loss"), "255, 77, 94")];
+  }
+  // Held, then gone: a fade would repaint the figure on every frame, and with dozens of
+  // figures moving each second that alone kept the page busy.
+  const now = performance.now();
+  if (now - (lastFlash.get(node) || 0) < FLASH_MS) return;
+  lastFlash.set(node, now);
+  node.animate([{ backgroundColor: up ? washes[0] : washes[1] }, { backgroundColor: "transparent" }],
+               { duration: FLASH_MS, easing: "steps(1, end)" });
+}
+
+// Put a new figure on the page and, if it moved, flash it green or red for a moment.
+// Returns whether the text changed.
+export function cue(node, text, value) {
+  if (!node) return false;
+  const known = node.dataset.value !== undefined;
+  if (node.textContent === text) {
+    if (!known) node.dataset.value = String(value);
+    return false;
+  }
+  const was = Number(node.dataset.value);
+  node.textContent = text;
+  node.dataset.value = String(value);
+  if (known && node.dataset.flash !== "off" && value !== was) flash(node, value > was);
+  return true;
+}

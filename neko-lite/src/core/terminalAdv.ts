@@ -19,7 +19,7 @@ import * as terminal from "./terminal";
 import type {
   AdvancedExits, AdvancedSnapshot, AssetClass, BreadthCount, CallsConfig, Correlation, ForexPair, FundingRow,
   LeverageTable, Market, MoodPoint, Mover, MoverGroup, Position, Risk, RiskRow, Scoreboard, Side, SignalRow,
-  WeekCoin, WorksheetRow,
+  UniverseMarket, WeekCoin, WorksheetRow,
 } from "./types";
 import * as wc from "./weeklyCalls";
 
@@ -71,7 +71,8 @@ export function breadth(live: Live): Record<AssetClass, BreadthCount> {
   return out;
 }
 
-type Stats = Omit<WorksheetRow, "price" | "day_change_pct" | "funding_apr" | "open_interest_usd" | "day_volume_usd">;
+type Stats = Omit<WorksheetRow, "price" | "day_change_pct" | "prev_day_price" | "funding_apr" | "open_interest_usd"
+  | "day_volume_usd">;
 
 /** Slow-moving figures for one market, from its 4-hour candles. */
 export function stats(market: Market, bars: Bars): Stats {
@@ -80,11 +81,14 @@ export function stats(market: Market, bars: Bars): Stats {
   const n = close.length;
   const returns = logReturns(close);
   const change = (count: number) => (n > count ? (close[n - 1] / close[n - count - 1] - 1) * 100 : null);
+  const reference = (count: number) => (n > count ? close[n - count - 1] : null);
   const vol = (count: number) => (returns.length >= count
     ? sampleStd(returns, returns.length - count) * ANNUAL * 100 : null);
   return {
     symbol: market.symbol, label: row.label, class: row.class,
     week_pct: change(7 * BARS_PER_DAY), month_pct: change(MONTH_BARS),
+    // the prices those two are measured from, so a screen can redo them from a live price
+    week_ref_price: reference(7 * BARS_PER_DAY), month_ref_price: reference(MONTH_BARS),
     four_week_pct: change(28 * BARS_PER_DAY),
     trend: row.trend, trend_days: row.trend_days, atr_pct: row.atr_pct,
     vol_7d: vol(7 * BARS_PER_DAY), vol_30d: vol(MONTH_BARS),
@@ -122,6 +126,7 @@ export function worksheet(live: Live): { rows: WorksheetRow[]; pending: number }
     }
     rows.push({
       ...slow, price: market.price, day_change_pct: market.day_change_pct,
+      prev_day_price: market.prev_day_price,
       funding_apr: (market.funding_hourly || 0.0) * 24 * 365 * 100,
       open_interest_usd: market.open_interest_usd, day_volume_usd: market.day_volume_usd,
     });
@@ -147,6 +152,26 @@ export function performance(): Record<string, number[]> {
     series[md.label(symbol)] = points;
   }
   return series;
+}
+
+/** Where each thirty-day line starts (its 100), so a screen can carry the line on to the live price. */
+export function performanceStart(): Record<string, { symbol: string; price: number }> {
+  const out: Record<string, { symbol: string; price: number }> = {};
+  for (const symbol of PERFORMANCE) {
+    const bars = closesOf(symbol);
+    if (!bars || bars.close.length < MONTH_BARS + 1) continue;
+    out[md.label(symbol)] = { symbol, price: bars.close[bars.close.length - MONTH_BARS - 1] };
+  }
+  return out;
+}
+
+/**
+ * Every market the movers and breadth are counted over, with what a screen
+ * needs to count them again from live prices.
+ */
+export function universe(live: Live): UniverseMarket[] {
+  return [...live.values()].map((r) => ({ symbol: r.symbol, label: r.label, class: r.class, price: r.price,
+                                         prev_day_price: r.prev_day_price, day_volume_usd: r.day_volume_usd }));
 }
 
 /** How closely the markets moved together over the last thirty days (4-hour moves). */
@@ -282,6 +307,7 @@ export interface Sources {
   exits: () => AdvancedExits;
   worksheet: (live: Live) => { rows: WorksheetRow[]; pending: number };
   performance: () => Record<string, number[]>;
+  performanceStart: () => Record<string, { symbol: string; price: number }>;
   correlation: () => Correlation;
   forex: () => Promise<ForexPair[]>;
   moodHistory: () => Promise<MoodPoint[]>;
@@ -293,7 +319,7 @@ const SOURCES: Sources = {
   week: wc.thisWeek,
   config: wc.callsConfig,
   scoreboard: (stake) => wc.scoreboard(stake, wc.SUGGESTED),
-  exits, worksheet, performance, correlation,
+  exits, worksheet, performance, performanceStart, correlation,
   forex: forex.pairs,
   moodHistory,
 };
@@ -325,6 +351,7 @@ export async function snapshot(stake: number, replaced: Partial<Sources> = {}): 
     breadth: await soft<AdvancedSnapshot["breadth"]>(() => breadth(live), {}),
     worksheet: sheet.rows,
     performance: await soft(from.performance, {}),
+    performance_start: await soft(from.performanceStart, {}),
     correlation: await soft(from.correlation, { labels: [], matrix: [] }),
     signals: await soft(() => signalMatrix(week, from.config()), []),
     leverage: await soft(() => leverageTable(from.config()), { levels: [], rows: [] }),
@@ -334,6 +361,7 @@ export async function snapshot(stake: number, replaced: Partial<Sources> = {}): 
     forex: pairs,
     mood_history: moods,
     exits: await soft<AdvancedExits | null>(from.exits, null),
+    universe: await soft(() => universe(live), []),
     markets: live.size,
     pending: sheet.pending,
   };

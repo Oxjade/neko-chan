@@ -83,6 +83,8 @@ export function catalogue(): Promise<Catalogue> {
           symbol: asset.name, label: label(asset.name), class: assetClass(asset.name),
           price,
           day_change_pct: prev ? (price / prev - 1) * 100 : null,
+          // what "today" is measured from, so a screen can redo it from a live price
+          prev_day_price: prev,
           funding_hourly: Number(ctx.funding || 0),
           max_leverage: Math.trunc(Number(asset.maxLeverage || 1)),
           day_volume_usd: Number(ctx.dayNtlVlm || 0),
@@ -187,4 +189,18 @@ export function candles(symbol: string): CandleStatus {
              error: new DataError(`${label(symbol)} has too little price history for a signal yet.`) };
   }
   return status;
+}
+
+/**
+ * Every market's mid price on one of the exchange's lists, as the exchange
+ * writes them. The terminal asks for this once a second while the live stream
+ * is not delivering; it goes through the same request budget as everything else.
+ */
+export async function livePrices(dex: "" | "xyz"): Promise<Record<string, string>> {
+  const mids = await info<Record<string, string>>(dex ? { type: "allMids", dex } : { type: "allMids" },
+                                                  { weight: 2, timeoutMs: 4000 });
+  if (!mids || typeof mids !== "object" || Array.isArray(mids)) {
+    throw new DataError("Market data is unavailable right now (ValueError).");
+  }
+  return mids;
 }

@@ -16,6 +16,8 @@ export interface Market {
   class: AssetClass;
   price: number;
   day_change_pct: number | null;
+  /** The price today's change is measured from. */
+  prev_day_price: number | null;
   funding_hourly: number;
   max_leverage: number;
   day_volume_usd: number;
@@ -335,6 +337,8 @@ export interface TerminalMarket {
   class: AssetClass;
   price: number | null;
   day_change_pct: number | null;
+  /** The price today's change is measured from. */
+  prev_day_price: number | null;
   /** The last week of four-hour closes; empty until the market's history has loaded. */
   spark: number[];
   note: string;
@@ -385,12 +389,25 @@ export interface BreadthCount {
 
 export type SignalState = "waiting" | "new" | "active" | "stopped";
 
+/** One catalogue market, as the movers and breadth need it to be counted again from live prices. */
+export interface UniverseMarket {
+  symbol: string;
+  label: string;
+  class: AssetClass;
+  price: number;
+  prev_day_price: number | null;
+  day_volume_usd: number;
+}
+
 export interface WorksheetRow {
   symbol: string;
   label: string;
   class: AssetClass;
   week_pct: number | null;
   month_pct: number | null;
+  /** The prices the week and month changes are measured from. */
+  week_ref_price: number | null;
+  month_ref_price: number | null;
   four_week_pct: number | null;
   trend: TrendDirection;
   trend_days: number;
@@ -405,6 +422,8 @@ export interface WorksheetRow {
   record_avg_pct: number | null;
   price: number | null;
   day_change_pct: number | null;
+  /** The price today's change is measured from. */
+  prev_day_price: number | null;
   funding_apr: number;
   open_interest_usd: number | null;
   day_volume_usd: number | null;
@@ -584,6 +603,8 @@ export interface AdvancedSnapshot {
   worksheet: WorksheetRow[];
   /** Per market label: thirty days rebased to 100, one point every twelve hours. */
   performance: Record<string, number[]>;
+  /** Where each thirty-day line starts (its 100): the market and its price then. */
+  performance_start: Record<string, { symbol: string; price: number }>;
   correlation: Correlation;
   signals: SignalRow[];
   leverage: LeverageTable;
@@ -593,6 +614,8 @@ export interface AdvancedSnapshot {
   forex: ForexPair[];
   mood_history: MoodPoint[];
   exits: AdvancedExits | null;
+  /** Every market the movers and breadth are counted over. */
+  universe: UniverseMarket[];
   /** How many markets the catalogue lists. */
   markets: number;
   /** Worksheet markets whose price history is still downloading (not in the Python version). */

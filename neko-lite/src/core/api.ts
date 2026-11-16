@@ -90,3 +90,12 @@ export async function getForexPlan(pair: string, direction: string, stopPips: nu
                                    accountUsd: number, riskPct: number, spreadPips = 0): Promise<ForexPlan> {
   return forex.plan(pair, direction, stopPips, targetPips, accountUsd, riskPct, spreadPips);
 }
+
+/**
+ * Mid prices straight from the exchange, as text: "" for its main list (crypto),
+ * "xyz" for stocks, indices, forex and commodities. For the terminal's
+ * once-a-second fallback when the live stream cannot connect.
+ */
+export async function getLivePrices(dex: "" | "xyz"): Promise<Record<string, string>> {
+  return md.livePrices(dex);
+}
