@@ -390,11 +390,11 @@ class AIKeyBody(BaseModel):
 class WeeklyPlanBody(BaseModel):
     pair: str = Field(max_length=10)
     direction: str = Field(max_length=5)
-    stop_pct: float = Field(ge=0.05, le=20)
-    target_pct: float = Field(ge=0.05, le=50)
+    stop_pips: float                      # the three distances are checked in the route,
+    target_pips: float                    # so a mistake gets a plain-language answer
     account_usd: float = Field(gt=0, le=1_000_000_000)
     risk_pct: float = Field(gt=0, le=100)
-    cost_pct: float = Field(default=0.0, ge=0, le=5)
+    spread_pips: float = 0.0
 
 
 class WatchBody(BaseModel):
@@ -825,13 +825,13 @@ def register_web_routes(app: FastAPI) -> None:
         _require_operator(request)
         _require_json(request)
         pair, direction = body.pair.strip().upper(), body.direction.strip().lower()
-        if pair not in forex_weekly.PAIRS:
-            raise HTTPException(status_code=422, detail="That pair is not on the list.")
-        if direction not in ("long", "short"):
-            raise HTTPException(status_code=422, detail="Choose long or short.")
+        problem = forex_weekly.plan_problem(pair, direction, body.stop_pips, body.target_pips,
+                                            body.spread_pips)
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
         try:
-            return forex_weekly.plan(pair, direction, body.stop_pct, body.target_pct,
-                                     body.account_usd, body.risk_pct, body.cost_pct)
+            return forex_weekly.plan(pair, direction, body.stop_pips, body.target_pips,
+                                     body.account_usd, body.risk_pct, body.spread_pips)
         except forex_weekly.DataError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 

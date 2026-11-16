@@ -7,7 +7,7 @@ const app = document.getElementById("app");
 const signout = document.getElementById("signout");
 
 const state = { overview: null, result: null, flash: null, sizing: loadSizing(),
-                form: { pair: "EURUSD", direction: "long", stop: "", target: "", cost: "0" },
+                form: { pair: "EURUSD", direction: "long", stop: "", target: "", spread: "0" },
                 chartPair: null, chartNode: null };
 
 // Shared with the desk: a per-browser convenience, nothing depends on it.
@@ -25,8 +25,19 @@ function saveSizing() {
   } catch { /* storage unavailable */ }
 }
 
-function pct(v, digits = 2) {
-  return v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
+// Distances are in pips, the unit a forex broker quotes.
+function pips(v) {
+  return v === null || v === undefined ? "–" : `${Number(v.toFixed(1))} pips`;
+}
+
+function signedPips(v, digits = 1) {
+  return v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(digits)} pips`;
+}
+
+// What one pip is worth. Small accounts trade sizes where a pip is a fraction of a
+// cent, so under a dollar it is shown to four decimals: pips times this is the money.
+function pipUsd(v) {
+  return v >= 1 ? fmt.usd(v) : `$${v.toFixed(4)}`;
 }
 
 function share(v) {
@@ -40,8 +51,8 @@ function pairRow(pair) {
 function suggest(pair) {
   const row = pairRow(pair);
   if (!row) return;
-  state.form.stop = (0.75 * row.normal_week_pct).toFixed(2);
-  state.form.target = (1.5 * row.normal_week_pct).toFixed(2);
+  state.form.stop = String(Math.max(1, Math.round(0.75 * row.normal_week_pips)));
+  state.form.target = String(Math.max(1, Math.round(1.5 * row.normal_week_pips)));
 }
 
 // ---- left column -----------------------------------------------------------
@@ -60,12 +71,14 @@ function planForm() {
                                value: String(state.sizing.account) });
   const risk = h("input", { type: "text", name: "risk", inputmode: "decimal",
                             value: String(state.sizing.risk) });
-  const cost = h("input", { type: "text", name: "cost", inputmode: "decimal", value: f.cost });
+  const spread = h("input", { type: "text", name: "spread", inputmode: "decimal", value: f.spread });
   const normal = h("p", { class: "soft small" });
   const describe = () => {
     const row = pairRow(pair.value);
     normal.textContent = row
-      ? `A normal week for ${row.pair} is ${row.normal_week_pct.toFixed(2)}% right now.`
+      ? `A normal week for ${row.pair} is ${Math.round(row.normal_week_pips)} pips ` +
+        `(${row.normal_week_pct.toFixed(2)}%) right now. ` +
+        "A pip is the fourth decimal place of the price (the second for yen pairs)."
       : "";
   };
   describe();
@@ -84,32 +97,32 @@ function planForm() {
       error.textContent = "";
       const values = { stop: Number(stop.value), target: Number(target.value),
                        account: Number(account.value), risk: Number(risk.value),
-                       cost: Number(cost.value || 0) };
+                       spread: Number(spread.value || 0) };
       const need = (ok, field, text) => {
         if (ok) return false;
         error.textContent = text;
         field.focus();
         return true;
       };
-      if (need(values.stop >= 0.05 && values.stop <= 20, stop,
-               "Enter the stop distance as a percentage between 0.05 and 20.")) return;
-      if (need(values.target >= 0.05 && values.target <= 50, target,
-               "Enter the target distance as a percentage between 0.05 and 50.")) return;
+      if (need(values.stop > 0 && values.stop <= 5000, stop,
+               "Enter the stop distance in pips: more than 0 and at most 5000.")) return;
+      if (need(values.target > 0 && values.target <= 5000, target,
+               "Enter the target distance in pips: more than 0 and at most 5000.")) return;
       if (need(values.account > 0, account, "Enter your account size in USD.")) return;
       if (need(values.risk > 0 && values.risk <= 100, risk,
                "Enter the risk per trade as a percentage between 0 and 100.")) return;
-      if (need(values.cost >= 0 && values.cost <= 5, cost,
-               "Enter the trading cost as a percentage between 0 and 5, or 0 for none.")) return;
+      if (need(values.spread >= 0 && values.spread < values.stop, spread,
+               "Enter your broker's spread in pips: 0 or more, and smaller than the stop.")) return;
       Object.assign(f, { pair: pair.value, direction: direction.value,
-                         stop: stop.value, target: target.value, cost: cost.value || "0" });
+                         stop: stop.value, target: target.value, spread: spread.value || "0" });
       state.sizing = { account: values.account, risk: values.risk };
       saveSizing();
       button.disabled = true;
       state.flash = null;
       try {
         state.result = await api("/api/web/weekly/plan", {
-          pair: f.pair, direction: f.direction, stop_pct: values.stop, target_pct: values.target,
-          account_usd: values.account, risk_pct: values.risk, cost_pct: values.cost });
+          pair: f.pair, direction: f.direction, stop_pips: values.stop, target_pips: values.target,
+          account_usd: values.account, risk_pct: values.risk, spread_pips: values.spread });
       } catch (err) {
         if (err.status === 401) {
           renderSignIn([]);
@@ -125,13 +138,13 @@ function planForm() {
     h("label", { class: "field" }, h("span", null, "Pair"), pair),
     h("label", { class: "field" }, h("span", null, "Direction"), direction),
     normal,
-    h("label", { class: "field" }, h("span", null, "Stop distance (%)"), stop),
-    h("label", { class: "field" }, h("span", null, "Target distance (%)"), target),
+    h("label", { class: "field" }, h("span", null, "Stop distance (pips)"), stop),
+    h("label", { class: "field" }, h("span", null, "Target distance (pips)"), target),
     h("label", { class: "field" }, h("span", null, "Account size (USD)"), account),
     h("label", { class: "field" }, h("span", null, "Risk per trade (%)"), risk),
-    h("label", { class: "field" }, h("span", null, "Trading cost per trade (%, optional)"), cost),
+    h("label", { class: "field" }, h("span", null, "Broker's spread (pips, optional)"), spread),
     h("p", { class: "soft small" },
-      "Leave at 0 to see results before costs, or enter your broker's spread and commission."),
+      "Leave at 0 to see results before costs, or enter what a round trip costs at your broker: the spread, plus any commission, in pips."),
     error, button);
 }
 
@@ -140,7 +153,7 @@ function planForm() {
 function verdictText(r) {
   const a = r.all;
   const won = share(a.win_rate);
-  const needed = `${share(a.breakeven_win_rate)}${r.cost_pct > 0 ? "" : " before trading costs"}`;
+  const needed = `${share(a.breakeven_win_rate)}${r.spread_pips > 0 ? "" : " before trading costs"}`;
   if (a.breakeven_win_rate === null) return `This shape won ${won} of past weeks on ${r.pair}.`;
   if (a.win_rate_low > a.breakeven_win_rate) {
     return `This shape has beaten break-even on ${r.pair}: it won ${won} of weeks and needed ${needed}.`;
@@ -173,8 +186,11 @@ function resultSection() {
       high: a.win_rate_high, breakeven: a.breakeven_win_rate, verdictText: verdictText(r) })),
     figures([
       ["Entry (last fixing)", fmt.price(r.price)],
-      ["Stop", fmt.price(r.stop_price)],
-      ["Target", fmt.price(r.target_price)],
+      ["Stop", `${pips(r.stop_pips)}, at ${fmt.price(r.stop_price)}`],
+      ["Target", `${pips(r.target_pips)}, at ${fmt.price(r.target_price)}`],
+      ["Lost at the stop", fmt.usd(s.loss_at_stop_usd), "loss"],
+      ["Made at the target", fmt.usd(s.gain_at_target_usd), "gain"],
+      ["One pip at your size", pipUsd(s.pip_value_usd)],
       ["Stop in normal weeks", r.stop_in_weeks.toFixed(2)],
       ["Target in normal weeks", r.target_in_weeks.toFixed(2)],
     ]),
@@ -183,16 +199,18 @@ function resultSection() {
       ["Target reached first", share(a.target_first)],
       ["Stop reached first", share(a.stop_first)],
       ["Neither by Friday", share(a.week_ended)],
-      ["Average result when neither", pct(a.week_ended_avg_pct), tone(a.week_ended_avg_pct)],
-      ["Average result per trade", pct(a.avg_result_pct, 3), tone(a.avg_result_pct)],
+      ["Average result when neither", signedPips(a.week_ended_avg_pips), tone(a.week_ended_avg_pips)],
+      ["Average result per trade", signedPips(a.avg_result_pips), tone(a.avg_result_pips)],
       ["That average at your size", fmt.signedUsd(r.avg_result_usd), tone(r.avg_result_usd)],
     ]),
     h("p", { class: "notice" },
       `With ${fmt.usd(state.sizing.account)} and ${state.sizing.risk}% risk: ` +
       `${s.lots >= 0.01 ? s.lots.toFixed(2) : s.lots.toFixed(4)} lots ` +
       `(${Math.round(s.units).toLocaleString("en-US")} units, ${fmt.usd(s.position_usd)}, ` +
-      `${s.leverage.toFixed(1)}x). The stop costs ${fmt.usd(s.loss_at_stop_usd)}; the target ` +
-      `makes ${fmt.usd(s.gain_at_target_usd)}.` +
+      `${s.leverage.toFixed(1)}x). One pip is worth ${pipUsd(s.pip_value_usd)} at that size ` +
+      `(${pipUsd(s.pip_value_per_lot_usd)} on a full lot). The stop, ${pips(r.stop_pips)} away, costs ` +
+      `${fmt.usd(s.loss_at_stop_usd)}; the target, ${pips(r.target_pips)} away, makes ` +
+      `${fmt.usd(s.gain_at_target_usd)}.` +
       (s.lots < 0.01
         ? " That is below the 0.01-lot minimum at most brokers, so this account is too small to risk so little on this stop."
         : "")),
@@ -202,15 +220,15 @@ function resultSection() {
       { label: "Weeks", num: true, cell: (t) => String(t.weeks) },
       { label: "Won", num: true, cell: (t) => share(t.win_rate) },
       { label: "Needed", num: true, cell: (t) => share(t.breakeven_win_rate) },
-      { label: "Average result", num: true, cell: (t) => pct(t.avg_result_pct, 3),
-        cls: (t) => tone(t.avg_result_pct) },
+      { label: "Average result", num: true, cell: (t) => signedPips(t.avg_result_pips),
+        cls: (t) => tone(t.avg_result_pips) },
     ], trendRows, ""),
     h("p", { class: "soft small" },
       `Your plan is ${r.plan_is_with_trend ? "with" : "against"} the current 13-week trend, which is ` +
       `${r.trend_13w}. Stops and targets are checked on one central-bank fixing a day since ` +
       `${r.history_from.slice(0, 4)}, so real intraday touches happen a little more often. ` +
-      (r.cost_pct > 0
-        ? `Trading costs of ${r.cost_pct}% per trade are included; overnight financing is not.`
+      (r.spread_pips > 0
+        ? `Your broker's spread of ${pips(r.spread_pips)} per trade is included; overnight financing is not.`
         : "No trading costs are included, so real results will be a little lower.")));
 }
 
@@ -225,8 +243,8 @@ function rangesSection() {
     table([
       { label: "Pair", cell: (r) => r.pair },
       { label: "Last fixing", num: true, cell: (r) => fmt.price(r.price) },
-      { label: "Last week", num: true, cell: (r) => pct(r.last_week_pct), cls: (r) => tone(r.last_week_pct) },
-      { label: "Normal week", num: true, cell: (r) => `${r.normal_week_pct.toFixed(2)}%` },
+      { label: "Last week", num: true, cell: (r) => signedPips(r.last_week_pips, 0), cls: (r) => tone(r.last_week_pips) },
+      { label: "Normal week", num: true, cell: (r) => `${Math.round(r.normal_week_pips)} pips` },
       { label: "Likely range", cell: (r) => `${fmt.price(r.range_low)} to ${fmt.price(r.range_high)}` },
       { label: "13-week trend", cell: (r) => (r.trend_13w === "up" ? "Up" : "Down") },
       { label: "52-week trend", cell: (r) => (r.trend_52w === "up" ? "Up" : "Down") },

@@ -8,7 +8,7 @@ The web app replaces Telegram as the interface. It has two sides:
 | `/terminal` | You, in a second tab, all week | A live dark terminal: model positions for this week's calls with live profit and distance to the stop, a candlestick chart with the entry, stop and target drawn on it, a market dashboard, a recommendation gauge, and a desk feed that says what to do right now. |
 | `/week` | Someone new to trading | The week's calls on perps: long, short or stay out for Bitcoin and Ether, each with a suggested leverage. Shows why, the steps to take with your amount, a week-by-week scoreboard, and how far to trust it. |
 | `/desk` | You, in a second tab | Signals for a watchlist you choose across crypto, stocks, indices, forex and commodities. Each market shows the rule's past record there; every unmuted signal is paper-traded automatically; sides that have lost money on a market are muted. Works out the position size for your account and risk. |
-| `/weekly` | You, planning the week | For forex. You enter a pair, direction, stop and target; it shows what a plan of that shape has done in every week since 1999, the win rate it needs, the pair's normal weekly range, and the lot size for your risk. Includes a live TradingView chart. |
+| `/weekly` | You, planning the week | For forex, in pips. You enter a pair, direction, and a stop and target in pips; it shows what a plan of that shape has done in every week since 1999, the win rate it needs, the pair's normal weekly range, and the lot size and pip value for your risk. Includes a live TradingView chart. |
 | `/console` | You, the operator | Create, start and pause paper bots; see positions, decisions, closed trades and the go-live checks per bot; save the AI model key; choose which bots are public. |
 
 It is paper trading only. The console cannot switch a bot to live trading and
@@ -69,18 +69,38 @@ better than a coin flip: 48.6% to 51.6% right, all slightly negative after
 costs, in both halves of the history. So the planner does not pick a
 direction. It measures the trader's own plan:
 
+- **Pips.** Distances are entered and shown in pips, the unit a forex broker
+  quotes: the fourth decimal place of the price, or the second for pairs
+  quoted in yen (`forex_weekly.pip_size`). The form asks for the stop, the
+  target and the broker's round-trip spread in pips; results show pips with
+  the price and the dollars beside them. Percent figures are still returned
+  next to the pips ones.
 - **Normal week.** How far the pair has been moving in a week (last 26
-  weeks). The week closed inside that range in about 69% of past weeks.
-- **Shape replay.** The stop and target are expressed in normal weeks and
-  replayed on every week since 1999: how often the target came first, the
-  stop came first, or the week ran out, with the win rate the shape needs to
-  break even. A closer target wins more often and needs a higher win rate;
-  across shapes the average result is close to zero, minus costs.
-- **Size.** Lots and units for the chosen account risk.
+  weeks), in pips at today's price. The week closed inside that range in
+  about 69% of past weeks. The form starts with a stop three quarters of a
+  normal week away and a target twice as far, in whole pips.
+- **Shape replay.** The stop and target are turned into a percentage of the
+  current price, expressed in normal weeks, and replayed on every week since
+  1999: how often the target came first, the stop came first, or the week ran
+  out, with the win rate the shape needs to break even. A closer target wins
+  more often and needs a higher win rate; across shapes the average result is
+  close to zero, minus costs. Because the shape is scaled to each week's
+  normal move, 50 pips today is compared with the same share of a normal week
+  in 2008, not with 50 pips then.
+- **Size.** Lots and units for the chosen account risk, what one pip is worth
+  at that size, and what it is worth on a standard lot (100,000 units). The
+  loss at the stop and the gain at the target are pips times that pip value.
 
-Trading costs are left out by default; the form has an optional cost field for
-a broker's spread and commission. Without costs the 14 rules average almost
-exactly zero per week (`--no-costs`), so costs are not what hides an edge.
+Trading costs are left out by default; the form has an optional field for the
+broker's spread in pips (round trip, commission included). Without costs the
+14 rules average almost exactly zero per week (`--no-costs`), so costs are not
+what hides an edge.
+
+A plan request (`POST /api/web/weekly/plan`) carries `pair`, `direction`,
+`stop_pips`, `target_pips`, `account_usd`, `risk_pct` and optionally
+`spread_pips`. The stop and target must be above 0 and at most 5000 pips, and
+the spread 0 or more and smaller than the stop; anything else is answered with
+a 422 and a sentence that can be shown as it is.
 
 Sentiment was tested too (`research/scripts/forex_sentiment_search.py`): the
 US regulator's weekly Commitments of Traders report, 1999 to now, seven
@@ -153,7 +173,7 @@ feed and chart plus:
 | Liquidation rate by leverage | Share of traded weeks wiped out, and the average week, from 1x to 30x; the suggested level is outlined | `crypto_long_short.json` |
 | Week by week | The last twelve finished weeks and the running total | daily candles |
 | Funding and open interest | Per coin | Hyperliquid |
-| Forex board | Last week, a normal week's range and trend for 14 pairs | ECB reference rates |
+| Forex board | Last week and a normal week in pips, the week's likely price range and the trend, for 14 pairs | ECB reference rates |
 
 Nothing is filled in for effect: there is no news or economic calendar because
 the platform has no source for one. Each panel fails on its own, so a source
