@@ -79,7 +79,9 @@ export function makeUpstream(now: number): Upstream {
     mood: (day) => Math.round(50 + 30 * Math.sin(day / 11)),
     moodDelayMs: 0,
     forex: { pairs: [{ pair: "EURUSD", price: 1.1, as_of: "2026-11-13", last_week_pct: 0.2, normal_week_pct: 1.0,
-                       range_low: 1.089, range_high: 1.111, range_held: 0.7, trend_13w: "up", trend_52w: "down" }] },
+                       pip_size: 0.0001, last_week_pips: 22, normal_week_pips: 110,
+                       range_low: 1.089, range_high: 1.111, range_held: 0.7, trend_13w: "up", trend_52w: "down" }],
+             as_of: "2026-11-13", history_from: "1999-01-04" },
     candleRequests: (interval) => up.sent.filter((s) => s.payload?.type === "candleSnapshot"
       && (!interval || s.payload.req?.interval === interval)),
     rowsReturned: 0,

@@ -1,41 +1,21 @@
-// The forex function (api/fx.ts): reading the ECB's zip and working out the board.
-// The expected board comes from Python's forex_weekly.overview() on the same
-// made-up table (tests/fixtures/make_reference.py).
+// The forex function (api/fx.ts): reading the ECB's zip, working out the board,
+// and judging a plan in pips. The expected answers come from Python's
+// forex_weekly on the same made-up table (tests/fixtures/make_reference.py);
+// the cases are those of service/server/tests/test_forex_weekly.py.
 
-import { deflateRawSync } from "node:zlib";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET, overview, parseRates, unzipFirst } from "../api/fx";
+import {
+  GET, baseInUsd, forgetRates, overview, pairSeries, parseRates, performance, pipSize, pipsPerPercent, planOdds,
+  planProblem, replayShape, summary, unzipFirst, wilsonInterval, type Direction, type Series,
+} from "../api/fx";
 import reference from "./fixtures/reference.json";
+import { zipOf } from "./helpers/zip";
 
-/** A zip archive holding one file, built by hand so the reader is tested against the format itself. */
-function zipOf(name: string, text: string, compress = true): Uint8Array<ArrayBuffer> {
-  const raw = Buffer.from(text, "utf8");
-  const data = compress ? deflateRawSync(raw) : raw;
-  const file = Buffer.from(name, "utf8");
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(0x04034b50, 0);
-  local.writeUInt16LE(compress ? 8 : 0, 8);
-  local.writeUInt32LE(data.length, 18);
-  local.writeUInt32LE(raw.length, 22);
-  local.writeUInt16LE(file.length, 26);
-  const central = Buffer.alloc(46);
-  central.writeUInt32LE(0x02014b50, 0);
-  central.writeUInt16LE(compress ? 8 : 0, 10);
-  central.writeUInt32LE(data.length, 20);
-  central.writeUInt32LE(raw.length, 24);
-  central.writeUInt16LE(file.length, 28);
-  central.writeUInt32LE(0, 42);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(1, 8);
-  end.writeUInt16LE(1, 10);
-  end.writeUInt32LE(central.length + file.length, 12);
-  end.writeUInt32LE(local.length + file.length + data.length, 16);
-  return new Uint8Array(Buffer.concat([local, file, data, central, file, end]));
-}
+const daily = parseRates(reference.forex.csv);
 
 describe("the forex function", () => {
+  beforeEach(() => forgetRates());
   afterEach(() => vi.unstubAllGlobals());
 
   it("reads the first file out of a zip, compressed or stored", () => {
@@ -92,5 +72,190 @@ describe("the forex function", () => {
     expect(response.status).toBe(502);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.json()).toEqual({ error: "Exchange-rate history is unavailable right now." });
+  });
+
+  it("answers a plan request with the odds, and nothing about the account", async () => {
+    let downloads = 0;
+    vi.stubGlobal("fetch", async () => {
+      downloads += 1;
+      return new Response(zipOf("eurofxref-hist.csv", reference.forex.csv));
+    });
+    const response = await GET(new Request("http://localhost/api/fx?pair=eurusd&direction=Long&stop=60&target=120"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, s-maxage=3600, stale-while-revalidate=86400");
+    const body = await response.json() as Record<string, unknown>;
+    const want = reference.forex.plans[0].plan as unknown as Record<string, unknown>;
+    expect(body).not.toHaveProperty("sizing");
+    expect(body).not.toHaveProperty("avg_result_usd");
+    for (const key of Object.keys(want).filter((k) => k !== "sizing" && k !== "avg_result_usd")) {
+      expect(body[key], key).toEqual(want[key]);
+    }
+    expect(body.base_usd).toBe(reference.forex.base_in_usd.EURUSD);
+    expect(JSON.stringify(body).length).toBeLessThan(2500);
+    // a warm function keeps the table: a second shape does not download it again
+    await GET(new Request("http://localhost/api/fx?pair=USDJPY&direction=short&stop=90&target=150&spread=1"));
+    await GET(new Request("http://localhost/api/fx"));
+    expect(downloads).toBe(1);
+  });
+
+  it("refuses a plan it cannot check with a 400 and plain words, before downloading anything", async () => {
+    let downloads = 0;
+    vi.stubGlobal("fetch", async () => {
+      downloads += 1;
+      return new Response(zipOf("eurofxref-hist.csv", reference.forex.csv));
+    });
+    const refused = async (query: string) => {
+      const response = await GET(new Request(`http://localhost/api/fx?${query}`));
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      return (await response.json() as { error: string }).error;
+    };
+    expect(await refused("pair=XXXYYY&direction=long&stop=60&target=120")).toBe("That pair is not on the list.");
+    expect(await refused("pair=EURUSD&direction=up&stop=60&target=120")).toBe("Choose long or short.");
+    expect(await refused("pair=EURUSD&direction=long&target=120"))
+      .toBe("Enter the stop distance in pips: more than 0 and at most 5000.");
+    expect(await refused("pair=EURUSD&direction=long&stop=abc&target=120"))
+      .toBe("Enter the stop distance in pips: more than 0 and at most 5000.");
+    expect(await refused("pair=EURUSD&direction=long&stop=60&target=5001"))
+      .toBe("Enter the target distance in pips: more than 0 and at most 5000.");
+    expect(await refused("pair=EURUSD&direction=long&stop=60&target=120&spread=60"))
+      .toBe("Enter your broker's spread in pips: 0 or more, and smaller than the stop.");
+    expect(downloads).toBe(0);
+  });
+
+  it("says so when a pair has too little history to judge a plan", async () => {
+    vi.stubGlobal("fetch", async () => new Response(zipOf("eurofxref-hist.csv", reference.forex.csv)));
+    const response = await GET(new Request("http://localhost/api/fx?pair=NZDUSD&direction=long&stop=60&target=120"));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "NZDUSD has too little history to judge a plan." });
+  });
+});
+
+describe("pips", () => {
+  it("a pip is the second decimal for yen pairs and the fourth for the rest", () => {
+    const pairsKnown = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD", "EURGBP", "EURJPY",
+                        "EURCHF", "GBPJPY", "AUDJPY", "EURAUD", "AUDNZD"];
+    expect(pairsKnown.filter((pair) => pipSize(pair) === 0.01)).toEqual(["USDJPY", "EURJPY", "GBPJPY", "AUDJPY"]);
+    expect(pairsKnown.filter((pair) => pipSize(pair) === 0.0001).length).toBe(10);
+    expect(pipsPerPercent("EURUSD", 1.2)).toBeCloseTo(120.0, 7);        // 1% of 1.2000 is 120 pips
+    expect(pipsPerPercent("USDJPY", 150.0)).toBeCloseTo(150.0, 7);      // 1% of 150.00 is 150 pips
+  });
+
+  it("a plan request is checked in plain words", () => {
+    expect(planProblem("EURUSD", "long", 50, 100)).toBeNull();
+    expect(planProblem("EURUSD", "long", 50, 100, 1.5)).toBeNull();
+    expect(planProblem("USDJPY", "short", 5000, 5000, 4999)).toBeNull();
+    expect(planProblem("XXXYYY", "long", 50, 100)).toBe("That pair is not on the list.");
+    expect(planProblem("toString", "long", 50, 100)).toBe("That pair is not on the list.");
+    expect(planProblem("EURUSD", "up", 50, 100)).toBe("Choose long or short.");
+    const stop = "Enter the stop distance in pips: more than 0 and at most 5000.";
+    const target = "Enter the target distance in pips: more than 0 and at most 5000.";
+    const spread = "Enter your broker's spread in pips: 0 or more, and smaller than the stop.";
+    for (const bad of [0, -5, 5000.5, NaN, Infinity]) {
+      expect(planProblem("EURUSD", "long", bad, 100)).toBe(stop);
+      expect(planProblem("EURUSD", "long", 50, bad)).toBe(target);
+    }
+    for (const bad of [-0.1, 50, 80, NaN]) expect(planProblem("EURUSD", "long", 50, 100, bad)).toBe(spread);
+  });
+});
+
+describe("past weeks replayed with a shape", () => {
+  const eurusd = pairSeries(daily, "EURUSD");
+
+  it("outcomes are bounded by the stop and the target", () => {
+    const rows = replayShape(eurusd, "long", 0.75, 1.5, 0.04);
+    expect(rows.length).toBeGreaterThan(60);
+    for (const r of rows) {
+      expect(r.gross).toBeGreaterThanOrEqual(-0.75 - 1e-9);
+      expect(r.gross).toBeLessThanOrEqual(1.5 + 1e-9);
+      if (r.how === "stop") expect(r.gross).toBeCloseTo(-0.75, 7);
+      if (r.how === "target") expect(r.gross).toBeCloseTo(1.5, 7);
+      expect(r.net).toBeLessThan(r.gross);                           // costs always charged
+    }
+    expect(new Set(rows.map((r) => r.how))).toEqual(new Set(["stop", "target", "week ended"]));
+  });
+
+  it("no costs by default", () => {
+    const rows = replayShape(eurusd, "long", 0.75, 1.5);
+    expect(rows.every((r) => r.net === r.gross && r.fees === 0)).toBe(true);
+  });
+
+  it("long and short mirror when the week runs out", () => {
+    const series = pairSeries(daily, "EURGBP");
+    const longs = replayShape(series, "long", 50, 50);              // levels never reached
+    const shorts = replayShape(series, "short", 50, 50);
+    expect(longs.every((r) => r.how === "week ended")).toBe(true);
+    longs.forEach((r, i) => expect(r.gross).toBeCloseTo(-shorts[i].gross, 7));
+  });
+
+  it("a tight target wins more often but needs more", () => {
+    const tight = summary(replayShape(eurusd, "long", 1.5, 0.5), 1.0, 100.0);
+    const wide = summary(replayShape(eurusd, "long", 0.5, 1.5), 1.0, 100.0);
+    expect(tight.win_rate as number).toBeGreaterThan(wide.win_rate as number);
+    expect(tight.breakeven_win_rate as number).toBeGreaterThan(wide.breakeven_win_rate as number);
+  });
+
+  it("an uptrend makes longs win", () => {
+    // 600 working days that climb steadily with a small wobble
+    const series: Series = { days: [], values: [] };
+    for (let day = 16440, i = 0; i < 600; day += 1) {               // 16440 is Monday 2015-01-05
+      if ((((day + 3) % 7) + 7) % 7 > 4) continue;                   // weekends have no fixing
+      series.days.push(day);
+      series.values.push(Math.exp(i * 0.002 + 0.001 * Math.sin(i * 1.7)));
+      i += 1;
+    }
+    const s = summary(replayShape(series, "long", 3, 3), 1.0, 100.0);
+    expect(s.win_rate as number).toBeGreaterThan(0.9);
+    // results in pips are the percent results at the given pips per percent
+    expect(s.avg_result_pips).toBeCloseTo(s.avg_result_pct * 100.0, 7);
+  });
+
+  it("every week comes out as it does in Python, to the last digit", () => {
+    for (const shape of reference.forex.shapes) {
+      const rows = replayShape(pairSeries(daily, shape.pair), shape.direction as Direction, shape.stop_mult,
+                               shape.target_mult, shape.cost_pct);
+      expect(rows, `${shape.pair} ${shape.direction}`).toEqual(shape.rows);
+    }
+  });
+});
+
+describe("the win-rate statistics", () => {
+  it("the likely range of a win rate, as Python works it out", () => {
+    for (const [wins, n, low, high] of reference.forex.statistics.wilson) {
+      expect(wilsonInterval(wins, n), `${wins} of ${n}`).toEqual([low, high]);
+    }
+    expect(wilsonInterval(0, 0)).toEqual([0.0, 1.0]);               // nothing known yet
+  });
+
+  it("win rate, break-even win rate and average result, as Python works them out", () => {
+    const nets = reference.forex.shapes[0].rows.map((r) => ({ net: r.net }));
+    expect(performance(nets)).toEqual(reference.forex.statistics.performance);
+  });
+
+  it("with no trades there is no win rate, and with only wins no break-even", () => {
+    expect(performance([])).toEqual({ trades: 0, wins: 0, win_rate: null, win_rate_low: null, win_rate_high: null,
+                                      breakeven_win_rate: null, expectancy: null });
+    const wins = performance([{ net: 1 }, { net: 2 }]);
+    expect([wins.win_rate, wins.breakeven_win_rate, wins.expectancy]).toEqual([1, null, 1.5]);
+    // one win of 2 and two losses of 1: break-even is winning one time in three
+    expect(performance([{ net: 2 }, { net: -1 }, { net: -1 }]).breakeven_win_rate).toBeCloseTo(1 / 3, 12);
+  });
+});
+
+describe("a plan's odds", () => {
+  it("are the same as Python's for every reference plan", () => {
+    for (const { args, plan } of reference.forex.plans) {
+      const [pair, direction, stop, target, , , spread] = args as [string, Direction, number, number, number, number, number];
+      const mine = planOdds(daily, pair, direction, stop, target, spread) as unknown as Record<string, unknown>;
+      const want = plan as unknown as Record<string, unknown>;
+      for (const key of Object.keys(want).filter((k) => k !== "sizing" && k !== "avg_result_usd")) {
+        expect(mine[key], `${pair} ${key}`).toEqual(want[key]);
+      }
+    }
+  });
+
+  it("the base currency in dollars, from the latest fixing", () => {
+    for (const [pair, value] of Object.entries(reference.forex.base_in_usd)) expect(baseInUsd(daily, pair)).toBe(value);
+    expect(baseInUsd(daily, "USDJPY")).toBe(1.0);
   });
 });

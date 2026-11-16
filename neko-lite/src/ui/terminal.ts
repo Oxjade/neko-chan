@@ -533,7 +533,10 @@ function paintBar(): void {
     state.error ? h("span", { class: "down small" }, state.error) : null,
     h("span", { class: "t-live", "data-state": mode }, h("i"), words[mode]),
     h("nav", { class: "t-nav", "aria-label": "Pages" },
-      h("a", { href: "/week" }, "This week")));
+      h("a", { href: "/", "aria-current": "page" }, "Terminal"),
+      h("a", { href: "/week" }, "This week"),
+      h("a", { href: "/forex" }, "Forex"),
+      h("a", { href: "/guide" }, "Guide")));
 }
 
 // ---- positions ---------------------------------------------------------------

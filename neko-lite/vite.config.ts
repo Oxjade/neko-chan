@@ -1,7 +1,8 @@
-// Two static pages (the terminal and the week's calls) and nothing else.
-// During local dev and preview, /api/fx is answered by the same handler that
-// Vercel runs as a function, so the forex board can be tried without deploying,
-// and /week is served from week.html the way Vercel's clean URLs serve it.
+// Four static pages (the terminal, the week's calls, the forex planner and the
+// guide) and nothing else. During local dev and preview, /api/fx is answered by
+// the same handler that Vercel runs as a function, so the forex figures can be
+// tried without deploying, and /week, /forex and /guide are served from their
+// .html files the way Vercel's clean URLs serve them.
 
 import { resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -10,11 +11,13 @@ import { defineConfig } from "vitest/config";
 
 type Next = () => void;
 
+const PAGES = ["week", "forex", "guide"];
+
 function localVercel(): Plugin {
   const handle = async (req: IncomingMessage, res: ServerResponse, next: Next) => {
     const path = (req.url ?? "").split("?")[0];
-    if (path === "/week") {
-      req.url = `/week.html${(req.url ?? "").slice(path.length)}`;
+    if (PAGES.includes(path.slice(1))) {
+      req.url = `${path}.html${(req.url ?? "").slice(path.length)}`;
       return next();
     }
     if (path !== "/api/fx") return next();
@@ -45,6 +48,8 @@ export default defineConfig({
       input: {
         terminal: resolve(import.meta.dirname, "index.html"),
         week: resolve(import.meta.dirname, "week.html"),
+        forex: resolve(import.meta.dirname, "forex.html"),
+        guide: resolve(import.meta.dirname, "guide.html"),
       },
     },
   },

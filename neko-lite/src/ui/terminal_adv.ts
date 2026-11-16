@@ -484,13 +484,15 @@ function paintForex(el: Elements, adv: AdvancedSnapshot): void {
   replace(part(el, "fx"), dense<ForexPair>([
     { label: "Pair", amber: true, cell: (r) => r.pair },
     { label: "Last", num: true, cell: (r) => px(r.price) },
-    { label: "Last wk", num: true, cell: (r) => pct(r.last_week_pct), heat: (r) => heat(r.last_week_pct, 2.5) },
-    { label: "Normal wk", num: true, cell: (r) => `${r.normal_week_pct.toFixed(2)}%` },
+    { label: "Last wk", num: true, cell: (r) => `${r.last_week_pips > 0 ? "+" : ""}${r.last_week_pips.toFixed(0)} pips`,
+      heat: (r) => heat(r.last_week_pct, 2.5) },
+    { label: "Normal wk", num: true, cell: (r) => `${r.normal_week_pips.toFixed(0)} pips` },
     { label: "Range this week", num: true, cell: (r) => `${px(r.range_low)}–${px(r.range_high)}` },
     { label: "13w", cell: (r) => (r.trend_13w === "up" ? "▲" : "▼"), cls: (r) => (r.trend_13w === "up" ? "up" : "down") },
     { label: "52w", cell: (r) => (r.trend_52w === "up" ? "▲" : "▼"), cls: (r) => (r.trend_52w === "up" ? "up" : "down") },
   ], adv.forex),
-    h("p", { class: "dim t-pad t-micro" }, "No rule tested has an edge on a forex direction. Ranges are for sizing your own idea."));
+    h("p", { class: "dim t-pad t-micro" }, "No rule tested has an edge on a forex direction. Ranges are for sizing your own idea. " +
+      "A pip is the fourth decimal place of the price (the second for yen pairs)."));
 }
 
 export function paintAdvanced(el: Elements, state: TerminalState, helpers: Helpers): void {

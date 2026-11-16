@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>How to use Neko</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/styles/neko.css">
+<link rel="stylesheet" href="/src/styles/lite.css">
+</head>
+<body>
+
+<header class="wrap masthead">
+  <a class="wordmark" href="/guide" aria-label="Neko guide home">
+    <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 3l6 5h8l6-5v13a10 10 0 0 1-20 0z" fill="#131c33"/><circle cx="10.5" cy="15" r="1.8" fill="#f6ecd8"/><circle cx="17.5" cy="15" r="1.8" fill="#f6ecd8"/></svg>
+    Neko guide
+  </a>
+  <nav aria-label="Pages">
+    <a href="/">Terminal</a>
+    <a href="/week">This week</a>
+    <a href="/forex">Forex</a>
+    <a href="/guide" aria-current="page">Guide</a>
+  </nav>
+</header>
+
+<main class="wrap">
+<div class="week guide">
+
+<section class="panel stack">
+  <h1>How to use Neko</h1>
+  <p class="lead">A plain guide for someone who has never traded: what the app tells you, what to do each week, and how to read every screen.</p>
+  <p class="soft small">Nothing here is a promise. The rule behind the calls has had losing weeks and losing months, and past results do not tell you what next year will do.</p>
+  <nav aria-label="On this page">
+    <ol>
+      <li><a href="#what">What Neko does in one minute</a></li>
+      <li><a href="#week">Your week, step by step</a></li>
+      <li><a href="#basic">Reading the Basic screen</a></li>
+      <li><a href="#advanced">Advanced mode, panel by panel</a></li>
+      <li><a href="#forex">Forex plan, in pips</a></li>
+      <li><a href="#well">Using it well</a></li>
+      <li><a href="#words">Words used here</a></li>
+    </ol>
+  </nav>
+</section>
+
+<section class="stack" id="what">
+  <h2>What Neko does in one minute</h2>
+  <p>Once a week Neko says long, short or stay out for Bitcoin, Ether, Solana and Sui on perpetuals. Each call comes with a leverage, a stop loss and, for shorts, a take profit.</p>
+  <p>The rule is short enough to check yourself:</p>
+  <ul>
+    <li><strong>Long</strong> when the Fear &amp; Greed index is 50 or more and the coin rose over the last four weeks.</li>
+    <li><strong>Short</strong> when the index is under 50 and the coin fell over the last four weeks.</li>
+    <li><strong>Stay out</strong> otherwise.</li>
+  </ul>
+  <p>Only the sides that held up in six years of testing are called. Where a side did not hold up for a coin, Neko says stay out even when the rule points that way.</p>
+  <p>The edge is small. In the 2024 and 2026 reviews, a weekly amount of 40 dollars made about 14 and 10 dollars over the year, with losing months along the way.</p>
+  <p><a href="/week">See this week's call</a></p>
+</section>
+
+<section class="stack" id="week">
+  <h2>Your week, step by step</h2>
+  <ol class="steps">
+    <li>
+      <h3>Monday, after 00:00 UTC</h3>
+      <p class="soft">Open <a href="/week">This week</a>, set your weekly amount and read the call. Place each trade from the ticket: the position size, the leverage, the stop loss, and the take profit where one is shown. Then leave the orders alone.</p>
+    </li>
+    <li>
+      <h3>During the week</h3>
+      <p class="soft">Glance at the desk feed on the <a href="/">terminal</a> once or twice a day. It tells you if a stop or a take profit was hit. There is nothing else to do.</p>
+    </li>
+    <li>
+      <h3>Next Monday</h3>
+      <p class="soft">Close whatever is still open, then take the new call.</p>
+    </li>
+  </ol>
+  <p>If you missed Monday, wait for the next call. Late entries were not tested.</p>
+</section>
+
+<section class="stack" id="basic">
+  <h2>Reading the Basic screen</h2>
+  <p>The <a href="/">terminal</a> opens in Basic mode. It has five parts.</p>
+  <dl>
+    <dt>Position tracker</dt>
+    <dd>Model positions: what your weekly amount would be doing had the calls been followed. It does not know what you actually hold. Each card shows the size, the entry, the last price, the stop, the take profit and the result so far. A coin with no call shows Stay out; a call your amount cannot place shows Too small.</dd>
+    <dt>The chart</dt>
+    <dd>The selected market, with lines for the entry, the stop and the take profit. 1H, 4H and 1D are hourly, four-hour and daily candles. 1S is a live one-second chart built in your browser: it starts empty and fills as trades arrive.</dd>
+    <dt>Market dashboard</dt>
+    <dd>Live prices and the day's change for the four coins and a few other markets, for context. Select a row to chart it.</dd>
+    <dt>Recommendation gauge</dt>
+    <dd>For the selected coin: long, short or stay out, how many of the three signals agree, and the entry, stop, take profit and liquidation prices when there is a call.</dd>
+    <dt>Desk feed</dt>
+    <dd>Plain sentences about what to do now, most urgent first: a stop that was hit, a take profit that was hit, a position near its stop, or simply on track.</dd>
+  </dl>
+</section>
+
+<section class="stack" id="advanced">
+  <h2>Advanced mode, panel by panel</h2>
+  <p>Choose Advanced at the top of the <a href="/">terminal</a>. Advanced is for understanding the market. The calls come only from the weekly rule, never from these panels.</p>
+  <p>The first visit downloads price history for two to three minutes, and the worksheet fills in as it arrives. Later visits are quick.</p>
+  <dl>
+    <dt>Sessions</dt>
+    <dd>Clocks for the main financial centres and whether each is open. Crypto trades all week; forex closes for the weekend.</dd>
+    <dt>Movers today, by asset class</dt>
+    <dd>The biggest risers and fallers today among crypto, stocks, indices, forex and commodities. Use it to see where the day's action is.</dd>
+    <dt>Breadth</dt>
+    <dd>How many markets are up and how many are down. When nearly all point one way, the day is about the whole market, not one coin.</dd>
+    <dt>Market mood</dt>
+    <dd>The Fear &amp; Greed index over the last four months, with the 50 line the weekly rule uses. It shows how close the mood is to changing sides.</dd>
+    <dt>Market worksheet</dt>
+    <dd>Thirty markets side by side. Tap a row to load its chart and order book. The heat map shows where money is moving.</dd>
+    <dt>Order book and trades</dt>
+    <dd>The buy and sell orders waiting around the price of the selected market, and the latest trades. A thin book means a large order will move the price.</dd>
+    <dt>Signal matrix</dt>
+    <dd>For each coin: which sides are called, and how often each was right in testing.</dd>
+    <dt>Positions and risk</dt>
+    <dd>The model positions with their distance to the stop and to liquidation, what you lose if every stop is hit, and the exit rules with their tested record.</dd>
+    <dt>Thirty days, rebased to 100</dt>
+    <dd>The four coins beside a stock, a stock index and gold over the last thirty days, all starting from 100, so you can compare them at a glance.</dd>
+    <dt>Correlation, 30 days</dt>
+    <dd>How closely the markets have moved together. When everything moves together, several positions are really one bet.</dd>
+    <dt>Liquidation rate by leverage</dt>
+    <dd>How often each leverage level was wiped out in testing. This is why the suggested leverage is what it is.</dd>
+    <dt>Week by week</dt>
+    <dd>The last finished weeks at your weekly amount: what was called and how it ended.</dd>
+    <dt>Funding and open interest</dt>
+    <dd>What it costs to hold a perpetual, and how much money sits in open positions. Positive funding is paid by longs to shorts.</dd>
+    <dt>Forex board</dt>
+    <dd>For each currency pair: the last rate, last week's move and a normal week in pips, and the range it usually stays inside. Neko makes no forex calls; see the next section.</dd>
+  </dl>
+</section>
+
+<section class="stack" id="forex">
+  <h2>Forex plan, in pips</h2>
+  <p>A <strong>pip</strong> is the unit forex prices move in: the fourth decimal place of the price (the second for yen pairs). EURUSD going from 1.1600 to 1.1650 is 50 pips. A <strong>lot</strong> is the unit of size: one standard lot is 100,000 units of the first currency in the pair.</p>
+  <p>Neko does not pick a forex direction. Nothing tested beat a coin flip. You bring the idea: the pair, the direction, and a stop and a target in pips.</p>
+  <p>The <a href="/forex">Forex page</a> then shows:</p>
+  <ul>
+    <li>how often a plan of that shape reached its target or its stop since 1999;</li>
+    <li>the win rate it needs to break even, beside the win rate it had;</li>
+    <li>the position size, in lots, for the share of your account you choose to risk, and what one pip is worth at that size.</li>
+  </ul>
+  <p>How to use it: check that the win rate it had is above the win rate it needs, and that the lot size is one your broker accepts. 0.01 lots is the usual minimum.</p>
+  <p class="soft small">Your account size and risk stay in your browser. Stops and targets are checked against one central-bank rate a day, so real prices touch them a little more often.</p>
+</section>
+
+<section class="stack" id="well">
+  <h2>Using it well</h2>
+  <ul>
+    <li>Use a weekly amount you can afford to lose.</li>
+    <li>The exchange refuses orders under 10 dollars, so about 40 dollars a week is needed to place every call. With less, skip the calls marked too small.</li>
+    <li>Never raise the leverage above the suggestion.</li>
+    <li>Do not move a stop.</li>
+    <li>Take every call, including after losing weeks. In 2024 the year's profit came from two months.</li>
+    <li>Longs have no take profit on purpose; shorts do.</li>
+  </ul>
+  <p><a href="/week">Back to this week's call</a></p>
+</section>
+
+<section class="stack" id="words">
+  <h2>Words used here</h2>
+  <dl>
+    <dt>Long</dt>
+    <dd>A trade that gains when the price rises.</dd>
+    <dt>Short</dt>
+    <dd>A trade that gains when the price falls.</dd>
+    <dt>Leverage</dt>
+    <dd>Trading a position larger than the money behind it. At 3x, 10 dollars controls a 30 dollar position, and gains and losses are three times as large.</dd>
+    <dt>Stop loss</dt>
+    <dd>An order that closes the trade at a set price to limit the loss.</dd>
+    <dt>Take profit</dt>
+    <dd>An order that closes the trade at a set price to keep the gain.</dd>
+    <dt>Liquidation</dt>
+    <dd>The exchange closing a leveraged position because the loss has used up the money behind it. The higher the leverage, the smaller the move that does it.</dd>
+    <dt>Perpetual</dt>
+    <dd>A contract that follows a coin's price and never expires. It can be traded long or short, with leverage.</dd>
+    <dt>Pip</dt>
+    <dd>The fourth decimal place of a forex price (the second for yen pairs).</dd>
+    <dt>Lot</dt>
+    <dd>The unit of size in forex: 100,000 units of the first currency in the pair. Most brokers accept 0.01 lots as the smallest trade.</dd>
+    <dt>Normal week</dt>
+    <dd>How far a coin or a pair typically moves in a week, measured over the last half year. Stops and take profits are set one normal week from the entry.</dd>
+    <dt>Weekly amount</dt>
+    <dd>The money you set aside for the week's calls. It is split equally between the four coins; the share of a coin that is not called stays in cash.</dd>
+  </dl>
+</section>
+
+</div>
+</main>
+
+</body>
+</html>

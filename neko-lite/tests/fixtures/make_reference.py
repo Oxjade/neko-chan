@@ -8,7 +8,9 @@ Writes tests/fixtures/reference.json (committed):
   correlation   the random walk test_terminal_adv.py uses for its correlation test
   replay        the trend rule replayed over the saved BTC and SUI price history
                 by desk.replay, beside research/scripts/strategy_search.py
-  forex         a small made-up table of rates and forex_weekly.overview() for it
+  forex         a small made-up table of rates, and what forex_weekly makes of it:
+                the overview, past weeks replayed with a shape, the win-rate
+                statistics, and whole plans in pips
 
 Run with the repository's Python environment:
 
@@ -115,7 +117,38 @@ def forex() -> dict:
     csv = "\n".join(["Date," + ",".join(names) + ",XXX,", *reversed(rows), ""])    # newest first, as the ECB sends it
     forex_weekly._state.update(daily=forex_weekly._read(io.StringIO(csv)), loaded_at=float("inf"))
     forex_weekly.time = type("Clock", (), {"time": staticmethod(lambda: 0.0)})
-    return {"csv": csv, "overview": forex_weekly.overview()}
+    daily = forex_weekly.daily_rates()
+
+    shapes = []
+    for pair, direction, stop_mult, target_mult, cost_pct in (
+            ("EURUSD", "long", 0.75, 1.5, 0.04), ("USDJPY", "short", 1.5, 0.5, 0.0),
+            ("EURGBP", "long", 50.0, 50.0, 0.0), ("EURGBP", "short", 50.0, 50.0, 0.0)):
+        rows = forex_weekly.replay_shape(forex_weekly.pair_series(daily, pair), direction,
+                                         stop_mult, target_mult, cost_pct)
+        shapes.append({"pair": pair, "direction": direction, "stop_mult": stop_mult, "target_mult": target_mult,
+                       "cost_pct": cost_pct,
+                       "rows": [{k: r[k] for k in ("how", "gross", "net", "fees", "with_trend")} for r in rows]})
+
+    import web_core
+    nets = [r["net"] for r in shapes[0]["rows"]]
+    perf = web_core.performance([{"net": n, "gross": n, "fees": 0.0, "closed_at": ""} for n in nets], 100.0)
+    statistics = {
+        "wilson": [[wins, n, *web_core.wilson_interval(wins, n)]
+                   for wins, n in ((0, 0), (0, 10), (10, 10), (3, 7), (540, 1400), (1, 1))],
+        "performance": {k: perf[k] for k in ("trades", "wins", "win_rate", "win_rate_low", "win_rate_high",
+                                             "breakeven_win_rate", "expectancy")},
+    }
+
+    plans = []
+    for pair, direction, stop, target, account, risk, spread in (
+            ("EURUSD", "long", 60, 120, 1000, 1, 0.0), ("USDJPY", "short", 90, 150, 500, 2, 0.0),
+            ("EURGBP", "long", 40, 80, 2000, 1, 1.5), ("GBPJPY", "short", 150, 300, 250, 0.5, 0.0),
+            ("AUDUSD", "short", 5000, 5000, 100, 100, 0.0)):
+        plans.append({"args": [pair, direction, stop, target, account, risk, spread],
+                      "plan": forex_weekly.plan(pair, direction, stop, target, account, risk, spread)})
+    return {"csv": csv, "overview": forex_weekly.overview(), "shapes": shapes, "statistics": statistics,
+            "plans": plans,
+            "base_in_usd": {pair: forex_weekly.base_in_usd(daily, pair) for pair in ("EURUSD", "GBPUSD", "USDJPY")}}
 
 
 def main():

@@ -481,11 +481,82 @@ export interface ForexPair {
   as_of: string;
   last_week_pct: number;
   normal_week_pct: number;
+  /** One pip in price terms: 0.01 for pairs quoted in yen, 0.0001 for the rest. */
+  pip_size: number;
+  last_week_pips: number;
+  normal_week_pips: number;
   range_low: number;
   range_high: number;
   range_held: number;
   trend_13w: TrendDirection;
   trend_52w: TrendDirection;
+}
+
+/** This week's picture for every pair (forex_weekly.overview). */
+export interface ForexOverview {
+  pairs: ForexPair[];
+  as_of: string | null;
+  history_from: string | null;
+}
+
+/** How a set of past weeks went for a plan (forex_weekly._summary). */
+export interface ForexSummary {
+  weeks: number;
+  win_rate: number | null;
+  win_rate_low: number | null;
+  win_rate_high: number | null;
+  wins: number;
+  breakeven_win_rate: number | null;
+  target_first: number;
+  stop_first: number;
+  week_ended: number;
+  week_ended_avg_pct: number | null;
+  avg_result_pct: number;
+  week_ended_avg_pips: number | null;
+  avg_result_pips: number;
+}
+
+/** The position that risks the chosen share of the account at the stop. */
+export interface ForexSizing {
+  position_usd: number;
+  units: number;
+  lots: number;
+  leverage: number;
+  /** What one pip is worth at this position size. */
+  pip_value_usd: number;
+  /** What one pip is worth on one standard lot (100,000 units). */
+  pip_value_per_lot_usd: number;
+  loss_at_stop_usd: number;
+  gain_at_target_usd: number;
+}
+
+/** What a plan of the trader's own shape has done, and how big to trade it (forex_weekly.plan). */
+export interface ForexPlan {
+  pair: string;
+  direction: Side;
+  price: number;
+  as_of: string;
+  pip_size: number;
+  stop_pips: number;
+  target_pips: number;
+  spread_pips: number;
+  normal_week_pct: number;
+  normal_week_pips: number;
+  stop_pct: number;
+  target_pct: number;
+  stop_price: number;
+  target_price: number;
+  stop_in_weeks: number;
+  target_in_weeks: number;
+  all: ForexSummary;
+  with_trend: ForexSummary;
+  against_trend: ForexSummary;
+  trend_13w: TrendDirection;
+  plan_is_with_trend: boolean;
+  sizing: ForexSizing;
+  cost_pct: number;
+  history_from: string;
+  avg_result_usd: number;
 }
 
 export interface MoodPoint {

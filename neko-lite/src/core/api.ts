@@ -6,12 +6,14 @@
 // message can be shown as it is.
 
 import { browserStorage } from "./barStorage";
+import * as forex from "./forex";
 import * as md from "./marketData";
 import { DataError, configure, runtime } from "./runtime";
 import * as terminal from "./terminal";
 import * as terminalAdv from "./terminalAdv";
 import type {
-  AdvancedSnapshot, ChartData, ChartInterval, OrderBook, Scoreboard, TerminalSnapshot, Week,
+  AdvancedSnapshot, ChartData, ChartInterval, ForexOverview, ForexPlan, OrderBook, Scoreboard, TerminalSnapshot,
+  Week,
 } from "./types";
 import * as wc from "./weeklyCalls";
 
@@ -72,4 +74,19 @@ export async function getChart(symbol: string, interval: ChartInterval): Promise
 export async function getBook(symbol: string): Promise<OrderBook> {
   await checkMarket(symbol);
   return md.orderBook(symbol);
+}
+
+/** Forex: how far each pair normally moves in a week, in pips, and where it stands. */
+export async function getForexOverview(): Promise<ForexOverview> {
+  return forex.overview();
+}
+
+/**
+ * Forex: what a plan of the trader's own shape has done since 1999, and the
+ * position size for the share of the account they choose to risk. The stop,
+ * the target and the broker's round-trip spread are in pips.
+ */
+export async function getForexPlan(pair: string, direction: string, stopPips: number, targetPips: number,
+                                   accountUsd: number, riskPct: number, spreadPips = 0): Promise<ForexPlan> {
+  return forex.plan(pair, direction, stopPips, targetPips, accountUsd, riskPct, spreadPips);
 }

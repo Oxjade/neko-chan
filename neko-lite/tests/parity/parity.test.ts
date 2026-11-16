@@ -14,8 +14,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { GET as fxHandler } from "../../api/fx";
-import { configure, getAdvanced, getBook, getChart, getScoreboard, getTerminal, getWeek } from "../../src/core/api";
+import { GET as fxHandler, forgetRates } from "../../api/fx";
+import {
+  configure, getAdvanced, getBook, getChart, getForexOverview, getForexPlan, getScoreboard, getTerminal, getWeek,
+} from "../../src/core/api";
 import { settled } from "../../src/core/history";
 import { FNG_URL, HL_URL } from "../../src/core/runtime";
 import type { ChartInterval } from "../../src/core/types";
@@ -107,6 +109,8 @@ function checkRecording(recording: string): void {
   const dir = join(HERE, recording);
   const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as {
     now_ms: number; stake: number; charts: Array<[string, ChartInterval]>; books: string[];
+    /** pair, direction, stop pips, target pips, account, risk percent, spread pips */
+    forex_plans?: Array<[string, string, number, number, number, number, number]>;
   };
   const hl = new Map<string, string>();
   const http = new Map<string, string>();
@@ -147,12 +151,12 @@ function checkRecording(recording: string): void {
       }
       return new Response(readFileSync(file));
     }
-    if (url === "/api/fx") {
-      // The forex board is worked out by the server function; run it on the recorded ECB file.
+    if (url === "/api/fx" || url.startsWith("/api/fx?")) {
+      // The forex figures are worked out by the server function; run it on the recorded ECB file.
       const real = globalThis.fetch;
       globalThis.fetch = ecbFetch;
       try {
-        return await fxHandler(new Request("http://localhost/api/fx"));
+        return await fxHandler(new Request(`http://localhost${url}`));
       } finally {
         globalThis.fetch = real;
       }
@@ -182,9 +186,10 @@ function checkRecording(recording: string): void {
     expect(tally.problems, `${name}: fields that differ from Python`).toEqual([]);
   }
 
-  const start = () => configure({
-    fetch: replay, now: () => meta.now_ms, storage: null, weightPerMinute: Infinity, fxUrl: "/api/fx",
-  });
+  const start = () => {
+    forgetRates();                       // each recording has its own ECB file
+    configure({ fetch: replay, now: () => meta.now_ms, storage: null, weightPerMinute: Infinity, fxUrl: "/api/fx" });
+  };
 
   describe(`parity with the Python reference, recorded ${new Date(meta.now_ms).toISOString()} (${recording})`, () => {
     afterAll(() => {
@@ -237,6 +242,16 @@ function checkRecording(recording: string): void {
     it("reads the same order book", async () => {
       start();
       for (const symbol of meta.books) check(`book_${symbol.replace(":", "_")}`, await getBook(symbol));
+    });
+
+    it("gives the same forex overview and judges the same forex plans", async () => {
+      start();
+      // A recording made before the planner was added has no forex answers: run make_fixtures.py --replay on it.
+      expect(meta.forex_plans?.length, "forex plans in the recording").toBeGreaterThan(0);
+      check("forex_overview", await getForexOverview());
+      for (const [pair, direction, stop, target, account, risk, spread] of meta.forex_plans ?? []) {
+        check(`forex_plan_${pair}_${direction}`, await getForexPlan(pair, direction, stop, target, account, risk, spread));
+      }
     });
 
     it("asked only for responses that were recorded", () => {

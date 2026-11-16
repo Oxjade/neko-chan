@@ -22,6 +22,14 @@ Give a name to keep more than one moment side by side; the test checks every
 recording it finds:
 
     .venv/bin/python neko-lite/tests/parity/make_fixtures.py monday     # -> fixtures-monday/
+
+After a change to the Python rules, a recording already made can be answered
+again without fetching anything: the saved responses are replayed through
+today's Python and only the reference results are rewritten. It stops if
+Python now asks for something that was not recorded.
+
+    .venv/bin/python neko-lite/tests/parity/make_fixtures.py --replay           # fixtures/
+    .venv/bin/python neko-lite/tests/parity/make_fixtures.py monday --replay    # fixtures-monday/
 """
 
 from __future__ import annotations
@@ -41,7 +49,9 @@ import requests
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-NAME = sys.argv[1] if len(sys.argv) > 1 else ""
+ARGS = [arg for arg in sys.argv[1:] if arg != "--replay"]
+REPLAY_ONLY = "--replay" in sys.argv[1:]
+NAME = ARGS[0] if ARGS else ""
 if NAME and not NAME.replace("-", "").isalnum():
     raise SystemExit("the recording's name may only have letters, digits and dashes")
 OUT = HERE / (f"fixtures-{NAME}" if NAME else "fixtures")
@@ -57,6 +67,9 @@ import weekly_calls  # noqa: E402
 STAKE = 18.0
 CHARTS = (("BTC", "4h"), ("ETH", "1h"), ("xyz:NVDA", "1d"))
 BOOKS = ("ETH", "xyz:NVDA")
+# Forex plans: pair, direction, stop pips, target pips, account in USD, risk percent, spread pips.
+FOREX_PLANS = (("EURUSD", "long", 50, 100, 1000, 1, 0.0), ("USDJPY", "short", 80, 160, 500, 2, 0.0),
+               ("EURGBP", "long", 40, 80, 2000, 1, 1.5), ("GBPJPY", "short", 150, 300, 250, 0.5, 0.0))
 # Hyperliquid allows 1200 "weight" a minute per IP; leave room for anything else running.
 # Set NEKO_PARITY_WEIGHT lower when the app is open on the same connection.
 WEIGHT_PER_MINUTE = float(os.getenv("NEKO_PARITY_WEIGHT", "900"))
@@ -150,6 +163,9 @@ def run_reference(now: datetime) -> dict:
         out[f"chart_{symbol.replace(':', '_')}_{interval}"] = terminal.chart(symbol, interval)
     for symbol in BOOKS:
         out[f"book_{symbol.replace(':', '_')}"] = market_data.order_book(symbol)
+    out["forex_overview"] = forex_weekly.overview()
+    for pair, direction, stop, target, account, risk, spread in FOREX_PLANS:
+        out[f"forex_plan_{pair}_{direction}"] = forex_weekly.plan(pair, direction, stop, target, account, risk, spread)
     return out
 
 
@@ -158,14 +174,25 @@ def forget():
     forex_weekly._state.update(loaded_at=0.0, daily=None)
 
 
+def load_recording(upstream: Upstream) -> int:
+    """Fill the upstream with a recording made earlier; returns the moment it was frozen at."""
+    if not (OUT / "meta.json").exists():
+        raise SystemExit(f"there is no recording in {OUT} to replay")
+    for entry in json.loads((OUT / "raw" / "hl" / "index.json").read_text()):
+        upstream.hl[canonical(entry["payload"])] = (OUT / "raw" / "hl" / entry["file"]).read_bytes()
+    for url, name in json.loads((OUT / "raw" / "http.json").read_text()).items():
+        upstream.http[url] = (OUT / "raw" / name).read_bytes()
+    return json.loads((OUT / "meta.json").read_text())["now_ms"]
+
+
 def main():
+    upstream = Upstream()
     # Whole seconds, so the Python modules' int(time.time() * 1000) is exact.
-    now_ms = int(real_time.time()) * 1000
+    now_ms = load_recording(upstream) if REPLAY_ONLY else int(real_time.time()) * 1000
     now = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(milliseconds=now_ms)
     clock = SimpleNamespace(time=lambda: now_ms / 1000)
     assert int(clock.time() * 1000) == now_ms
 
-    upstream = Upstream()
     shim = SimpleNamespace(get=upstream.get, post=requests.post, RequestException=requests.RequestException)
     market_data._post = upstream.post
     market_data.time = clock
@@ -177,17 +204,19 @@ def main():
     forex_weekly.DISK_CACHE = scratch / "ecb.csv"            # never write into the repository
     forex_weekly.REPO_COPY = scratch / "missing.csv"         # and never fall back to an old copy
 
-    print(f"Frozen at {now.isoformat()} ({now_ms}). Recording upstream responses...", flush=True)
-    # The worksheet loads its markets on eight threads and hides failures; fetch the
-    # long histories one at a time first so none is lost to the rate limit.
-    for symbol in terminal_adv.WORKSHEET:
-        try:
-            market_data.candles(symbol)
-        except market_data.DataError as exc:
-            print(f"  {symbol}: {exc}")
-    run_reference(now)
+    if not REPLAY_ONLY:
+        print(f"Frozen at {now.isoformat()} ({now_ms}). Recording upstream responses...", flush=True)
+        # The worksheet loads its markets on eight threads and hides failures; fetch the
+        # long histories one at a time first so none is lost to the rate limit.
+        for symbol in terminal_adv.WORKSHEET:
+            try:
+                market_data.candles(symbol)
+            except market_data.DataError as exc:
+                print(f"  {symbol}: {exc}")
+        run_reference(now)
 
-    print("Replaying the Python functions from the recorded responses only...", flush=True)
+    print(f"Replaying the Python functions from the recorded responses only (frozen at {now.isoformat()})...",
+          flush=True)
     forget()
     upstream.mode = "replay"
     expected = run_reference(now)
@@ -205,33 +234,40 @@ def main():
     if strip(recent) != strip(longer[:len(recent)]):
         raise SystemExit("the 21-day and 200-day mood responses disagree; run again")
 
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    (OUT / "raw" / "hl").mkdir(parents=True)
-    (OUT / "expected").mkdir()
     index = []
-    for n, (key, body) in enumerate(upstream.hl.items()):
-        name = f"{n:04d}.json"
-        (OUT / "raw" / "hl" / name).write_bytes(body)
-        index.append({"payload": json.loads(key), "file": name})
-    (OUT / "raw" / "hl" / "index.json").write_text(json.dumps(index, indent=1))
-    http_index = {}
-    for n, (url, body) in enumerate(upstream.http.items()):
-        name = f"http-{n}" + (".zip" if url.endswith(".zip") else ".json")
-        (OUT / "raw" / name).write_bytes(body)
-        http_index[url] = name
-    (OUT / "raw" / "http.json").write_text(json.dumps(http_index, indent=1))
+    if REPLAY_ONLY:
+        # The saved responses stay as they are; only Python's answers are written again.
+        index = json.loads((OUT / "raw" / "hl" / "index.json").read_text())
+        shutil.rmtree(OUT / "expected")
+        (OUT / "expected").mkdir()
+    else:
+        if OUT.exists():
+            shutil.rmtree(OUT)
+        (OUT / "raw" / "hl").mkdir(parents=True)
+        (OUT / "expected").mkdir()
+        for n, (key, body) in enumerate(upstream.hl.items()):
+            name = f"{n:04d}.json"
+            (OUT / "raw" / "hl" / name).write_bytes(body)
+            index.append({"payload": json.loads(key), "file": name})
+        (OUT / "raw" / "hl" / "index.json").write_text(json.dumps(index, indent=1))
+        http_index = {}
+        for n, (url, body) in enumerate(upstream.http.items()):
+            name = f"http-{n}" + (".zip" if url.endswith(".zip") else ".json")
+            (OUT / "raw" / name).write_bytes(body)
+            http_index[url] = name
+        (OUT / "raw" / "http.json").write_text(json.dumps(http_index, indent=1))
     for name, value in expected.items():
         (OUT / "expected" / f"{name}.json").write_text(json.dumps(value, allow_nan=False))
     (OUT / "meta.json").write_text(json.dumps({
         "now_ms": now_ms, "now": now.isoformat(), "stake": STAKE,
         "charts": [list(c) for c in CHARTS], "books": list(BOOKS),
+        "forex_plans": [list(p) for p in FOREX_PLANS],
         "hyperliquid_responses": len(index), "worksheet_rows": len(expected["advanced"]["worksheet"]),
         "worksheet_missing": missing,
     }, indent=1))
     shutil.rmtree(scratch, ignore_errors=True)
     size = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
-    print(f"Saved {len(index)} Hyperliquid responses and {len(expected)} reference results "
+    print(f"{'Kept' if REPLAY_ONLY else 'Saved'} {len(index)} Hyperliquid responses and saved {len(expected)} reference results "
           f"({size / 1e6:.1f} MB) to {OUT}")
     print(f"Worksheet rows: {len(expected['advanced']['worksheet'])} of {len(terminal_adv.WORKSHEET)}"
           + (f"; left out by Python: {missing}" if missing else ""))
