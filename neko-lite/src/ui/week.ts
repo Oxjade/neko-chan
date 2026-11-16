@@ -157,17 +157,21 @@ function ticket(called: WeekCoin[], each: number, smallest: number): HTMLElement
       cell: (c) => `${fmt.usd(usd(c))}${usd(c) < smallest ? " (too small)" : ""}`,
       cls: (c) => (usd(c) < smallest ? "loss" : "") },
     { label: "Entry", num: true, cell: (c) => `about ${fmt.price(c.entry)}` },
+    // each level carries what it costs or makes on a second line, so the table fits without scrolling
     { label: "Stop loss", num: true,
-      cell: (c) => (c.stop_price ? `${fmt.price(c.stop_price)} (${(c.stop_pct as number).toFixed(1)}% away)` : "–") },
+      cell: (c) => (c.stop_price
+        ? h("div", null,
+            h("div", null, `${fmt.price(c.stop_price)} (${(c.stop_pct as number).toFixed(1)}% away)`),
+            c.stake_lost_at_stop
+              ? h("div", { class: "loss small" }, `loses ${fmt.usd(each * c.stake_lost_at_stop)}`) : null)
+        : "–") },
     { label: "Take profit", num: true,
-      cell: (c) => (c.target_price ? `${fmt.price(c.target_price)} (${(c.target_pct as number).toFixed(1)}% away)`
-                                   : "None: close next Monday") },
-    { label: "Made at take profit", num: true,
-      cell: (c) => (c.stake_made_at_target ? fmt.usd(each * c.stake_made_at_target) : "–"),
-      cls: (c) => (c.stake_made_at_target ? "gain" : "") },
-    { label: "Lost if stopped", num: true,
-      cell: (c) => (c.stake_lost_at_stop ? fmt.usd(each * c.stake_lost_at_stop) : "–"),
-      cls: () => "loss" },
+      cell: (c) => (c.target_price
+        ? h("div", null,
+            h("div", null, `${fmt.price(c.target_price)} (${(c.target_pct as number).toFixed(1)}% away)`),
+            c.stake_made_at_target
+              ? h("div", { class: "gain small" }, `makes ${fmt.usd(each * c.stake_made_at_target)}`) : null)
+        : "None: close next Monday") },
   ], called, "");
 }
 
