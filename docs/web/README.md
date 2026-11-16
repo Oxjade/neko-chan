@@ -121,6 +121,20 @@ and targets are checked on daily fixings, not intraday prices. The chart is
 TradingView's embeddable widget, loaded by the viewer's browser; no figures
 come from it.
 
+## Gold
+
+`research/scripts/gold_weekly_search.py` tests gold the way forex was tested:
+14 weekly rules, each run long-or-short and long-or-cash, on 358 weeks of
+PAXG/USD (the gold-backed token) from Kraken, January 2020 to November 2026.
+Gold rose 148% over the period, and simply holding it was right in 58% of
+weeks. **None of the 28 rule versions beat holding gold in both halves of the
+history after fees**, and shorting gold lost. The nearest miss, buying only
+after a down week, made 89% against 103% for holding. So the platform makes
+no gold calls; gold on the terminal is for reference.
+
+Holding gold as a perpetual also pays funding, typically about 11% a year,
+which is most of what gold has made; the token itself pays none.
+
 ## The live terminal
 
 `/terminal` keeps the week's calls on screen and live. The server recomputes
@@ -359,6 +373,7 @@ random-direction baseline. The public page shows the result.
 python research/scripts/strategy_search.py        # rule search, choose/check split
 python research/scripts/forex_weekly_search.py    # weekly forex rules, 27 years
 python research/scripts/forex_sentiment_search.py # positioning (sentiment) rules
+python research/scripts/gold_weekly_search.py     # weekly rules on gold against holding it
 python research/scripts/crypto_weekly_search.py   # weekly crypto rules incl. mood and funding
 python research/scripts/crypto_in_or_out.py       # hold-or-cash rules against always holding
 python research/scripts/leverage_on_rule.py       # the weekly rule on perps with leverage

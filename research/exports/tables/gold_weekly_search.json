@@ -1,0 +1,1061 @@
+{
+ "generated_at": "2026-11-16T21:02:13+00:00",
+ "source": "Kraken PAXGUSD weekly",
+ "from": "2020-01-02",
+ "to": "2026-11-05",
+ "weeks": 358,
+ "split": "2023-06-08",
+ "fee_per_side_pct": 0.045,
+ "funding_per_week_pct": 0.21,
+ "hold": {
+  "first_half": {
+   "weeks_in_market": 179,
+   "weeks": 179,
+   "right": 0.553072625698324,
+   "avg_week_pct": 0.12673423461393032,
+   "total_pct": 22.685427995893527,
+   "t": 0.7325388445972691,
+   "long_weeks": 179,
+   "short_weeks": 0
+  },
+  "second_half": {
+   "weeks_in_market": 178,
+   "weeks": 179,
+   "right": 0.601123595505618,
+   "avg_week_pct": 0.45351937202238063,
+   "total_pct": 80.72644821998375,
+   "t": 2.024705848918435,
+   "long_weeks": 178,
+   "short_weeks": 0
+  },
+  "all": {
+   "weeks_in_market": 357,
+   "weeks": 358,
+   "right": 0.5770308123249299,
+   "avg_week_pct": 0.28966912105287757,
+   "total_pct": 103.4118762158773,
+   "t": 2.047421841450748,
+   "long_weeks": 357,
+   "short_weeks": 0
+  }
+ },
+ "tried": 28,
+ "passed": [],
+ "rows": [
+  {
+   "rule": "Always hold gold",
+   "style": "hold",
+   "first_half": {
+    "weeks_in_market": 179,
+    "weeks": 179,
+    "right": 0.553072625698324,
+    "avg_week_pct": 0.12673423461393032,
+    "total_pct": 22.685427995893527,
+    "t": 0.7325388445972691,
+    "long_weeks": 179,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.601123595505618,
+    "avg_week_pct": 0.45351937202238063,
+    "total_pct": 80.72644821998375,
+    "t": 2.024705848918435,
+    "long_weeks": 178,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 357,
+    "weeks": 358,
+    "right": 0.5770308123249299,
+    "avg_week_pct": 0.28966912105287757,
+    "total_pct": 103.4118762158773,
+    "t": 2.047421841450748,
+    "long_weeks": 357,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 1 week",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.4943820224719101,
+    "avg_week_pct": -0.24922284098900724,
+    "total_pct": -44.610888537032295,
+    "t": -1.4503139428449017,
+    "long_weeks": 99,
+    "short_weeks": 79
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.4044943820224719,
+    "avg_week_pct": -0.35061939617001797,
+    "total_pct": -62.4102525182632,
+    "t": -1.5518896039611276,
+    "long_weeks": 107,
+    "short_weeks": 71
+   },
+   "all": {
+    "weeks_in_market": 356,
+    "weeks": 358,
+    "right": 0.449438202247191,
+    "avg_week_pct": -0.29977910659746637,
+    "total_pct": -107.02114105529549,
+    "t": -2.116383823526932,
+    "long_weeks": 206,
+    "short_weeks": 150
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 1 week",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 99,
+    "weeks": 179,
+    "right": 0.5454545454545454,
+    "avg_week_pct": -0.05246315959155746,
+    "total_pct": -9.390905566888785,
+    "t": -0.31694591103749953,
+    "long_weeks": 99,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 107,
+    "weeks": 179,
+    "right": 0.5046728971962616,
+    "avg_week_pct": 0.051449987926181315,
+    "total_pct": 9.158097850860274,
+    "t": 0.35233229245827224,
+    "long_weeks": 107,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 206,
+    "weeks": 358,
+    "right": 0.5242718446601942,
+    "avg_week_pct": -0.0006521224538613788,
+    "total_pct": -0.23280771602851225,
+    "t": 0.10333198913299907,
+    "long_weeks": 206,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 4 weeks",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 175,
+    "weeks": 179,
+    "right": 0.49714285714285716,
+    "avg_week_pct": -0.18611566485168038,
+    "total_pct": -33.31470400845079,
+    "t": -1.0828464619717664,
+    "long_weeks": 99,
+    "short_weeks": 76
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5056179775280899,
+    "avg_week_pct": 0.17135916334098583,
+    "total_pct": 30.501931074695477,
+    "t": 0.7567184251842489,
+    "long_weeks": 109,
+    "short_weeks": 69
+   },
+   "all": {
+    "weeks_in_market": 353,
+    "weeks": 358,
+    "right": 0.5014164305949008,
+    "avg_week_pct": -0.007878915780827184,
+    "total_pct": -2.812772933755305,
+    "t": -0.055423773686842745,
+    "long_weeks": 208,
+    "short_weeks": 145
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 4 weeks",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 99,
+    "weeks": 179,
+    "right": 0.5454545454545454,
+    "avg_week_pct": -0.021926052707069488,
+    "total_pct": -3.9247634345654383,
+    "t": -0.118534862303647,
+    "long_weeks": 99,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 109,
+    "weeks": 179,
+    "right": 0.5871559633027523,
+    "avg_week_pct": 0.3124392676816833,
+    "total_pct": 55.61418964733963,
+    "t": 1.6939589520896086,
+    "long_weeks": 109,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 208,
+    "weeks": 358,
+    "right": 0.5673076923076923,
+    "avg_week_pct": 0.14478830871925544,
+    "total_pct": 51.689426212774194,
+    "t": 1.3110201231822831,
+    "long_weeks": 208,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 13 weeks",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 166,
+    "weeks": 179,
+    "right": 0.4879518072289157,
+    "avg_week_pct": 0.004502704433778265,
+    "total_pct": 0.8059840936463094,
+    "t": 0.029512317182535924,
+    "long_weeks": 95,
+    "short_weeks": 71
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5786516853932584,
+    "avg_week_pct": 0.3432044346529293,
+    "total_pct": 61.090389368221416,
+    "t": 1.5235273745309763,
+    "long_weeks": 132,
+    "short_weeks": 46
+   },
+   "all": {
+    "weeks_in_market": 344,
+    "weeks": 358,
+    "right": 0.5348837209302325,
+    "avg_week_pct": 0.1733791973721785,
+    "total_pct": 61.89637346186772,
+    "t": 1.2749681547483176,
+    "long_weeks": 227,
+    "short_weeks": 117
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 13 weeks",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 95,
+    "weeks": 179,
+    "right": 0.5263157894736842,
+    "avg_week_pct": 0.05451089264820433,
+    "total_pct": 9.757449784028575,
+    "t": 0.4672979230428569,
+    "long_weeks": 95,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 132,
+    "weeks": 179,
+    "right": 0.6212121212121212,
+    "avg_week_pct": 0.3983619033376551,
+    "total_pct": 70.9084187941026,
+    "t": 2.0284861824084555,
+    "long_weeks": 132,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 227,
+    "weeks": 358,
+    "right": 0.5814977973568282,
+    "avg_week_pct": 0.225954813944345,
+    "total_pct": 80.66586857813117,
+    "t": 1.9701684570058557,
+    "long_weeks": 227,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 26 weeks",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 153,
+    "weeks": 179,
+    "right": 0.45751633986928103,
+    "avg_week_pct": -0.1774366056916563,
+    "total_pct": -31.761152418806482,
+    "t": -1.2135449431120968,
+    "long_weeks": 90,
+    "short_weeks": 63
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5561797752808989,
+    "avg_week_pct": 0.4117770152176049,
+    "total_pct": 73.29630870873368,
+    "t": 1.834118992781596,
+    "long_weeks": 146,
+    "short_weeks": 32
+   },
+   "all": {
+    "weeks_in_market": 331,
+    "weeks": 358,
+    "right": 0.5105740181268882,
+    "avg_week_pct": 0.11634497560203695,
+    "total_pct": 41.535156289927194,
+    "t": 0.8647371490124198,
+    "long_weeks": 236,
+    "short_weeks": 95
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 26 weeks",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 90,
+    "weeks": 179,
+    "right": 0.4888888888888889,
+    "avg_week_pct": -0.0639877779101657,
+    "total_pct": -11.45381224591966,
+    "t": -0.5269780656162593,
+    "long_weeks": 90,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 146,
+    "weeks": 179,
+    "right": 0.5958904109589042,
+    "avg_week_pct": 0.43264819361999285,
+    "total_pct": 77.01137846435873,
+    "t": 2.0746283998692876,
+    "long_weeks": 146,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 236,
+    "weeks": 358,
+    "right": 0.5550847457627118,
+    "avg_week_pct": 0.18363463926733628,
+    "total_pct": 65.55756621843905,
+    "t": 1.5407898340486144,
+    "long_weeks": 236,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 52 weeks",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 127,
+    "weeks": 179,
+    "right": 0.4094488188976378,
+    "avg_week_pct": -0.2891634447852133,
+    "total_pct": -51.76025661655318,
+    "t": -2.2897237746648726,
+    "long_weeks": 64,
+    "short_weeks": 63
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5955056179775281,
+    "avg_week_pct": 0.45082745063796964,
+    "total_pct": 80.2472862135586,
+    "t": 2.0121842965052514,
+    "long_weeks": 177,
+    "short_weeks": 1
+   },
+   "all": {
+    "weeks_in_market": 305,
+    "weeks": 358,
+    "right": 0.5180327868852459,
+    "avg_week_pct": 0.07979560111205995,
+    "total_pct": 28.487029597005403,
+    "t": 0.6143414986166349,
+    "long_weeks": 241,
+    "short_weeks": 64
+   },
+   "passes": false
+  },
+  {
+   "rule": "Follow the last 52 weeks",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 64,
+    "weeks": 179,
+    "right": 0.40625,
+    "avg_week_pct": -0.14531006159693696,
+    "total_pct": -26.010501025851717,
+    "t": -1.6000263581757292,
+    "long_weeks": 64,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 177,
+    "weeks": 179,
+    "right": 0.5988700564971752,
+    "avg_week_pct": 0.45217341133017513,
+    "total_pct": 80.48686721677117,
+    "t": 2.0197245913990263,
+    "long_weeks": 177,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 241,
+    "weeks": 358,
+    "right": 0.5477178423236515,
+    "avg_week_pct": 0.15259486327988644,
+    "total_pct": 54.476366190919464,
+    "t": 1.265718992096097,
+    "long_weeks": 241,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Fade last week",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5056179775280899,
+    "avg_week_pct": 0.1582172543968285,
+    "total_pct": 28.3208885370323,
+    "t": 0.9216963994178627,
+    "long_weeks": 79,
+    "short_weeks": 99
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5955056179775281,
+    "avg_week_pct": 0.24443962088911927,
+    "total_pct": 43.51025251826323,
+    "t": 1.0861648341205459,
+    "long_weeks": 71,
+    "short_weeks": 107
+   },
+   "all": {
+    "weeks_in_market": 356,
+    "weeks": 358,
+    "right": 0.550561797752809,
+    "avg_week_pct": 0.20120767802603795,
+    "total_pct": 71.83114105529555,
+    "t": 1.4246194939777452,
+    "long_weeks": 150,
+    "short_weeks": 206
+   },
+   "passes": false
+  },
+  {
+   "rule": "Fade last week",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 79,
+    "weeks": 179,
+    "right": 0.569620253164557,
+    "avg_week_pct": 0.1510054914533157,
+    "total_pct": 27.02998297014351,
+    "t": 1.4438249346045349,
+    "long_weeks": 79,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 71,
+    "weeks": 179,
+    "right": 0.7464788732394366,
+    "avg_week_pct": 0.3489794964557499,
+    "total_pct": 62.11835036912348,
+    "t": 2.8648192280710236,
+    "long_weeks": 71,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 150,
+    "weeks": 358,
+    "right": 0.6533333333333333,
+    "avg_week_pct": 0.24971521943772268,
+    "total_pct": 89.148333339267,
+    "t": 3.0900847174365524,
+    "long_weeks": 150,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Fade a move bigger than 1.5 normal weeks",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 19,
+    "weeks": 179,
+    "right": 0.5263157894736842,
+    "avg_week_pct": -0.004060343778184832,
+    "total_pct": -0.7268015362950848,
+    "t": -0.0007475083496517417,
+    "long_weeks": 10,
+    "short_weeks": 9
+   },
+   "second_half": {
+    "weeks_in_market": 24,
+    "weeks": 179,
+    "right": 0.6666666666666666,
+    "avg_week_pct": 0.17297639009056454,
+    "total_pct": 30.789797436120487,
+    "t": 2.208578447480294,
+    "long_weeks": 8,
+    "short_weeks": 16
+   },
+   "all": {
+    "weeks_in_market": 43,
+    "weeks": 358,
+    "right": 0.6046511627906976,
+    "avg_week_pct": 0.08421007254853054,
+    "total_pct": 30.062995899825403,
+    "t": 1.8240648560757278,
+    "long_weeks": 18,
+    "short_weeks": 25
+   },
+   "passes": false
+  },
+  {
+   "rule": "Fade a move bigger than 1.5 normal weeks",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 10,
+    "weeks": 179,
+    "right": 0.5,
+    "avg_week_pct": 0.010660697645550539,
+    "total_pct": 1.9082648785535463,
+    "t": 0.5631651925937372,
+    "long_weeks": 10,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 8,
+    "weeks": 179,
+    "right": 0.875,
+    "avg_week_pct": 0.08148345713671043,
+    "total_pct": 14.504055370334456,
+    "t": 1.9340729295895653,
+    "long_weeks": 8,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 18,
+    "weeks": 358,
+    "right": 0.6666666666666666,
+    "avg_week_pct": 0.04597288585122689,
+    "total_pct": 16.412320248888,
+    "t": 1.8809428064644764,
+    "long_weeks": 18,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Fade a move bigger than 2 normal weeks",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 9,
+    "weeks": 179,
+    "right": 0.5555555555555556,
+    "avg_week_pct": 0.024767071722430384,
+    "total_pct": 4.4333058383150385,
+    "t": 0.8430804532457912,
+    "long_weeks": 4,
+    "short_weeks": 5
+   },
+   "second_half": {
+    "weeks_in_market": 10,
+    "weeks": 179,
+    "right": 0.5,
+    "avg_week_pct": 0.03574628466872785,
+    "total_pct": 6.362838671033557,
+    "t": 0.6053796409137722,
+    "long_weeks": 3,
+    "short_weeks": 7
+   },
+   "all": {
+    "weeks_in_market": 19,
+    "weeks": 358,
+    "right": 0.5263157894736842,
+    "avg_week_pct": 0.030241301146634716,
+    "total_pct": 10.796144509348593,
+    "t": 0.9484909404964224,
+    "long_weeks": 7,
+    "short_weeks": 12
+   },
+   "passes": false
+  },
+  {
+   "rule": "Fade a move bigger than 2 normal weeks",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 4,
+    "weeks": 179,
+    "right": 0.5,
+    "avg_week_pct": 0.004798657724995374,
+    "total_pct": 0.858959732774172,
+    "t": 0.5475859496083471,
+    "long_weeks": 4,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 3,
+    "weeks": 179,
+    "right": 0.6666666666666666,
+    "avg_week_pct": -0.0119697088619217,
+    "total_pct": -2.1306081774220624,
+    "t": -0.4641292608218282,
+    "long_weeks": 3,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 7,
+    "weeks": 358,
+    "right": 0.5714285714285714,
+    "avg_week_pct": -0.0035620404611985726,
+    "total_pct": -1.2716484446478904,
+    "t": -0.21809734921766064,
+    "long_weeks": 7,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Side of the 10-week average",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 170,
+    "weeks": 179,
+    "right": 0.5117647058823529,
+    "avg_week_pct": -0.06201396637968797,
+    "total_pct": -11.100499981964147,
+    "t": -0.3618579071950735,
+    "long_weeks": 86,
+    "short_weeks": 84
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.550561797752809,
+    "avg_week_pct": 0.38394509086509926,
+    "total_pct": 68.34222617398767,
+    "t": 1.7092902364945315,
+    "long_weeks": 119,
+    "short_weeks": 59
+   },
+   "all": {
+    "weeks_in_market": 348,
+    "weeks": 358,
+    "right": 0.5316091954022989,
+    "avg_week_pct": 0.16034096972555612,
+    "total_pct": 57.241726192023535,
+    "t": 1.1335491004177272,
+    "long_weeks": 205,
+    "short_weeks": 143
+   },
+   "passes": false
+  },
+  {
+   "rule": "Side of the 10-week average",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 86,
+    "weeks": 179,
+    "right": 0.5581395348837209,
+    "avg_week_pct": 0.02493746669030685,
+    "total_pct": 4.463806537564926,
+    "t": 0.22650249816514378,
+    "long_weeks": 86,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 119,
+    "weeks": 179,
+    "right": 0.6134453781512605,
+    "avg_week_pct": 0.41873223144374,
+    "total_pct": 74.53433719698572,
+    "t": 2.1942690850628845,
+    "long_weeks": 119,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 205,
+    "weeks": 358,
+    "right": 0.5902439024390244,
+    "avg_week_pct": 0.22128331578305502,
+    "total_pct": 78.99814373455064,
+    "t": 1.9494261291014616,
+    "long_weeks": 205,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Side of the 20-week average",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 160,
+    "weeks": 179,
+    "right": 0.50625,
+    "avg_week_pct": -0.010954249299610907,
+    "total_pct": -1.9608106246303523,
+    "t": -0.07328182803730793,
+    "long_weeks": 89,
+    "short_weeks": 71
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5730337078651685,
+    "avg_week_pct": 0.4303766398440299,
+    "total_pct": 76.60704189223732,
+    "t": 1.91807532172077,
+    "long_weeks": 131,
+    "short_weeks": 47
+   },
+   "all": {
+    "weeks_in_market": 338,
+    "weeks": 358,
+    "right": 0.5414201183431953,
+    "avg_week_pct": 0.20909308478321287,
+    "total_pct": 74.64623126760699,
+    "t": 1.5494076424597572,
+    "long_weeks": 220,
+    "short_weeks": 118
+   },
+   "passes": false
+  },
+  {
+   "rule": "Side of the 20-week average",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 89,
+    "weeks": 179,
+    "right": 0.5393258426966292,
+    "avg_week_pct": 0.02750959781415441,
+    "total_pct": 4.924218008733639,
+    "t": 0.25531294934032056,
+    "long_weeks": 89,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 131,
+    "weeks": 179,
+    "right": 0.6183206106870229,
+    "avg_week_pct": 0.44194800593320527,
+    "total_pct": 78.66674505611054,
+    "t": 2.240973589103429,
+    "long_weeks": 131,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 220,
+    "weeks": 358,
+    "right": 0.5863636363636363,
+    "avg_week_pct": 0.23414835592393327,
+    "total_pct": 83.59096306484417,
+    "t": 2.0494993891639965,
+    "long_weeks": 220,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Side of the 40-week average",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 140,
+    "weeks": 179,
+    "right": 0.4785714285714286,
+    "avg_week_pct": -0.06980171848862335,
+    "total_pct": -12.494507609463579,
+    "t": -0.5222947380437712,
+    "long_weeks": 74,
+    "short_weeks": 66
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5674157303370787,
+    "avg_week_pct": 0.44550632306332666,
+    "total_pct": 79.30012550527215,
+    "t": 1.9887040873390587,
+    "long_weeks": 150,
+    "short_weeks": 28
+   },
+   "all": {
+    "weeks_in_market": 318,
+    "weeks": 358,
+    "right": 0.5283018867924528,
+    "avg_week_pct": 0.18713058234120059,
+    "total_pct": 66.80561789580861,
+    "t": 1.4312935240191758,
+    "long_weeks": 224,
+    "short_weeks": 94
+   },
+   "passes": false
+  },
+  {
+   "rule": "Side of the 40-week average",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 74,
+    "weeks": 179,
+    "right": 0.5,
+    "avg_week_pct": -0.024276625630072483,
+    "total_pct": -4.345515987782974,
+    "t": -0.23236720035153255,
+    "long_weeks": 74,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 150,
+    "weeks": 179,
+    "right": 0.6,
+    "avg_week_pct": 0.44951284754285376,
+    "total_pct": 80.01328686262796,
+    "t": 2.1963145796989183,
+    "long_weeks": 150,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 224,
+    "weeks": 358,
+    "right": 0.5669642857142857,
+    "avg_week_pct": 0.21195454026567223,
+    "total_pct": 75.66777087484499,
+    "t": 1.8777339698127629,
+    "long_weeks": 224,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Breakout of the 4-week range",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 173,
+    "weeks": 179,
+    "right": 0.4624277456647399,
+    "avg_week_pct": -0.2841487630216953,
+    "total_pct": -50.86262858088345,
+    "t": -1.6670638768717818,
+    "long_weeks": 86,
+    "short_weeks": 87
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5056179775280899,
+    "avg_week_pct": 0.17065499949502816,
+    "total_pct": 30.376589910115012,
+    "t": 0.7539464623134751,
+    "long_weeks": 103,
+    "short_weeks": 75
+   },
+   "all": {
+    "weeks_in_market": 351,
+    "weeks": 358,
+    "right": 0.4843304843304843,
+    "avg_week_pct": -0.05738386182288079,
+    "total_pct": -20.486038670768444,
+    "t": -0.404423222598984,
+    "long_weeks": 189,
+    "short_weeks": 162
+   },
+   "passes": false
+  },
+  {
+   "rule": "Breakout of the 4-week range",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 86,
+    "weeks": 179,
+    "right": 0.5116279069767442,
+    "avg_week_pct": -0.08044948235997709,
+    "total_pct": -14.4004573424359,
+    "t": -0.6017297339212513,
+    "long_weeks": 86,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 103,
+    "weeks": 179,
+    "right": 0.5922330097087378,
+    "avg_week_pct": 0.31208718575870437,
+    "total_pct": 55.551519065049376,
+    "t": 1.698556736508365,
+    "long_weeks": 103,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 189,
+    "weeks": 358,
+    "right": 0.5555555555555556,
+    "avg_week_pct": 0.11526908045549998,
+    "total_pct": 41.15106172261349,
+    "t": 1.064993410232382,
+    "long_weeks": 189,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Breakout of the 13-week range",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 166,
+    "weeks": 179,
+    "right": 0.5120481927710844,
+    "avg_week_pct": -0.025995910139776472,
+    "total_pct": -4.653267915019988,
+    "t": -0.17035895663264505,
+    "long_weeks": 107,
+    "short_weeks": 59
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5561797752808989,
+    "avg_week_pct": 0.34517581988550894,
+    "total_pct": 61.44129593962059,
+    "t": 1.5338182865104122,
+    "long_weeks": 142,
+    "short_weeks": 36
+   },
+   "all": {
+    "weeks_in_market": 344,
+    "weeks": 358,
+    "right": 0.5348837209302325,
+    "avg_week_pct": 0.15907010651148626,
+    "total_pct": 56.78802802460059,
+    "t": 1.1699531140372006,
+    "long_weeks": 249,
+    "short_weeks": 95
+   },
+   "passes": false
+  },
+  {
+   "rule": "Breakout of the 13-week range",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 107,
+    "weeks": 179,
+    "right": 0.5420560747663551,
+    "avg_week_pct": 0.03926158536142695,
+    "total_pct": 7.027823779695424,
+    "t": 0.3237674435688812,
+    "long_weeks": 107,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 142,
+    "weeks": 179,
+    "right": 0.5985915492957746,
+    "avg_week_pct": 0.3993475959539448,
+    "total_pct": 71.08387207980218,
+    "t": 1.9600726533306014,
+    "long_weeks": 142,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 249,
+    "weeks": 358,
+    "right": 0.5742971887550201,
+    "avg_week_pct": 0.2188002685139989,
+    "total_pct": 78.1116958594976,
+    "t": 1.8359437003345376,
+    "long_weeks": 249,
+    "short_weeks": 0
+   },
+   "passes": false
+  },
+  {
+   "rule": "Breakout of the 26-week range",
+   "style": "long or short",
+   "first_half": {
+    "weeks_in_market": 154,
+    "weeks": 179,
+    "right": 0.4675324675324675,
+    "avg_week_pct": -0.07127551608509602,
+    "total_pct": -12.758317379232189,
+    "t": -0.4841966091246495,
+    "long_weeks": 76,
+    "short_weeks": 78
+   },
+   "second_half": {
+    "weeks_in_market": 178,
+    "weeks": 179,
+    "right": 0.5561797752808989,
+    "avg_week_pct": 0.40591914579786115,
+    "total_pct": 72.25360795201928,
+    "t": 1.8079657066198815,
+    "long_weeks": 148,
+    "short_weeks": 30
+   },
+   "all": {
+    "weeks_in_market": 332,
+    "weeks": 358,
+    "right": 0.5150602409638554,
+    "avg_week_pct": 0.16665347499380137,
+    "total_pct": 59.49529057278709,
+    "t": 1.2393230455392816,
+    "long_weeks": 224,
+    "short_weeks": 108
+   },
+   "passes": false
+  },
+  {
+   "rule": "Breakout of the 26-week range",
+   "style": "long or cash",
+   "first_half": {
+    "weeks_in_market": 76,
+    "weeks": 179,
+    "right": 0.5,
+    "avg_week_pct": -0.004326511089587601,
+    "total_pct": -0.7744454850361806,
+    "t": -0.0339420548470606,
+    "long_weeks": 76,
+    "short_weeks": 0
+   },
+   "second_half": {
+    "weeks_in_market": 148,
+    "weeks": 179,
+    "right": 0.5945945945945946,
+    "avg_week_pct": 0.42971925891012097,
+    "total_pct": 76.49002808600153,
+    "t": 2.0546700785369487,
+    "long_weeks": 148,
+    "short_weeks": 0
+   },
+   "all": {
+    "weeks_in_market": 224,
+    "weeks": 358,
+    "right": 0.5625,
+    "avg_week_pct": 0.21208846666937067,
+    "total_pct": 75.71558260096533,
+    "t": 1.787385460695319,
+    "long_weeks": 224,
+    "short_weeks": 0
+   },
+   "passes": false
+  }
+ ]
+}
