@@ -8,25 +8,29 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET, forgetRates } from "../api/fx";
+import { GET, forgetRates, setClock } from "../api/fx";
 import { DataError, configure, getForexOverview, getForexPlan } from "../src/core/api";
 import reference from "./fixtures/reference.json";
 import { zipOf } from "./helpers/zip";
 
-const NOW = Date.UTC(2026, 10, 11, 18, 0);
+const NOW = reference.forex.now_ms;                         // Wednesday 11 November 2026, the table's last day
 const zip = zipOf("eurofxref-hist.csv", reference.forex.csv);
 
 describe("the forex planner", () => {
   let asked: string[] = [];
   let clock = NOW;
+  /** The ECB file the function downloads. */
+  let table = zip;
   /** What the function answers; replaced to make it fail. */
   let answer: (url: string) => Promise<Response>;
 
   beforeEach(() => {
     asked = [];
     clock = NOW;
+    table = zip;
     forgetRates();
-    vi.stubGlobal("fetch", async () => new Response(zip));          // the function's own download of the ECB file
+    setClock(() => clock);                                           // the function goes by the same date
+    vi.stubGlobal("fetch", async () => new Response(table));        // the function's own download of the ECB file
     answer = (url) => GET(new Request(`http://localhost${url}`));
     configure({
       fetch: (async (input: RequestInfo | URL) => {
@@ -36,7 +40,52 @@ describe("the forex planner", () => {
       now: () => clock, storage: null, fxUrl: "/api/fx",
     });
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setClock(null);
+  });
+
+  it("the week in progress is reported apart from last week", async () => {
+    // The table cut back to Friday 6 November, seen on the Saturday: nothing has traded since.
+    const lines = reference.forex.csv.split("\n");
+    const friday = [lines[0], ...lines.slice(1).filter((line) => line && line.slice(0, 10) <= "2026-11-06"), ""];
+    table = zipOf("eurofxref-hist.csv", friday.join("\n"));
+    clock = Date.UTC(2026, 10, 7, 12);
+    const before = await getForexOverview();
+    expect(before.as_of).toBe("2026-11-06");
+    for (const row of before.pairs) expect([row.this_week_pct, row.this_week_pips]).toEqual([null, null]);
+    const planFriday = await getForexPlan("EURUSD", "long", 50, 100, 1000, 1);
+
+    // Monday's fixing arrives: the euro is half a percent lower against everything.
+    const cells = friday[1].split(",");
+    const monday = ["2026-11-09", ...cells.slice(1).map((cell) => (Number(cell) > 0 ? (Number(cell) * 0.995).toFixed(6) : cell))];
+    table = zipOf("eurofxref-hist.csv", [friday[0], monday.join(","), ...friday.slice(1)].join("\n"));
+    clock = Date.UTC(2026, 10, 9, 16);
+    forgetRates();
+    configure({ fetch: (async (input: RequestInfo | URL) => answer(String(input))) as typeof fetch,
+                now: () => clock, storage: null, fxUrl: "/api/fx" });
+    const now = await getForexOverview();
+    expect(now.as_of).toBe("2026-11-09");
+    const was = new Map(before.pairs.map((row) => [row.pair, row]));
+    for (const row of now.pairs) {
+      const old = was.get(row.pair) as (typeof before.pairs)[number];
+      // everything measured per week still rests on the week that ended on Friday
+      expect([row.last_week_pct, row.last_week_pips, row.normal_week_pct, row.range_held, row.trend_13w, row.trend_52w])
+        .toEqual([old.last_week_pct, old.last_week_pips, old.normal_week_pct, old.range_held, old.trend_13w, old.trend_52w]);
+      // and the new fixing shows as this week so far, against Friday's close
+      expect(row.this_week_pct as number).toBeCloseTo((row.price / old.price - 1) * 100, 9);
+      expect(row.this_week_pips as number).toBeCloseTo((row.price - old.price) / row.pip_size, 6);
+    }
+    const eurusd = now.pairs.find((row) => row.pair === "EURUSD") as (typeof now.pairs)[number];
+    expect(eurusd.this_week_pct as number).toBeCloseTo(-0.5, 3);
+    expect(now.pairs.find((row) => row.pair === "GBPUSD")?.this_week_pct as number).toBeCloseTo(0.0, 3);   // both legs moved together
+    // the plan enters at Monday's fixing, and the unfinished week is not one of its past weeks
+    const planMonday = await getForexPlan("EURUSD", "long", 50, 100, 1000, 1);
+    expect(planMonday.price).toBe(eurusd.price);
+    expect(planMonday.all.weeks).toBe(planFriday.all.weeks);
+    expect(planMonday.normal_week_pct).toBe(planFriday.normal_week_pct);
+    expect(planMonday.trend_13w).toBe(planFriday.trend_13w);
+  });
 
   it("the overview is Python's, field for field and in the same order", async () => {
     const mine = await getForexOverview();

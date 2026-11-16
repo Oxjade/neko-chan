@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { GET as fxHandler, forgetRates } from "../../api/fx";
+import { GET as fxHandler, forgetRates, setClock } from "../../api/fx";
 import {
   configure, getAdvanced, getBook, getChart, getForexOverview, getForexPlan, getScoreboard, getTerminal, getWeek,
 } from "../../src/core/api";
@@ -187,12 +187,14 @@ function checkRecording(recording: string): void {
   }
 
   const start = () => {
-    forgetRates();                       // each recording has its own ECB file
+    forgetRates();                       // each recording has its own ECB file,
+    setClock(() => meta.now_ms);         // and the function goes by the date it was recorded on
     configure({ fetch: replay, now: () => meta.now_ms, storage: null, weightPerMinute: Infinity, fxUrl: "/api/fx" });
   };
 
   describe(`parity with the Python reference, recorded ${new Date(meta.now_ms).toISOString()} (${recording})`, () => {
     afterAll(() => {
+      setClock(null);
       const inexactCount = [...totals.inexact.values()].reduce((sum, f) => sum + f.count, 0);
       console.log([
         `Parity at ${new Date(meta.now_ms).toISOString()} (${recording}): ${totals.fields} fields compared ` +

@@ -479,11 +479,15 @@ export interface ForexPair {
   pair: string;
   price: number;
   as_of: string;
+  /** The last finished week: one Friday's fixing to the next. */
   last_week_pct: number;
+  /** The week being traded now, against the last Friday close; null when nothing has been fixed since. */
+  this_week_pct: number | null;
   normal_week_pct: number;
   /** One pip in price terms: 0.01 for pairs quoted in yen, 0.0001 for the rest. */
   pip_size: number;
   last_week_pips: number;
+  this_week_pips: number | null;
   normal_week_pips: number;
   range_low: number;
   range_high: number;

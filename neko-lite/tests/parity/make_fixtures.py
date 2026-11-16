@@ -267,7 +267,7 @@ def main():
     }, indent=1))
     shutil.rmtree(scratch, ignore_errors=True)
     size = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
-    print(f"{'Kept' if REPLAY_ONLY else 'Saved'} {len(index)} Hyperliquid responses and saved {len(expected)} reference results "
+    print(f"{'Kept' if REPLAY_ONLY else 'Saved'} {len(index)} Hyperliquid responses and {'saved ' if REPLAY_ONLY else ''}{len(expected)} reference results "
           f"({size / 1e6:.1f} MB) to {OUT}")
     print(f"Worksheet rows: {len(expected['advanced']['worksheet'])} of {len(terminal_adv.WORKSHEET)}"
           + (f"; left out by Python: {missing}" if missing else ""))

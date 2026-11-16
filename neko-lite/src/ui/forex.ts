@@ -260,6 +260,8 @@ function rangesSection(): HTMLElement {
       { label: "Pair", cell: (r) => r.pair },
       { label: "Last fixing", num: true, cell: (r) => fmt.price(r.price) },
       { label: "Last week", num: true, cell: (r) => signedPips(r.last_week_pips, 0), cls: (r) => tone(r.last_week_pips) },
+      { label: "This week so far", num: true, cell: (r) => signedPips(r.this_week_pips, 0),
+        cls: (r) => tone(r.this_week_pips) },
       { label: "Normal week", num: true, cell: (r) => `${Math.round(r.normal_week_pips)} pips` },
       { label: "Likely range", cell: (r) => `${fmt.price(r.range_low)} to ${fmt.price(r.range_high)}` },
       { label: "13-week trend", cell: (r) => (r.trend_13w === "up" ? "Up" : "Down") },

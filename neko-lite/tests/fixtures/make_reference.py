@@ -95,7 +95,7 @@ def replay() -> dict:
 def forex() -> dict:
     """A small made-up table in the ECB's format, and what forex_weekly.overview() makes of it."""
     import io
-    from datetime import date, timedelta
+    from datetime import date, datetime, timedelta, timezone
 
     import forex_weekly
 
@@ -116,7 +116,12 @@ def forex() -> dict:
         day += timedelta(days=1)
     csv = "\n".join(["Date," + ",".join(names) + ",XXX,", *reversed(rows), ""])    # newest first, as the ECB sends it
     forex_weekly._state.update(daily=forex_weekly._read(io.StringIO(csv)), loaded_at=float("inf"))
-    forex_weekly.time = type("Clock", (), {"time": staticmethod(lambda: 0.0)})
+    # The table ends on Wednesday 11 November 2026. Seen that evening, its last week is still
+    # in progress; seen on the Saturday after, that week has ended (with Wednesday's rate).
+    wednesday = datetime(2026, 11, 11, 18, tzinfo=timezone.utc).timestamp()
+    saturday = datetime(2026, 11, 14, 12, tzinfo=timezone.utc).timestamp()
+    clock = {"now": wednesday}
+    forex_weekly.time = type("Clock", (), {"time": staticmethod(lambda: clock["now"])})
     daily = forex_weekly.daily_rates()
 
     shapes = []
@@ -146,9 +151,13 @@ def forex() -> dict:
             ("AUDUSD", "short", 5000, 5000, 100, 100, 0.0)):
         plans.append({"args": [pair, direction, stop, target, account, risk, spread],
                       "plan": forex_weekly.plan(pair, direction, stop, target, account, risk, spread)})
-    return {"csv": csv, "overview": forex_weekly.overview(), "shapes": shapes, "statistics": statistics,
-            "plans": plans,
-            "base_in_usd": {pair: forex_weekly.base_in_usd(daily, pair) for pair in ("EURUSD", "GBPUSD", "USDJPY")}}
+    out = {"csv": csv, "now_ms": int(wednesday * 1000), "overview": forex_weekly.overview(), "shapes": shapes,
+           "statistics": statistics, "plans": plans,
+           "base_in_usd": {pair: forex_weekly.base_in_usd(daily, pair) for pair in ("EURUSD", "GBPUSD", "USDJPY")}}
+    clock["now"] = saturday
+    out["after_the_week"] = {"now_ms": int(saturday * 1000), "overview": forex_weekly.overview(),
+                             "plan": forex_weekly.plan("EURUSD", "long", 60, 120, 1000, 1)}
+    return out
 
 
 def main():

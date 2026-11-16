@@ -76,11 +76,16 @@ The ECB's file cannot be read from a browser on another site, and its 27 years
 of daily rates are too much to ship, so `api/fx.ts` downloads it and answers
 two questions, letting Vercel's CDN keep each answer for an hour:
 
-- `/api/fx` the board: every pair's last rate, last week and a normal week in
-  pips, and its range (about 5 kB);
+- `/api/fx` the board: every pair's last rate, the last finished week, this
+  week so far and a normal week in pips, and its range (about 5 kB);
 - `/api/fx?pair=EURUSD&direction=long&stop=50&target=100&spread=0` what a
   plan of that shape has done since 1999 (about 2 kB). A request it cannot
   check is answered with a 400 and a sentence that can be shown as it is.
+
+Weeks run from one Friday's rate to the next, and everything measured per week
+uses finished weeks only: from Monday the week being traded is reported apart
+and is not counted as one of a plan's past weeks. The function decides this
+by today's date (UTC).
 
 A plan request carries no account size and no risk. Those stay in the
 browser, where the position size and the pip value are worked out

@@ -14,6 +14,10 @@
 // far each pair normally moves in a week, and how often the trader's own plan
 // (a stop and a target, in pips) reached its target or its stop.
 //
+// Weeks run from one Friday's fixing to the next. Everything measured per week
+// uses finished weeks only; the week still being traded is reported apart, as
+// "this week so far".
+//
 // A plan request carries no account size and no risk: those are personal, and
 // leaving them out lets the CDN keep one answer for everyone who asks about
 // the same shape. The browser works out the position size from the answer.
@@ -46,9 +50,11 @@ export interface ForexPair {
   price: number;
   as_of: string;
   last_week_pct: number;
+  this_week_pct: number | null;
   normal_week_pct: number;
   pip_size: number;
   last_week_pips: number;
+  this_week_pips: number | null;
   normal_week_pips: number;
   range_low: number;
   range_high: number;
@@ -209,7 +215,7 @@ export function pairSeries(daily: DailyRates, pair: string): Series {
   return out;
 }
 
-interface Weeks {
+export interface Weeks {
   /** The Friday that ends each week, as a day number. */
   friday: number[];
   close: number[];
@@ -218,11 +224,36 @@ interface Weeks {
 }
 
 /**
- * One row per week: Friday close (the last fixing on or before each Friday),
- * that week's move, and the normal weekly move (in percent) known at that
- * Friday. The first 26 weeks have no normal move yet and are left out.
+ * Whether the week that ends on this Friday is still being traded.
+ *
+ * It is until that Friday's fixing is in. Once the Friday is behind us the
+ * week counts as finished even if the Friday had no fixing (a holiday).
+ * All three are day numbers (days since 1970, UTC).
  */
-function weeklyFrame(series: Series): Weeks {
+export function weekInProgress(friday: number, lastFixing: number, today: number): boolean {
+  return friday >= today && lastFixing < friday;
+}
+
+// "Today" decides whether the newest week has finished. Tests and the parity
+// check set it to the moment their data was taken; otherwise it is the clock.
+let now: () => number = Date.now;
+
+/** Replace the clock (milliseconds since 1970), or put the real one back with null. */
+export function setClock(clock: (() => number) | null): void {
+  now = clock ?? Date.now;
+}
+
+const todayUtc = () => Math.floor(now() / DAY_MS);
+
+/**
+ * One row per completed week: Friday close (the last fixing on or before each
+ * Friday), that week's move, and the normal weekly move (in percent) known at
+ * that Friday. The first 26 weeks have no normal move yet and are left out.
+ *
+ * From Monday's first fixing the newest week is still in progress; it is left
+ * out, so a day or two of trading is never counted as a whole week.
+ */
+export function weeklyFrame(series: Series, today = todayUtc()): Weeks {
   const close: number[] = [];
   const fridays: number[] = [];
   let bin: number | null = null;
@@ -237,6 +268,10 @@ function weeklyFrame(series: Series): Weeks {
     }
     bin = friday;
   });
+  if (close.length && weekInProgress(fridays[fridays.length - 1], series.days[series.days.length - 1], today)) {
+    close.pop();
+    fridays.pop();
+  }
   const ret = close.map((value, k) => (k === 0 ? NaN : (value / close[k - 1] - 1) * 100));
   const normal = rollingStd(ret, VOL_WEEKS);
   return { friday: fridays.slice(VOL_WEEKS), close: close.slice(VOL_WEEKS), ret: ret.slice(VOL_WEEKS),
@@ -306,12 +341,18 @@ function overviewOf(daily: DailyRates): ForexOverview {
     let inside = 0;
     for (let k = 0; k < n - 1; k += 1) if (Math.abs(weeks.ret[k + 1]) <= weeks.normal[k]) inside += 1;
     const pip = pipSize(pair);
+    // The week being traded now: the latest fixing against the last finished Friday close.
+    const lastClose = weeks.close[n - 1];
+    const started = series.days[series.days.length - 1] > weeks.friday[n - 1];
     pairs.push({
       pair, price, as_of: isoDay(series.days[series.days.length - 1]),
-      last_week_pct: weeks.ret[n - 1], normal_week_pct: normal,
+      last_week_pct: weeks.ret[n - 1],
+      this_week_pct: started ? (price / lastClose - 1) * 100 : null,
+      normal_week_pct: normal,
       pip_size: pip,
       // last week's move as it happened, and a normal week at today's price
       last_week_pips: (weeks.close[n - 1] - weeks.close[n - 2]) / pip,
+      this_week_pips: started ? (price - lastClose) / pip : null,
       normal_week_pips: normal * pipsPerPercent(pair, price),
       range_low: price * (1 - normal / 100), range_high: price * (1 + normal / 100),
       range_held: inside / (n - 1),

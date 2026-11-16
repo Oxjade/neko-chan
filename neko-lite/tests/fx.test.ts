@@ -7,12 +7,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   GET, baseInUsd, forgetRates, overview, pairSeries, parseRates, performance, pipSize, pipsPerPercent, planOdds,
-  planProblem, replayShape, summary, unzipFirst, wilsonInterval, type Direction, type Series,
+  planProblem, replayShape, setClock, summary, unzipFirst, weekInProgress, weeklyFrame, wilsonInterval,
+  type Direction, type Series,
 } from "../api/fx";
 import reference from "./fixtures/reference.json";
 import { zipOf } from "./helpers/zip";
 
 const daily = parseRates(reference.forex.csv);
+const DAY = 24 * 3600 * 1000;
+const dayOf = (iso: string) => Date.parse(`${iso}T00:00:00Z`) / DAY;
+const at = (iso: string, hour = 12) => () => Date.parse(`${iso}T00:00:00Z`) + hour * 3600 * 1000;
+
+// The made-up table ends on Wednesday 11 November 2026, and Python answered for that evening:
+// its last week is still in progress.
+beforeEach(() => setClock(() => reference.forex.now_ms));
+afterEach(() => setClock(null));
 
 describe("the forex function", () => {
   beforeEach(() => forgetRates());
@@ -35,9 +44,23 @@ describe("the forex function", () => {
     expect(rates.columns.JPY[0]).toBe(175.5);
   });
 
+  it("works out the same board as Python once the week has ended, too", () => {
+    setClock(() => reference.forex.after_the_week.now_ms);          // the Saturday after the table's last day
+    expect(JSON.stringify(overview(reference.forex.csv))).toBe(JSON.stringify(reference.forex.after_the_week.overview));
+    const mine = planOdds(daily, "EURUSD", "long", 60, 120) as unknown as Record<string, unknown>;
+    const want = reference.forex.after_the_week.plan as unknown as Record<string, unknown>;
+    for (const key of Object.keys(want).filter((k) => k !== "sizing" && k !== "avg_result_usd")) {
+      expect(mine[key], key).toEqual(want[key]);
+    }
+    // seen midweek, the same table has one finished week fewer
+    expect((want.all as { weeks: number }).weeks).toBe(reference.forex.plans[0].plan.all.weeks + 1);
+  });
+
   it("works out the same board as Python, pair by pair", () => {
     const mine = overview(reference.forex.csv);
     const theirs = reference.forex.overview;
+    // the week in progress is reported apart: Monday to Wednesday against last Friday's close
+    expect(mine.pairs.every((p) => typeof p.this_week_pips === "number" && typeof p.this_week_pct === "number")).toBe(true);
     expect(mine.as_of).toBe(theirs.as_of);
     expect(mine.history_from).toBe(theirs.history_from);
     // pairs of a currency with too little history are left out, as in Python
@@ -128,6 +151,87 @@ describe("the forex function", () => {
     const response = await GET(new Request("http://localhost/api/fx?pair=NZDUSD&direction=long&stop=60&target=120"));
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: "NZDUSD has too little history to judge a plan." });
+  });
+});
+
+describe("weeks end with Friday's fixing", () => {
+  const FRIDAY = dayOf("2026-11-20");
+
+  /** A rate on every working day from the start of 2024 through the given day. */
+  const through = (lastDay: string): Series => {
+    const series: Series = { days: [], values: [] };
+    for (let day = dayOf("2024-01-01"), i = 0; day <= dayOf(lastDay); day += 1) {
+      if ((((day + 3) % 7) + 7) % 7 > 4) continue;                   // weekends have no fixing
+      series.days.push(day);
+      series.values.push(1.10 * Math.exp(0.03 * Math.sin(i / 9) + 0.004 * Math.sin(i * 1.7)));
+      i += 1;
+    }
+    return series;
+  };
+  const lastFriday = (series: Series, today: string) => {
+    const weeks = weeklyFrame(series, dayOf(today));
+    return weeks.friday[weeks.friday.length - 1];
+  };
+
+  it("a week is in progress until its Friday fixing, or until the Friday has passed", () => {
+    const cases: Array<[number, string, string, boolean]> = [
+      // Friday label, last fixing, today, still in progress?
+      [FRIDAY, "2026-11-16", "2026-11-16", true],                    // Monday, one fixing in
+      [FRIDAY, "2026-11-19", "2026-11-20", true],                    // Friday before its fixing
+      [FRIDAY, "2026-11-20", "2026-11-20", false],                   // Friday after its fixing
+      [FRIDAY, "2026-11-19", "2026-11-21", false],                   // a holiday Friday, seen on Saturday
+      [dayOf("2026-11-13"), "2026-11-13", "2026-11-15", false],      // an ordinary weekend
+    ];
+    for (const [friday, lastFixing, today, expected] of cases) {
+      expect(weekInProgress(friday, dayOf(lastFixing), dayOf(today)), `${lastFixing} seen on ${today}`).toBe(expected);
+    }
+  });
+
+  it("Monday with one fixing after a completed Friday", () => {
+    const finished = weeklyFrame(through("2026-11-13"), dayOf("2026-11-14"));
+    const monday = weeklyFrame(through("2026-11-16"), dayOf("2026-11-16"));
+    expect(monday.friday[monday.friday.length - 1]).toBe(dayOf("2026-11-13"));
+    expect(monday).toEqual(finished);                               // Monday's fixing changes nothing measured per week
+  });
+
+  it("Friday before and after its fixing", () => {
+    expect(lastFriday(through("2026-11-19"), "2026-11-20")).toBe(dayOf("2026-11-13"));
+    expect(lastFriday(through("2026-11-20"), "2026-11-20")).toBe(FRIDAY);
+    const before = weeklyFrame(through("2026-11-19"), FRIDAY);
+    const after = weeklyFrame(through("2026-11-20"), FRIDAY);
+    expect(after.close.length).toBe(before.close.length + 1);
+  });
+
+  it("a holiday Friday seen on Saturday closes the week at Thursday's fixing", () => {
+    const series = through("2026-11-19");                            // no fixing on Friday the 20th
+    const weeks = weeklyFrame(series, dayOf("2026-11-21"));
+    expect(weeks.friday[weeks.friday.length - 1]).toBe(FRIDAY);
+    expect(weeks.close[weeks.close.length - 1]).toBe(series.values[series.values.length - 1]);
+  });
+
+  it("the unfinished week is not scored as a trade", () => {
+    setClock(at("2026-11-18"));
+    const midweek = replayShape(through("2026-11-18"), "long", 0.75, 1.5);
+    const friday = replayShape(through("2026-11-13"), "long", 0.75, 1.5);
+    expect(midweek).toEqual(friday);
+    setClock(at("2026-11-20", 18));
+    const done = replayShape(through("2026-11-20"), "long", 0.75, 1.5);
+    expect(done.length).toBe(friday.length + 1);
+    expect(done.slice(0, -1)).toEqual(friday);
+  });
+
+  it("the function goes by today's date: the same table reads differently after the week has ended", async () => {
+    const download = async () => new Response(zipOf("eurofxref-hist.csv", reference.forex.csv));
+    vi.stubGlobal("fetch", download);
+    forgetRates();
+    const board = async () => (await (await GET(new Request("http://localhost/api/fx"))).json() as typeof reference.forex.overview).pairs[0];
+    const midweek = await board();
+    setClock(() => reference.forex.after_the_week.now_ms);
+    const weekend = await board();
+    vi.unstubAllGlobals();
+    expect(midweek.this_week_pips).toBe(reference.forex.overview.pairs[0].this_week_pips);
+    expect(weekend.this_week_pips).toBeNull();
+    expect(weekend.last_week_pips).toBe(midweek.this_week_pips);     // what was this week so far is now last week
   });
 });
 
