@@ -1,0 +1,819 @@
+{
+ "generated_at": "2026-11-15T09:45:06+00:00",
+ "coins": [
+  "BTC",
+  "ETH",
+  "SOL",
+  "XRP",
+  "DOGE",
+  "BNB",
+  "AVAX",
+  "LINK",
+  "LTC",
+  "ADA"
+ ],
+ "funding_coins": [
+  "BTC",
+  "ETH",
+  "SOL"
+ ],
+ "from": "2020-08-23",
+ "to": "2026-11-15",
+ "split": "2023-10-08",
+ "cost_pct": 0.13,
+ "beat_holding": 2,
+ "tried": 23,
+ "rows": [
+  {
+   "kind": "yardstick",
+   "rule": "Always long",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1593,
+     "accuracy": 0.4858757062146893,
+     "avg_pct": 2.04148360924037,
+     "t": 2.0913990464518792
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.4654320987654321,
+     "avg_pct": 0.7520308523395283,
+     "t": 1.0356718762399064
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1593,
+     "accuracy": 0.4858757062146893,
+     "avg_pct": 1.9114836092403695,
+     "t": 1.959989934929899
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.4654320987654321,
+     "avg_pct": 0.6220308523395282,
+     "t": 0.8566402002224418
+    }
+   }
+  },
+  {
+   "kind": "price",
+   "rule": "Follow the last 1 week",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1583,
+     "accuracy": 0.5306380290587492,
+     "avg_pct": 1.5692242978681519,
+     "t": 1.8615945288482108
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.48950617283950615,
+     "avg_pct": 0.09461220603640068,
+     "t": 0.17550868079479576
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1583,
+     "accuracy": 0.5306380290587492,
+     "avg_pct": 1.439224297868152,
+     "t": 1.6969981450322245
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.48950617283950615,
+     "avg_pct": -0.03538779396359933,
+     "t": -0.06564549432871082
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Follow the last 4 weeks",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1552,
+     "accuracy": 0.5425257731958762,
+     "avg_pct": 1.9878609278054211,
+     "t": 2.652068404293482
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5135802469135803,
+     "avg_pct": 0.9408874485019232,
+     "t": 1.670141417587233
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1552,
+     "accuracy": 0.5425257731958762,
+     "avg_pct": 1.8578609278054212,
+     "t": 2.484065005637889
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5135802469135803,
+     "avg_pct": 0.8108874485019231,
+     "t": 1.4393822713875088
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Follow the last 13 weeks",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1463,
+     "accuracy": 0.5105946684894054,
+     "avg_pct": 1.1912260844015568,
+     "t": 1.5558730551223756
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.495679012345679,
+     "avg_pct": 0.3716345644054572,
+     "t": 0.6199118635337492
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1463,
+     "accuracy": 0.5105946684894054,
+     "avg_pct": 1.061226084401557,
+     "t": 1.40960306142274
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.495679012345679,
+     "avg_pct": 0.24163456440545708,
+     "t": 0.4030629749264328
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Follow the last 26 weeks",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1333,
+     "accuracy": 0.5153788447111778,
+     "avg_pct": 0.5542371173982235,
+     "t": 0.6810532730266892
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.4993827160493827,
+     "avg_pct": -0.056952019987231935,
+     "t": -0.10339247821232979
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1333,
+     "accuracy": 0.5153788447111778,
+     "avg_pct": 0.42423711739822345,
+     "t": 0.5283624212080561
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.4993827160493827,
+     "avg_pct": -0.18695201998723204,
+     "t": -0.3393985438552382
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Follow the last 52 weeks",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1073,
+     "accuracy": 0.5004659832246039,
+     "avg_pct": -0.023403413119116673,
+     "t": -0.10664920943304808
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5253086419753087,
+     "avg_pct": 0.5048011042593527,
+     "t": 0.9426519837201498
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1073,
+     "accuracy": 0.5004659832246039,
+     "avg_pct": -0.15340341311911695,
+     "t": -0.2879495189003261
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5253086419753087,
+     "avg_pct": 0.3748011042593526,
+     "t": 0.6998934856708677
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Fade last week",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1583,
+     "accuracy": 0.4693619709412508,
+     "avg_pct": -1.5692242978681519,
+     "t": -1.8615945288482108
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5104938271604939,
+     "avg_pct": -0.09461220603640068,
+     "t": -0.17550868079479576
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1583,
+     "accuracy": 0.4693619709412508,
+     "avg_pct": -1.6992242978681518,
+     "t": -2.026190912664197
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5104938271604939,
+     "avg_pct": -0.2246122060364009,
+     "t": -0.41666285591830277
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Fade a move bigger than 1.5 normal weeks",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 139,
+     "accuracy": 0.49640287769784175,
+     "avg_pct": -0.15032839988633948,
+     "t": 0.6608234600598509
+    },
+    "check": {
+     "coin_weeks": 213,
+     "accuracy": 0.5117370892018779,
+     "avg_pct": -1.670859335789758,
+     "t": -0.6665320509990768
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 139,
+     "accuracy": 0.49640287769784175,
+     "avg_pct": -0.28032839988633923,
+     "t": 0.5745306736035686
+    },
+    "check": {
+     "coin_weeks": 213,
+     "accuracy": 0.5117370892018779,
+     "avg_pct": -1.8008593357897584,
+     "t": -0.7785457207298312
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Fade a move bigger than 2 normal weeks",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 57,
+     "accuracy": 0.47368421052631576,
+     "avg_pct": 0.6369244016277786,
+     "t": 0.43980122284929346
+    },
+    "check": {
+     "coin_weeks": 106,
+     "accuracy": 0.5188679245283019,
+     "avg_pct": -2.120820253886089,
+     "t": -1.1975075822951198
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 57,
+     "accuracy": 0.47368421052631576,
+     "avg_pct": 0.506924401627779,
+     "t": 0.38849618227516886
+    },
+    "check": {
+     "coin_weeks": 106,
+     "accuracy": 0.5188679245283019,
+     "avg_pct": -2.2508202538860895,
+     "t": -1.2769315122755862
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Side of the 10-week average",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1503,
+     "accuracy": 0.5149700598802395,
+     "avg_pct": 1.3064493644602697,
+     "t": 1.6974715651594958
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5141975308641975,
+     "avg_pct": 0.7211224499325088,
+     "t": 1.322488335811462
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1503,
+     "accuracy": 0.5149700598802395,
+     "avg_pct": 1.1764493644602694,
+     "t": 1.5444684418234866
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5141975308641975,
+     "avg_pct": 0.5911224499325087,
+     "t": 1.0840773923280338
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Side of the 20-week average",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1403,
+     "accuracy": 0.5039201710620099,
+     "avg_pct": 1.0066678587122835,
+     "t": 1.4350253416933427
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.508641975308642,
+     "avg_pct": 0.4842665314375137,
+     "t": 0.8348473844089525
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1403,
+     "accuracy": 0.5039201710620099,
+     "avg_pct": 0.8766678587122834,
+     "t": 1.2958385841563975
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.508641975308642,
+     "avg_pct": 0.35426653143751347,
+     "t": 0.610734932014195
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Side of the 40-week average",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1203,
+     "accuracy": 0.5020781379883624,
+     "avg_pct": 0.14254513438093572,
+     "t": 0.251163629907886
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.504320987654321,
+     "avg_pct": 0.027952674123454004,
+     "t": 0.055743260662600096
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1203,
+     "accuracy": 0.5020781379883624,
+     "avg_pct": 0.01254513438093552,
+     "t": 0.038636615871842035
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.504320987654321,
+     "avg_pct": -0.10204732587654608,
+     "t": -0.20350291571870147
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Breakout of the 4-week range",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1553,
+     "accuracy": 0.5260785576303928,
+     "avg_pct": 1.154667813078554,
+     "t": 1.4733203546447797
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5148148148148148,
+     "avg_pct": 0.7986889886739027,
+     "t": 1.4442159261185203
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1553,
+     "accuracy": 0.5260785576303928,
+     "avg_pct": 1.0246678130785538,
+     "t": 1.3158394251812473
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.5148148148148148,
+     "avg_pct": 0.6686889886739025,
+     "t": 1.2091456133211274
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Breakout of the 13-week range",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1454,
+     "accuracy": 0.5096286107290234,
+     "avg_pct": 1.4039368464796946,
+     "t": 2.0088818798177903
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.48950617283950615,
+     "avg_pct": 0.03021749484002028,
+     "t": 0.05269120100096099
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1454,
+     "accuracy": 0.5096286107290234,
+     "avg_pct": 1.273936846479695,
+     "t": 1.8565575506310243
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.48950617283950615,
+     "avg_pct": -0.09978250515997973,
+     "t": -0.17399390861484093
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "price",
+   "rule": "Breakout of the 26-week range",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1311,
+     "accuracy": 0.49122807017543857,
+     "avg_pct": 0.1123750193189775,
+     "t": 0.3845050302046952
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.4777777777777778,
+     "avg_pct": -0.32475700506917976,
+     "t": -0.6160354476532638
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1311,
+     "accuracy": 0.49122807017543857,
+     "avg_pct": -0.01762498068102272,
+     "t": 0.22530450480107692
+    },
+    "check": {
+     "coin_weeks": 1620,
+     "accuracy": 0.4777777777777778,
+     "avg_pct": -0.4547570050691799,
+     "t": -0.8626340027109592
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "mood",
+   "rule": "Buy extreme fear, sell extreme greed",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 574,
+     "accuracy": 0.445993031358885,
+     "avg_pct": -5.177187153339774,
+     "t": -2.7421093687723554
+    },
+    "check": {
+     "coin_weeks": 350,
+     "accuracy": 0.4114285714285714,
+     "avg_pct": -1.8488638285136698,
+     "t": -1.3114532837894566
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 574,
+     "accuracy": 0.445993031358885,
+     "avg_pct": -5.307187153339773,
+     "t": -2.8101978675428403
+    },
+    "check": {
+     "coin_weeks": 350,
+     "accuracy": 0.4114285714285714,
+     "avg_pct": -1.9788638285136695,
+     "t": -1.403666092685008
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "mood",
+   "rule": "Sell extreme fear, buy extreme greed",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 574,
+     "accuracy": 0.554006968641115,
+     "avg_pct": 5.177187153339774,
+     "t": 2.7421093687723554
+    },
+    "check": {
+     "coin_weeks": 350,
+     "accuracy": 0.5885714285714285,
+     "avg_pct": 1.8488638285136698,
+     "t": 1.3114532837894566
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 574,
+     "accuracy": 0.554006968641115,
+     "avg_pct": 5.047187153339773,
+     "t": 2.67402087000187
+    },
+    "check": {
+     "coin_weeks": 350,
+     "accuracy": 0.5885714285714285,
+     "avg_pct": 1.71886382851367,
+     "t": 1.2192404748939043
+    }
+   },
+   "beats_holding": true
+  },
+  {
+   "kind": "mood",
+   "rule": "Long when greedy, short when fearful",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1573,
+     "accuracy": 0.5492689129052766,
+     "avg_pct": 2.817728364590627,
+     "t": 2.8574066172791506
+    },
+    "check": {
+     "coin_weeks": 1580,
+     "accuracy": 0.5025316455696203,
+     "avg_pct": 0.9872826588307742,
+     "t": 1.3360827038041374
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1573,
+     "accuracy": 0.5492689129052766,
+     "avg_pct": 2.687728364590627,
+     "t": 2.725897460707025
+    },
+    "check": {
+     "coin_weeks": 1580,
+     "accuracy": 0.5025316455696203,
+     "avg_pct": 0.8572826588307743,
+     "t": 1.1601546147802322
+    }
+   },
+   "beats_holding": true
+  },
+  {
+   "kind": "mood",
+   "rule": "Long when fearful, short when greedy",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1573,
+     "accuracy": 0.4507310870947235,
+     "avg_pct": -2.817728364590627,
+     "t": -2.8574066172791506
+    },
+    "check": {
+     "coin_weeks": 1580,
+     "accuracy": 0.49746835443037973,
+     "avg_pct": -0.9872826588307742,
+     "t": -1.3360827038041374
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1573,
+     "accuracy": 0.4507310870947235,
+     "avg_pct": -2.9477283645906267,
+     "t": -2.9889157738512755
+    },
+    "check": {
+     "coin_weeks": 1580,
+     "accuracy": 0.49746835443037973,
+     "avg_pct": -1.1172826588307743,
+     "t": -1.5120107928280422
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "mood",
+   "rule": "Follow the week's change in mood",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1504,
+     "accuracy": 0.4900265957446808,
+     "avg_pct": 0.7653760493420211,
+     "t": 0.7116821659931988
+    },
+    "check": {
+     "coin_weeks": 1530,
+     "accuracy": 0.5228758169934641,
+     "avg_pct": 0.6122649325510814,
+     "t": 0.8633323011492614
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1504,
+     "accuracy": 0.4900265957446808,
+     "avg_pct": 0.6353760493420213,
+     "t": 0.5866686425089909
+    },
+    "check": {
+     "coin_weeks": 1530,
+     "accuracy": 0.5228758169934641,
+     "avg_pct": 0.48226493255108127,
+     "t": 0.6800240742975784
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "mood",
+   "rule": "Fade the week's change in mood",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 1504,
+     "accuracy": 0.5099734042553191,
+     "avg_pct": -0.7653760493420211,
+     "t": -0.7116821659931988
+    },
+    "check": {
+     "coin_weeks": 1530,
+     "accuracy": 0.477124183006536,
+     "avg_pct": -0.6122649325510814,
+     "t": -0.8633323011492614
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 1504,
+     "accuracy": 0.5099734042553191,
+     "avg_pct": -0.8953760493420215,
+     "t": -0.8366956894774067
+    },
+    "check": {
+     "coin_weeks": 1530,
+     "accuracy": 0.477124183006536,
+     "avg_pct": -0.7422649325510815,
+     "t": -1.0466405280009445
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "funding",
+   "rule": "Fade crowded funding (1-year extreme)",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 0,
+     "accuracy": null,
+     "avg_pct": null,
+     "t": null
+    },
+    "check": {
+     "coin_weeks": 80,
+     "accuracy": 0.5,
+     "avg_pct": -1.3264240693468654,
+     "t": -0.9188419315299864
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 0,
+     "accuracy": null,
+     "avg_pct": null,
+     "t": null
+    },
+    "check": {
+     "coin_weeks": 80,
+     "accuracy": 0.5,
+     "avg_pct": -1.4564240693468653,
+     "t": -1.0186820228102809
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "funding",
+   "rule": "Trade with the funding sign",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 60,
+     "accuracy": 0.5,
+     "avg_pct": -0.6558169420407327,
+     "t": -0.6185965242686129
+    },
+    "check": {
+     "coin_weeks": 486,
+     "accuracy": 0.49382716049382713,
+     "avg_pct": 0.6914240878525028,
+     "t": 1.1308887019606704
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 60,
+     "accuracy": 0.5,
+     "avg_pct": -0.7858169420407327,
+     "t": -0.7412184679846157
+    },
+    "check": {
+     "coin_weeks": 486,
+     "accuracy": 0.49382716049382713,
+     "avg_pct": 0.5614240878525028,
+     "t": 0.9182615548337839
+    }
+   },
+   "beats_holding": false
+  },
+  {
+   "kind": "funding",
+   "rule": "Trade against the funding sign",
+   "no_costs": {
+    "choose": {
+     "coin_weeks": 60,
+     "accuracy": 0.5,
+     "avg_pct": 0.6558169420407327,
+     "t": 0.6185965242686129
+    },
+    "check": {
+     "coin_weeks": 486,
+     "accuracy": 0.5061728395061729,
+     "avg_pct": -0.6914240878525028,
+     "t": -1.1308887019606704
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "coin_weeks": 60,
+     "accuracy": 0.5,
+     "avg_pct": 0.5258169420407328,
+     "t": 0.4959745805526105
+    },
+    "check": {
+     "coin_weeks": 486,
+     "accuracy": 0.5061728395061729,
+     "avg_pct": -0.8214240878525031,
+     "t": -1.3435158490875563
+    }
+   },
+   "beats_holding": false
+  }
+ ]
+}

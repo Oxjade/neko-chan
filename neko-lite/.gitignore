@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.vercel/
+tests/parity/fixtures*/
+# The repository ignores every scripts/ folder; this one holds the table extraction and is part of the app.
+!scripts/

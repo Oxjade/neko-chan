@@ -1,0 +1,42 @@
+/* Neko Lite's own additions. neko.css is the Python app's stylesheet, kept as
+   it is; everything here is built from its tokens. */
+
+/* the page you are on, in the navigation */
+.masthead nav a[aria-current="page"] {
+  font-weight: 600;
+}
+
+/* the guide: long-form reading in the week page's column */
+.guide ul,
+.guide ol:not(.steps),
+.guide dl {
+  margin-bottom: 0;
+  padding-left: 0;
+}
+
+.guide ul,
+.guide ol:not(.steps) {
+  padding-left: var(--s5);
+}
+
+.guide li,
+.guide dd {
+  max-width: var(--measure);
+}
+
+.guide li + li {
+  margin-top: var(--s2);
+}
+
+.guide dt {
+  font-weight: 600;
+}
+
+.guide dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.guide dd + dt {
+  margin-top: var(--s3);
+}

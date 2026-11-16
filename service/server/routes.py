@@ -21,6 +21,7 @@ from routes_signals import register_signal_routes
 from routes_team_missions import register_team_mission_routes
 from routes_trading import register_trading_routes
 from routes_users import register_user_routes
+from routes_web import register_web_routes
 
 
 def create_app() -> FastAPI:
@@ -51,5 +52,7 @@ def create_app() -> FastAPI:
     register_challenge_routes(app, ctx)
     register_team_mission_routes(app, ctx)
     register_user_routes(app, ctx)
+    # Before the misc routes: their catch-all GET would shadow the web pages.
+    register_web_routes(app)
     register_misc_routes(app)
     return app

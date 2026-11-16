@@ -1,0 +1,336 @@
+{
+ "generated_at": "2026-11-15T08:48:13+00:00",
+ "source": "ECB euro foreign exchange reference rates",
+ "pairs": [
+  "EURUSD",
+  "GBPUSD",
+  "USDJPY",
+  "USDCHF",
+  "AUDUSD",
+  "NZDUSD",
+  "USDCAD",
+  "EURGBP",
+  "EURJPY",
+  "EURCHF",
+  "GBPJPY",
+  "AUDJPY",
+  "EURAUD",
+  "AUDNZD"
+ ],
+ "from": "1999-01-08",
+ "to": "2026-11-13",
+ "cost_pct_per_week": 0.04,
+ "split": "2013-01-01",
+ "passed": 0,
+ "tried": 14,
+ "rows": [
+  {
+   "rule": "Follow the last 1 week",
+   "choose": {
+    "pair_weeks": 10183,
+    "accuracy": 0.5014763779527559,
+    "avg_net_pct": -0.03218194623802632,
+    "weeks": 729,
+    "t": -1.1019905826793097,
+    "yearly_pct": -1.6835329273939197,
+    "sharpe": -0.2943173000687918
+   },
+   "check": {
+    "pair_weeks": 10109,
+    "accuracy": 0.4973256735340729,
+    "avg_net_pct": -0.044986847437117713,
+    "weeks": 723,
+    "t": -2.146707041928293,
+    "yearly_pct": -2.338209159939654,
+    "sharpe": -0.5757120294547085
+   },
+   "passed": false
+  },
+  {
+   "rule": "Follow the last 4 weeks",
+   "choose": {
+    "pair_weeks": 10152,
+    "accuracy": 0.5043933260933952,
+    "avg_net_pct": -0.014982045777534049,
+    "weeks": 726,
+    "t": -0.5014584890501823,
+    "yearly_pct": -0.7815944763601054,
+    "sharpe": -0.1342048927176149
+   },
+   "check": {
+    "pair_weeks": 10107,
+    "accuracy": 0.49217356845650884,
+    "avg_net_pct": -0.05846960917611199,
+    "weeks": 723,
+    "t": -3.2317141323317418,
+    "yearly_pct": -3.0423743345249417,
+    "sharpe": -0.8666933425955182
+   },
+   "passed": false
+  },
+  {
+   "rule": "Follow the last 13 weeks",
+   "choose": {
+    "pair_weeks": 10035,
+    "accuracy": 0.5070914902117459,
+    "avg_net_pct": -0.011312818752217194,
+    "weeks": 717,
+    "t": -0.352775695569214,
+    "yearly_pct": -0.5802872086512194,
+    "sharpe": -0.09500375058283693
+   },
+   "check": {
+    "pair_weeks": 10114,
+    "accuracy": 0.49767349767349767,
+    "avg_net_pct": -0.05054242756677617,
+    "weeks": 723,
+    "t": -2.4836162374589486,
+    "yearly_pct": -2.612429235176242,
+    "sharpe": -0.6660656142301506
+   },
+   "passed": false
+  },
+  {
+   "rule": "Follow the last 26 weeks",
+   "choose": {
+    "pair_weeks": 9854,
+    "accuracy": 0.5082384052074858,
+    "avg_net_pct": -0.03884394699843045,
+    "weeks": 704,
+    "t": -1.2250849433282116,
+    "yearly_pct": -2.0273069308842064,
+    "sharpe": -0.3329519360174171
+   },
+   "check": {
+    "pair_weeks": 10121,
+    "accuracy": 0.5124653739612188,
+    "avg_net_pct": -0.037240018357878886,
+    "weeks": 723,
+    "t": -1.8933739116716686,
+    "yearly_pct": -1.9300098562216847,
+    "sharpe": -0.5077721905761127
+   },
+   "passed": false
+  },
+  {
+   "rule": "Follow the last 52 weeks",
+   "choose": {
+    "pair_weeks": 9490,
+    "accuracy": 0.5162107931143732,
+    "avg_net_pct": -0.022792333285695104,
+    "weeks": 678,
+    "t": -0.6741487667063784,
+    "yearly_pct": -1.1828813988802862,
+    "sharpe": -0.1866992482438615
+   },
+   "check": {
+    "pair_weeks": 10120,
+    "accuracy": 0.5043039477589789,
+    "avg_net_pct": -0.040441476771909596,
+    "weeks": 723,
+    "t": -1.937826155168535,
+    "yearly_pct": -2.104767101522414,
+    "sharpe": -0.5196935616889627
+   },
+   "passed": false
+  },
+  {
+   "rule": "Fade last week",
+   "choose": {
+    "pair_weeks": 10183,
+    "accuracy": 0.4985236220472441,
+    "avg_net_pct": -0.04781805376197373,
+    "weeks": 729,
+    "t": -1.621021690708368,
+    "yearly_pct": -2.476467072606082,
+    "sharpe": -0.432939024036174
+   },
+   "check": {
+    "pair_weeks": 10109,
+    "accuracy": 0.5026743264659271,
+    "avg_net_pct": -0.03501315256288234,
+    "weeks": 723,
+    "t": -1.6725839981650492,
+    "yearly_pct": -1.821790840060347,
+    "sharpe": -0.44855991488811436
+   },
+   "passed": false
+  },
+  {
+   "rule": "Fade a move bigger than 1.5 normal weeks",
+   "choose": {
+    "pair_weeks": 1362,
+    "accuracy": 0.4985294117647059,
+    "avg_net_pct": -0.01825259074530124,
+    "weeks": 467,
+    "t": -0.8189626818351897,
+    "yearly_pct": -2.671749778611895,
+    "sharpe": -0.27327968221549565
+   },
+   "check": {
+    "pair_weeks": 1414,
+    "accuracy": 0.48229461756373937,
+    "avg_net_pct": -0.0813397314357204,
+    "weeks": 475,
+    "t": -0.7610669652746429,
+    "yearly_pct": -1.928944907635688,
+    "sharpe": -0.2518127630764047
+   },
+   "passed": false
+  },
+  {
+   "rule": "Fade a move bigger than 2 normal weeks",
+   "choose": {
+    "pair_weeks": 581,
+    "accuracy": 0.5379310344827586,
+    "avg_net_pct": 0.06816724398297906,
+    "weeks": 265,
+    "t": -0.9316124692606852,
+    "yearly_pct": -4.557126578613762,
+    "sharpe": -0.4126805755922892
+   },
+   "check": {
+    "pair_weeks": 598,
+    "accuracy": 0.47738693467336685,
+    "avg_net_pct": -0.15882499622911736,
+    "weeks": 269,
+    "t": -1.4521234091992536,
+    "yearly_pct": -4.9483325691826145,
+    "sharpe": -0.6384531858438575
+   },
+   "passed": false
+  },
+  {
+   "rule": "Side of the 10-week average",
+   "choose": {
+    "pair_weeks": 10093,
+    "accuracy": 0.5003972194637537,
+    "avg_net_pct": -0.023637276711528096,
+    "weeks": 721,
+    "t": -0.7677704290084248,
+    "yearly_pct": -1.2290943197191546,
+    "sharpe": -0.206188965907512
+   },
+   "check": {
+    "pair_weeks": 10122,
+    "accuracy": 0.4856068849540014,
+    "avg_net_pct": -0.07154501859231574,
+    "weeks": 723,
+    "t": -3.735441095334013,
+    "yearly_pct": -3.7203409668004186,
+    "sharpe": -1.0017847484077422
+   },
+   "passed": false
+  },
+  {
+   "rule": "Side of the 20-week average",
+   "choose": {
+    "pair_weeks": 9954,
+    "accuracy": 0.5005538213674353,
+    "avg_net_pct": -0.027314970231497437,
+    "weeks": 711,
+    "t": -0.8514482294505128,
+    "yearly_pct": -1.4203784520378657,
+    "sharpe": -0.23026350876589954
+   },
+   "check": {
+    "pair_weeks": 10122,
+    "accuracy": 0.4948066079730933,
+    "avg_net_pct": -0.05455979553033645,
+    "weeks": 723,
+    "t": -2.787784078447719,
+    "yearly_pct": -2.837109367577495,
+    "sharpe": -0.7476384984711255
+   },
+   "passed": false
+  },
+  {
+   "rule": "Side of the 40-week average",
+   "choose": {
+    "pair_weeks": 9674,
+    "accuracy": 0.5045063710763493,
+    "avg_net_pct": -0.026175247641918566,
+    "weeks": 691,
+    "t": -0.7955646045413333,
+    "yearly_pct": -1.3611128773797647,
+    "sharpe": -0.21824188336018968
+   },
+   "check": {
+    "pair_weeks": 10122,
+    "accuracy": 0.5037095657335048,
+    "avg_net_pct": -0.049854725490023476,
+    "weeks": 723,
+    "t": -2.4587756173999247,
+    "yearly_pct": -2.5924457254812205,
+    "sharpe": -0.6594037626091452
+   },
+   "passed": false
+  },
+  {
+   "rule": "Breakout of the 4-week range",
+   "choose": {
+    "pair_weeks": 10172,
+    "accuracy": 0.5023154990639472,
+    "avg_net_pct": -0.02867094370879886,
+    "weeks": 727,
+    "t": -0.9849277638458415,
+    "yearly_pct": -1.5101148617649554,
+    "sharpe": -0.26341399573585395
+   },
+   "check": {
+    "pair_weeks": 10122,
+    "accuracy": 0.4859036502126818,
+    "avg_net_pct": -0.07511960268398547,
+    "weeks": 723,
+    "t": -3.98966280090047,
+    "yearly_pct": -3.9062193395672438,
+    "sharpe": -1.0699628887801869
+   },
+   "passed": false
+  },
+  {
+   "rule": "Breakout of the 13-week range",
+   "choose": {
+    "pair_weeks": 10013,
+    "accuracy": 0.5018018018018018,
+    "avg_net_pct": -0.04137005150569339,
+    "weeks": 718,
+    "t": -1.2852417663907965,
+    "yearly_pct": -2.0652120063669175,
+    "sharpe": -0.34587906797842377
+   },
+   "check": {
+    "pair_weeks": 10122,
+    "accuracy": 0.49460876446730634,
+    "avg_net_pct": -0.059054395273590306,
+    "weeks": 723,
+    "t": -3.044841018223133,
+    "yearly_pct": -3.0708285542266953,
+    "sharpe": -0.8165770026978537
+   },
+   "passed": false
+  },
+  {
+   "rule": "Breakout of the 26-week range",
+   "choose": {
+    "pair_weeks": 9772,
+    "accuracy": 0.5089230769230769,
+    "avg_net_pct": -0.040945316244060864,
+    "weeks": 705,
+    "t": -1.328123690378914,
+    "yearly_pct": -2.186754301432699,
+    "sharpe": -0.36069958015256465
+   },
+   "check": {
+    "pair_weeks": 10122,
+    "accuracy": 0.5100405579186863,
+    "avg_net_pct": -0.034329674295017314,
+    "weeks": 723,
+    "t": -1.7464695334953488,
+    "yearly_pct": -1.7851430633408993,
+    "sharpe": -0.46837481774236944
+   },
+   "passed": false
+  }
+ ]
+}

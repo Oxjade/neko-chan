@@ -1,0 +1,883 @@
+"""Web app: the public track-record page and the operator console.
+
+Replaces Telegram as the interface. Paper trading only: the console can
+create, start and pause paper bots; it cannot switch a bot to live trading.
+
+Environment:
+  WEB_OPERATOR_PASSWORD  required to sign in to the console (no default)
+  TG_VAULT_MASTER_KEY    Fernet key; required to create bots or store an AI key
+  WEB_OPERATOR_ID        owner id for bots created here (default 1)
+  WEB_MANAGE_AGENTS      "0" leaves agent processes to another supervisor
+
+Run ONE supervisor of agent processes. If the Telegram master bot is also
+running it has its own agent pool; set WEB_MANAGE_AGENTS=0 in that case.
+"""
+
+from __future__ import annotations
+
+import hmac
+import os
+import re
+import secrets
+import signal
+import sqlite3
+import sys
+import threading
+import time
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+import crypto_mood
+import desk
+import forex_weekly
+import weekly_calls
+import market_data
+import terminal
+import terminal_adv
+import web_core
+import web_email
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WEB_DIR = REPO_ROOT / "web"
+TG_BOT_DIR = REPO_ROOT / "service" / "tg_bot"
+
+SESSION_COOKIE = "neko_session"
+SESSION_TTL = 12 * 3600
+LOGIN_WINDOW = 15 * 60
+LOGIN_MAX_FAILS = 5
+
+TRADABLE = ("BTC", "ETH", "SOL", "SUI", "HYPE")
+TRADER_TYPES = ("trend", "scalp", "intraday", "auto")
+RISK_PROFILES = ("conservative", "balanced", "aggressive")
+INTERVALS = (60, 120, 300, 600)
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
+
+_sessions: dict[str, float] = {}
+_login_fails: dict[str, list[float]] = {}
+_lock = threading.Lock()
+_services: dict = {}
+
+
+# ------------------------------------------------------------------ settings
+
+def _operator_password() -> str:
+    return os.getenv("WEB_OPERATOR_PASSWORD", "")
+
+
+def _operator_id() -> int:
+    try:
+        return int(os.getenv("WEB_OPERATOR_ID", "1"))
+    except ValueError:
+        return 1
+
+
+def _manages_agents() -> bool:
+    return os.getenv("WEB_MANAGE_AGENTS", "1").strip() not in {"0", "false", "no"}
+
+
+def _setup_missing() -> list[str]:
+    missing = []
+    if not _operator_password():
+        missing.append("WEB_OPERATOR_PASSWORD")
+    if not os.getenv("TG_VAULT_MASTER_KEY", ""):
+        missing.append("TG_VAULT_MASTER_KEY")
+    return missing
+
+
+# ------------------------------------------------------------------ sessions
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _require_operator(request: Request) -> None:
+    token = request.cookies.get(SESSION_COOKIE, "")
+    with _lock:
+        expires = _sessions.get(token)
+        if expires and expires > time.time():
+            return
+        _sessions.pop(token, None)
+    raise HTTPException(status_code=401, detail="Sign in to use the console.")
+
+
+def _require_json(request: Request) -> None:
+    # A cross-site form cannot send application/json without a preflight, so
+    # this plus the SameSite=Strict cookie closes cross-site request forgery.
+    if "application/json" not in request.headers.get("content-type", ""):
+        raise HTTPException(status_code=415, detail="Send JSON.")
+
+
+# ---------------------------------------------------------- web-owned tables
+
+def _write_conn() -> sqlite3.Connection:
+    path = web_core.registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.executescript(
+        "CREATE TABLE IF NOT EXISTS web_bot_flags ("
+        " bot_id INTEGER PRIMARY KEY, is_public INTEGER NOT NULL DEFAULT 0);"
+        "CREATE TABLE IF NOT EXISTS web_waitlist ("
+        " email TEXT PRIMARY KEY, created_at TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS web_goals ("
+        " bot_id INTEGER PRIMARY KEY, target_usd REAL NOT NULL,"
+        " deadline TEXT NOT NULL, created_at TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS web_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS web_watchlist ("
+        " symbol TEXT PRIMARY KEY, added_at TEXT NOT NULL);"
+    )
+    return conn
+
+
+def _public_bot_ids() -> list[int]:
+    conn = _write_conn()
+    try:
+        rows = conn.execute("SELECT bot_id FROM web_bot_flags WHERE is_public = 1").fetchall()
+    finally:
+        conn.close()
+    paper = {b["id"] for b in web_core.list_bots() if (b.get("trading_mode") or "paper") == "paper"}
+    return sorted(r["bot_id"] for r in rows if r["bot_id"] in paper)
+
+
+def _goals() -> dict[int, dict]:
+    conn = _write_conn()
+    try:
+        return {r["bot_id"]: dict(r) for r in conn.execute("SELECT * FROM web_goals").fetchall()}
+    finally:
+        conn.close()
+
+
+def _send_daily_report() -> None:
+    subject, body = web_email.build_report(web_core.list_bots(), _goals())
+    try:
+        body = weekly_calls.one_line() + "\n\n" + body
+    except Exception:
+        pass                                  # the report still goes out without the weekly line
+    web_email.send_email(subject, body)
+
+
+def _report_loop() -> None:
+    """Send the report once a day, at or after REPORT_HOUR_UTC."""
+    from datetime import datetime, timezone
+    while True:
+        time.sleep(60)
+        try:
+            if web_email.email_missing():
+                continue
+            now = datetime.now(timezone.utc)
+            if now.hour < web_email.email_settings()["hour"]:
+                continue
+            today = now.date().isoformat()
+            conn = _write_conn()
+            try:
+                row = conn.execute("SELECT value FROM web_kv WHERE key='report_sent'").fetchone()
+                if row and row["value"] == today:
+                    continue
+                # Mark first: a mail server that accepts then errors must not cause repeats.
+                conn.execute("INSERT INTO web_kv (key, value) VALUES ('report_sent', ?) "
+                             "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (today,))
+                conn.commit()
+            finally:
+                conn.close()
+            _send_daily_report()
+        except Exception as exc:  # keep the loop alive; surface the reason in the log
+            sys.stderr.write(f"[web] daily report failed: {exc}\n")
+
+
+# ------------------------------------------------------------------- the desk
+
+DESK_BOT_NAME = "Desk signals"
+DESK_CYCLE_SECONDS = 300
+
+
+def _watchlist() -> list[str]:
+    conn = _write_conn()
+    try:
+        return [r["symbol"] for r in
+                conn.execute("SELECT symbol FROM web_watchlist ORDER BY added_at").fetchall()]
+    finally:
+        conn.close()
+
+
+def _desk_bot_id(create: bool = False) -> int | None:
+    """The paper account that trades the desk's signals."""
+    conn = _write_conn()
+    try:
+        row = conn.execute("SELECT value FROM web_kv WHERE key = 'desk_bot_id'").fetchone()
+        if row and web_core.get_bot(int(row["value"])):
+            return int(row["value"])
+        if not create:
+            return None
+        svc = _svc()
+        owner = _operator_id()
+        svc["registry"].upsert_user(owner, "web-operator")
+        bot = svc["registry"].create_bot(
+            owner, DESK_BOT_NAME, None, None, agent_name=f"desk-{secrets.token_hex(4)}",
+            platform_token="", symbols={"perps": 1}, leverage=1.0, interval_sec=300,
+            risk_profile="balanced")
+        # paused + not running: the agent pool never spawns a process for it;
+        # the desk loop in this server trades it instead.
+        svc["registry"].update_bot(bot["id"], trading_mode="paper", trader_type="trend",
+                                   onboarding_complete=1, paused=1, is_running=0)
+        svc["paper"].ensure_portfolio(bot["id"])
+        conn.execute("INSERT INTO web_kv (key, value) VALUES ('desk_bot_id', ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(bot["id"]),))
+        conn.commit()
+        return bot["id"]
+    finally:
+        conn.close()
+
+
+def _desk_cycle() -> list[str]:
+    """Paper-trade the watchlist's signals once. Returns what it did."""
+    symbols = _watchlist()
+    bot_id = _desk_bot_id()
+    if not symbols or bot_id is None:
+        return []
+    svc = _svc()
+    agent_dir = str(REPO_ROOT / "service" / "agent")
+    if agent_dir not in sys.path:
+        sys.path.append(agent_dir)
+    import trend_agent
+    from paper_gateway import PaperGateway
+    rows = desk.watchlist_signals(symbols)
+    usable = [r["symbol"] for r in rows if not r.get("error")]
+    if not usable:
+        return []
+    return trend_agent.run_cycle(
+        bot_id, usable, PaperGateway(svc["paper"]), trend_agent.Journal(bot_id),
+        fetch_bars=desk.bars_for_agent, fetch_mids=desk.mids_for_agent,
+        allow=desk.allowed(rows))
+
+
+def _desk_loop() -> None:
+    while True:
+        time.sleep(DESK_CYCLE_SECONDS)
+        try:
+            _desk_cycle()
+        except Exception as exc:  # a data outage must not stop the loop
+            sys.stderr.write(f"[web] desk cycle failed: {exc}\n")
+
+
+# -------------------------------------------- registry / agent pool (lazy)
+
+def _svc() -> dict:
+    """Registry, paper store and agent pool, built on first use.
+
+    They need the vault key, so the public page works without it and the
+    console reports what is missing instead of crashing at import."""
+    with _lock:
+        if _services:
+            return _services
+        if not os.getenv("TG_VAULT_MASTER_KEY", ""):
+            raise HTTPException(
+                status_code=503,
+                detail="TG_VAULT_MASTER_KEY is not set, so bots and keys cannot be stored.")
+        if str(TG_BOT_DIR) not in sys.path:
+            sys.path.append(str(TG_BOT_DIR))
+        from agent_pool import AgentPool
+        from key_vault import KeyVault
+        from paper_store import PaperStore
+        from store import Registry
+
+        path = web_core.registry_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        registry = Registry(str(path), KeyVault())
+        _services.update(
+            registry=registry,
+            paper=PaperStore(str(path)),
+            pool=AgentPool(registry),
+        )
+        if _manages_agents():
+            threading.Thread(target=_healthcheck_loop, daemon=True,
+                             name="web-agent-healthcheck").start()
+        return _services
+
+
+def _healthcheck_loop() -> None:
+    while True:
+        time.sleep(60)
+        try:
+            _services["pool"].healthcheck()
+        except Exception:
+            pass
+
+
+def _stop_stale_agent(bot: dict) -> None:
+    """Stop an agent left over from a previous server process.
+
+    Agents run in their own session and outlive a restart; starting a second
+    one for the same bot would double every trade."""
+    pid = bot.get("pid")
+    if not pid:
+        return
+    try:
+        cmdline = Path(f"/proc/{int(pid)}/cmdline").read_bytes().replace(b"\0", b" ")
+    except (OSError, ValueError):
+        return
+    if b"live_agent.py" not in cmdline:
+        return
+    try:
+        os.killpg(int(pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _bot_or_404(bot_id: int) -> dict:
+    bot = web_core.get_bot(bot_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail="No bot with that id.")
+    return bot
+
+
+def _bot_summary(bot: dict, public_ids: set[int]) -> dict:
+    mode = bot.get("trading_mode") or "paper"
+    if bot.get("paused"):
+        state = "paused"
+    elif bot.get("is_running"):
+        state = "running"
+    else:
+        state = "stopped"
+    return {
+        "id": bot["id"],
+        "name": bot["bot_name"],
+        "mode": mode,
+        "state": state,
+        "trader_type": bot.get("trader_type") or "scalp",
+        "risk_profile": bot.get("risk_profile") or "balanced",
+        "interval_sec": bot.get("interval_sec"),
+        "watchlist": [s for s in (bot.get("watchlist") or "").split(",") if s],
+        "is_public": bot["id"] in public_ids,
+        "last_error": bot.get("last_error"),
+        "created_at": bot.get("created_at"),
+    }
+
+
+# -------------------------------------------------------------- request bodies
+
+class LoginBody(BaseModel):
+    password: str = Field(max_length=512)
+
+
+class NewBotBody(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    watchlist: list[str] = Field(default_factory=lambda: ["BTC", "ETH"])
+    trader_type: str = "trend"
+    risk_profile: str = "balanced"
+    interval_sec: int = 120
+    start_usd: float = Field(default=1000.0, ge=1.0, le=1_000_000.0)
+    goal_usd: float | None = Field(default=None, gt=0, le=100_000_000.0)
+    goal_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class PublicBody(BaseModel):
+    is_public: bool
+
+
+class AIKeyBody(BaseModel):
+    provider: str = Field(min_length=1, max_length=40)
+    api_key: str = Field(min_length=8, max_length=400)
+    model: str | None = Field(default=None, max_length=120)
+    base_url: str | None = Field(default=None, max_length=300)
+
+
+class WeeklyPlanBody(BaseModel):
+    pair: str = Field(max_length=10)
+    direction: str = Field(max_length=5)
+    stop_pips: float                      # the three distances are checked in the route,
+    target_pips: float                    # so a mistake gets a plain-language answer
+    account_usd: float = Field(gt=0, le=1_000_000_000)
+    risk_pct: float = Field(gt=0, le=100)
+    spread_pips: float = 0.0
+
+
+class WatchBody(BaseModel):
+    symbol: str = Field(min_length=1, max_length=40)
+
+
+class WaitlistBody(BaseModel):
+    email: str = Field(max_length=254)
+
+
+# --------------------------------------------------------------------- routes
+
+def register_web_routes(app: FastAPI) -> None:
+    # ---- public -----------------------------------------------------------
+
+    @app.get("/api/web/public/track-record")
+    async def public_track_record():
+        ids = _public_bot_ids()
+        report = web_core.combined_report(ids)
+        report["bots"] = len(ids)
+        report["mode"] = "paper"
+        report["replay"] = web_core.replay_evidence()
+        for trade in report["trades"]:
+            # Sizes stay private: the public page shows outcomes, not the book.
+            for key in ("qty", "notional", "gross", "fees", "net"):
+                trade.pop(key, None)
+        return report
+
+    @app.post("/api/web/public/waitlist")
+    async def join_waitlist(body: WaitlistBody, request: Request):
+        _require_json(request)
+        email = body.email.strip().lower()
+        if not EMAIL_RE.match(email):
+            raise HTTPException(status_code=422, detail="Enter a valid email address.")
+        conn = _write_conn()
+        try:
+            count = conn.execute("SELECT COUNT(*) c FROM web_waitlist").fetchone()["c"]
+            if count >= 50000:
+                raise HTTPException(status_code=503, detail="The list is full for now.")
+            conn.execute("INSERT OR IGNORE INTO web_waitlist (email, created_at) VALUES (?, ?)",
+                         (email, web_core.utcnow()))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"joined": True}
+
+    # ---- session ----------------------------------------------------------
+
+    @app.get("/api/web/session")
+    async def session_state(request: Request):
+        try:
+            _require_operator(request)
+            signed_in = True
+        except HTTPException:
+            signed_in = False
+        return {"signed_in": signed_in, "setup_missing": _setup_missing()}
+
+    @app.post("/api/web/login")
+    async def login(body: LoginBody, request: Request):
+        _require_json(request)
+        expected = _operator_password()
+        if not expected:
+            raise HTTPException(
+                status_code=503,
+                detail="The console is off: set WEB_OPERATOR_PASSWORD on the server.")
+        ip = _client_ip(request)
+        now = time.time()
+        with _lock:
+            fails = [t for t in _login_fails.get(ip, []) if now - t < LOGIN_WINDOW]
+            _login_fails[ip] = fails
+            if len(fails) >= LOGIN_MAX_FAILS:
+                raise HTTPException(status_code=429,
+                                    detail="Too many attempts. Try again in 15 minutes.")
+        if not hmac.compare_digest(body.password.encode(), expected.encode()):
+            with _lock:
+                _login_fails.setdefault(ip, []).append(now)
+            raise HTTPException(status_code=401, detail="That password is not correct.")
+        token = secrets.token_urlsafe(32)
+        with _lock:
+            for old, exp in list(_sessions.items()):
+                if exp <= now:
+                    _sessions.pop(old, None)
+            _sessions[token] = now + SESSION_TTL
+            _login_fails.pop(ip, None)
+        response = JSONResponse({"signed_in": True})
+        response.set_cookie(
+            SESSION_COOKIE, token, max_age=SESSION_TTL, httponly=True, samesite="strict",
+            secure=request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto") == "https",
+            path="/")
+        return response
+
+    @app.post("/api/web/logout")
+    async def logout(request: Request):
+        with _lock:
+            _sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)
+        response = JSONResponse({"signed_in": False})
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return response
+
+    # ---- console ----------------------------------------------------------
+
+    @app.get("/api/web/console/bots")
+    async def console_bots(request: Request):
+        _require_operator(request)
+        public_ids = set(_public_bot_ids())
+        key = None
+        if os.getenv("TG_VAULT_MASTER_KEY", ""):
+            active = _svc()["registry"].get_active_key(_operator_id())
+            if active:
+                key = {"provider": active["provider"], "model": active.get("model")}
+        return {
+            "bots": [_bot_summary(b, public_ids) for b in web_core.list_bots()],
+            "ai_key": key,
+            "manages_agents": _manages_agents(),
+            "setup_missing": _setup_missing(),
+            "email": {"missing": web_email.email_missing(),
+                      "to": web_email.email_settings()["to"],
+                      "hour_utc": web_email.email_settings()["hour"]},
+        }
+
+    @app.post("/api/web/console/bots")
+    async def create_bot(body: NewBotBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        watch = [s.strip().upper() for s in body.watchlist]
+        if not watch or any(s not in TRADABLE for s in watch):
+            raise HTTPException(status_code=422,
+                                detail=f"Choose markets from {', '.join(TRADABLE)}.")
+        if body.trader_type not in TRADER_TYPES:
+            raise HTTPException(status_code=422, detail="Unknown trading style.")
+        if body.risk_profile not in RISK_PROFILES:
+            raise HTTPException(status_code=422, detail="Unknown risk profile.")
+        if body.interval_sec not in INTERVALS:
+            raise HTTPException(status_code=422, detail="Unknown decision interval.")
+        has_goal = body.goal_usd is not None or body.goal_days is not None
+        if has_goal and (body.goal_usd is None or body.goal_days is None):
+            raise HTTPException(status_code=422,
+                                detail="A goal needs both a target amount and a number of days.")
+        if has_goal and body.goal_usd <= body.start_usd:
+            raise HTTPException(status_code=422,
+                                detail="The goal must be more than the starting amount.")
+        svc = _svc()
+        registry = svc["registry"]
+        owner = _operator_id()
+        registry.upsert_user(owner, "web-operator")
+        name = body.name.strip()
+        bot = registry.create_bot(
+            owner, name, None, None,
+            agent_name=f"web-{secrets.token_hex(4)}", platform_token="",
+            symbols={"perps": 1, "spot": 0, "us-stock": 0, "forex": 0},
+            leverage=1.0, interval_sec=body.interval_sec, risk_profile=body.risk_profile)
+        registry.update_bot(
+            bot["id"], trading_mode="paper", trader_type=body.trader_type,
+            watchlist=",".join(dict.fromkeys(watch)), chain="sui", network="mainnet",
+            onboarding_complete=1, paused=1, is_running=0)
+        svc["paper"].ensure_portfolio(bot["id"])
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        conn = _write_conn()
+        try:
+            conn.execute("UPDATE paper_portfolios SET cash = ?, starting = ? WHERE bot_id = ?",
+                         (body.start_usd, body.start_usd, bot["id"]))
+            if has_goal:
+                conn.execute(
+                    "INSERT OR REPLACE INTO web_goals (bot_id, target_usd, deadline, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (bot["id"], body.goal_usd,
+                     (now + timedelta(days=body.goal_days)).isoformat(), now.isoformat()))
+            conn.commit()
+        finally:
+            conn.close()
+        return _bot_summary(web_core.get_bot(bot["id"]), set())
+
+    @app.get("/api/web/console/bots/{bot_id}")
+    async def console_bot(bot_id: int, request: Request):
+        _require_operator(request)
+        bot = _bot_or_404(bot_id)
+        summary = _bot_summary(bot, set(_public_bot_ids()))
+        if summary["mode"] != "paper":
+            return {"bot": summary, "report": None, "decisions": []}
+        report = web_core.bot_report(bot_id)
+        return {
+            "bot": summary,
+            "goal": web_email.goal_progress(_goals().get(bot_id), report["account"]["starting"],
+                                            report["account"]["equity"]),
+            "report": report,
+            "decisions": web_core.recent_decisions(bot_id, 40),
+        }
+
+    @app.post("/api/web/console/bots/{bot_id}/start")
+    async def start_bot(bot_id: int, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        bot = _bot_or_404(bot_id)
+        if (bot.get("trading_mode") or "paper") != "paper":
+            raise HTTPException(status_code=409,
+                                detail="This bot trades live. The web console only runs paper bots.")
+        if bot_id == _desk_bot_id():
+            raise HTTPException(status_code=409,
+                                detail="This account is traded by the desk. Manage it from the desk page.")
+        svc = _svc()
+        svc["registry"].update_bot(bot_id, paused=0, is_running=1)
+        if _manages_agents():
+            _stop_stale_agent(bot)
+            if not svc["pool"].start(bot_id):
+                svc["registry"].update_bot(bot_id, is_running=0, paused=1,
+                                           last_error="agent process could not start")
+                raise HTTPException(status_code=500, detail="The agent process could not start.")
+        return _bot_summary(web_core.get_bot(bot_id), set(_public_bot_ids()))
+
+    @app.post("/api/web/console/bots/{bot_id}/pause")
+    async def pause_bot(bot_id: int, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        bot = _bot_or_404(bot_id)
+        svc = _svc()
+        if _manages_agents():
+            svc["pool"].stop(bot_id)
+            _stop_stale_agent(bot)
+        svc["registry"].update_bot(bot_id, paused=1, is_running=0)
+        return _bot_summary(web_core.get_bot(bot_id), set(_public_bot_ids()))
+
+    @app.post("/api/web/console/bots/{bot_id}/public")
+    async def set_public(bot_id: int, body: PublicBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        bot = _bot_or_404(bot_id)
+        if body.is_public and (bot.get("trading_mode") or "paper") != "paper":
+            raise HTTPException(status_code=409, detail="Only paper bots can be shown publicly.")
+        conn = _write_conn()
+        try:
+            conn.execute(
+                "INSERT INTO web_bot_flags (bot_id, is_public) VALUES (?, ?) "
+                "ON CONFLICT(bot_id) DO UPDATE SET is_public = excluded.is_public",
+                (bot_id, 1 if body.is_public else 0))
+            conn.commit()
+        finally:
+            conn.close()
+        return _bot_summary(bot, set(_public_bot_ids()))
+
+    @app.post("/api/web/console/ai-key")
+    async def save_ai_key(body: AIKeyBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        svc = _svc()
+        from provider import ProviderError, validate_key
+        provider = body.provider.strip().lower()
+        try:
+            model = validate_key(provider, body.api_key.strip(), body.base_url, body.model)
+        except ProviderError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        owner = _operator_id()
+        svc["registry"].upsert_user(owner, "web-operator")
+        try:
+            svc["registry"].store_key(owner, provider, body.api_key.strip(), body.base_url, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        return {"provider": provider, "model": model}
+
+    @app.post("/api/web/console/report/send")
+    async def send_report_now(request: Request):
+        _require_operator(request)
+        _require_json(request)
+        if web_email.email_missing():
+            raise HTTPException(status_code=409, detail="Email is not set up. Missing: "
+                                + ", ".join(web_email.email_missing()))
+        try:
+            _send_daily_report()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"The mail server refused: {exc}")
+        return {"sent_to": web_email.email_settings()["to"]}
+
+    # ---- desk -------------------------------------------------------------
+
+    @app.get("/api/web/desk")
+    def desk_state(request: Request):
+        _require_operator(request)
+        symbols = _watchlist()
+        try:
+            rows = desk.watchlist_signals(symbols) if symbols else []
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        bot_id = _desk_bot_id()
+        paper = None
+        if bot_id is not None:
+            report = web_core.bot_report(bot_id)
+            paper = {"bot_id": bot_id, "performance": report["performance"],
+                     "account": report["account"], "positions": report["positions"],
+                     "trades": report["trades"][:50]}
+        try:
+            mood = crypto_mood.this_week()
+        except market_data.DataError:
+            mood = None                      # the desk still works without the mood panel
+        return {"watchlist": rows, "lessons": desk.lessons(rows), "paper": paper, "mood": mood,
+                "max_watchlist": desk.MAX_WATCHLIST, "setup_missing": _setup_missing(),
+                "rule": {"cost_pct": desk.COST_PCT, "stop_atr": desk.STOP_ATR}}
+
+    @app.get("/api/web/desk/markets")
+    def desk_markets(request: Request):
+        _require_operator(request)
+        try:
+            cat = market_data.catalogue()
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        rows = sorted(cat.values(), key=lambda r: (-r["day_volume_usd"], r["label"]))
+        return {"markets": [{"symbol": r["symbol"], "label": r["label"], "class": r["class"],
+                             "price": r["price"]} for r in rows]}
+
+    @app.post("/api/web/desk/watchlist")
+    def desk_watch(body: WatchBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        symbol = body.symbol.strip()
+        try:
+            known = symbol in market_data.catalogue()
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        if not known:
+            raise HTTPException(status_code=422, detail="That market is not available.")
+        if len(_watchlist()) >= desk.MAX_WATCHLIST and symbol not in _watchlist():
+            raise HTTPException(status_code=409,
+                                detail=f"The watchlist holds {desk.MAX_WATCHLIST} markets at most.")
+        try:
+            market_data.candles(symbol)      # refuse a market with no usable history
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        _desk_bot_id(create=True)
+        conn = _write_conn()
+        try:
+            conn.execute("INSERT OR IGNORE INTO web_watchlist (symbol, added_at) VALUES (?, ?)",
+                         (symbol, web_core.utcnow()))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"watching": symbol}
+
+    @app.post("/api/web/desk/watchlist/remove")
+    def desk_unwatch(body: WatchBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        conn = _write_conn()
+        try:
+            conn.execute("DELETE FROM web_watchlist WHERE symbol = ?", (body.symbol.strip(),))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"removed": body.symbol.strip()}
+
+    # ---- this week, for a beginner ----------------------------------------
+
+    @app.get("/api/web/week")
+    def week_answer(request: Request):
+        _require_operator(request)
+        try:
+            return weekly_calls.this_week()
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/week/scoreboard")
+    def week_scoreboard(request: Request, stake: float = 18.0, leverage: float = 0.0):
+        _require_operator(request)
+        if not (0 < stake <= 1_000_000_000):
+            raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
+        if leverage not in weekly_calls.LEVERAGES:
+            raise HTTPException(status_code=422, detail="Choose one of the listed leverage levels.")
+        try:
+            return weekly_calls.scoreboard(stake, leverage)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    # ---- live terminal ----------------------------------------------------
+
+    @app.get("/api/web/terminal")
+    def terminal_snapshot(request: Request, stake: float = 18.0):
+        _require_operator(request)
+        if not (0 < stake <= 1_000_000_000):
+            raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
+        try:
+            return terminal.snapshot(stake)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/terminal/advanced")
+    def terminal_advanced(request: Request, stake: float = 18.0):
+        _require_operator(request)
+        if not (0 < stake <= 1_000_000_000):
+            raise HTTPException(status_code=422, detail="Enter the weekly amount in USD.")
+        try:
+            return terminal_adv.snapshot(stake)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/terminal/book")
+    def terminal_book(request: Request, symbol: str):
+        _require_operator(request)
+        try:
+            if symbol not in market_data.catalogue():
+                raise HTTPException(status_code=422, detail="That market is not available.")
+            return market_data.order_book(symbol)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/terminal/chart")
+    def terminal_chart(request: Request, symbol: str, interval: str = "4h"):
+        _require_operator(request)
+        if interval not in terminal.CHART_BARS:
+            raise HTTPException(status_code=422, detail="Choose 1h, 4h or 1d.")
+        try:
+            if symbol not in market_data.catalogue():
+                raise HTTPException(status_code=422, detail="That market is not available.")
+            return terminal.chart(symbol, interval)
+        except market_data.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    # ---- weekly forex planner ---------------------------------------------
+
+    @app.get("/api/web/weekly")
+    def weekly_overview(request: Request):
+        _require_operator(request)
+        try:
+            return forex_weekly.overview()
+        except forex_weekly.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.post("/api/web/weekly/plan")
+    def weekly_plan(body: WeeklyPlanBody, request: Request):
+        _require_operator(request)
+        _require_json(request)
+        pair, direction = body.pair.strip().upper(), body.direction.strip().lower()
+        problem = forex_weekly.plan_problem(pair, direction, body.stop_pips, body.target_pips,
+                                            body.spread_pips)
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
+        try:
+            return forex_weekly.plan(pair, direction, body.stop_pips, body.target_pips,
+                                     body.account_usd, body.risk_pct, body.spread_pips)
+        except forex_weekly.DataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @app.get("/api/web/console/waitlist")
+    async def console_waitlist(request: Request):
+        _require_operator(request)
+        conn = _write_conn()
+        try:
+            rows = conn.execute(
+                "SELECT email, created_at FROM web_waitlist ORDER BY created_at DESC LIMIT 500"
+            ).fetchall()
+            total = conn.execute("SELECT COUNT(*) c FROM web_waitlist").fetchone()["c"]
+        finally:
+            conn.close()
+        return {"total": total, "entries": [dict(r) for r in rows]}
+
+    threading.Thread(target=_report_loop, daemon=True, name="web-daily-report").start()
+    threading.Thread(target=_desk_loop, daemon=True, name="web-desk").start()
+
+    # ---- pages ------------------------------------------------------------
+
+    if not WEB_DIR.exists():
+        return
+
+    app.mount("/web", StaticFiles(directory=str(WEB_DIR / "assets")), name="web-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def public_page():
+        return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/terminal", include_in_schema=False)
+    async def terminal_page():
+        return FileResponse(WEB_DIR / "terminal.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/week", include_in_schema=False)
+    async def week_page():
+        return FileResponse(WEB_DIR / "week.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/weekly", include_in_schema=False)
+    async def weekly_page():
+        return FileResponse(WEB_DIR / "weekly.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/desk", include_in_schema=False)
+    async def desk_page():
+        return FileResponse(WEB_DIR / "desk.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/console", include_in_schema=False)
+    async def console_page():
+        return FileResponse(WEB_DIR / "console.html", headers={"Cache-Control": "no-store"})

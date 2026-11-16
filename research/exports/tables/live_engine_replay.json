@@ -1,0 +1,202 @@
+{
+  "generated_at": "2026-11-12T23:01:49+00:00",
+  "engine": "scenario_matrix(scalp) + RSI gate + EMA8/21 gate + pick_best_scenario",
+  "data": {
+    "symbols": [
+      "BTC",
+      "ETH"
+    ],
+    "bar": "5m",
+    "from": "2026-08-09 18:50:00+00:00",
+    "to": "2026-08-27 04:20:00+00:00",
+    "bars": {
+      "BTC": 5011,
+      "ETH": 5010
+    }
+  },
+  "assumptions": {
+    "same_bar_tie": "stop counted first",
+    "one_position_at_a_time": true,
+    "one_entry_per_symbol_per_day": true,
+    "max_daily_trades": 8,
+    "not_modelled": [
+      "funding",
+      "liquidation",
+      "stop slippage",
+      "LLM choice among top rows"
+    ]
+  },
+  "summary": {
+    "trades_closed": 9,
+    "trades_open_at_end": 1,
+    "wins": 5,
+    "win_rate": 0.5555555555555556,
+    "win_rate_ci95": [
+      0.2666473457440297,
+      0.811224570528086
+    ],
+    "avg_stop_pct": 2.0,
+    "avg_take_pct": 4.0,
+    "avg_model_p_win": 0.34650000000000003,
+    "avg_hold_hours": 41.77777777777778,
+    "by_cost": {
+      "gross": {
+        "round_trip_cost_pct": 0.0,
+        "breakeven_win_rate": 0.3333333333333333,
+        "avg_net_pct_of_notional": 1.3333333333333333,
+        "total_net_pct_of_notional": 12.0
+      },
+      "venue_only": {
+        "round_trip_cost_pct": 0.13,
+        "breakeven_win_rate": 0.355,
+        "avg_net_pct_of_notional": 1.2033333333333336,
+        "total_net_pct_of_notional": 10.830000000000002
+      },
+      "with_platform_fee": {
+        "round_trip_cost_pct": 1.13,
+        "breakeven_win_rate": 0.5216666666666666,
+        "avg_net_pct_of_notional": 0.20333333333333345,
+        "total_net_pct_of_notional": 1.830000000000001
+      }
+    }
+  },
+  "random_direction_baseline": {
+    "seeds": 500,
+    "mean_win_rate": 0.33,
+    "p05": 0.1111111111111111,
+    "p95": 0.5555555555555556,
+    "share_of_random_runs_at_or_above_engine": 0.12
+  },
+  "trades": [
+    {
+      "t": "2026-08-10 00:50:00+00:00",
+      "symbol": "BTC",
+      "direction": "short",
+      "entry": 64964.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3664,
+      "outcome": "loss",
+      "gross_pct": -2.0,
+      "exit_t": "2026-08-19 15:05:00+00:00",
+      "bars_held": 2763
+    },
+    {
+      "t": "2026-08-19 15:20:00+00:00",
+      "symbol": "BTC",
+      "direction": "long",
+      "entry": 67162.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3411,
+      "outcome": "win",
+      "gross_pct": 4.0,
+      "exit_t": "2026-08-19 15:25:00+00:00",
+      "bars_held": 1
+    },
+    {
+      "t": "2026-08-19 15:35:00+00:00",
+      "symbol": "ETH",
+      "direction": "long",
+      "entry": 2083.6,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3345,
+      "outcome": "win",
+      "gross_pct": 4.0,
+      "exit_t": "2026-08-19 20:50:00+00:00",
+      "bars_held": 63
+    },
+    {
+      "t": "2026-08-20 00:05:00+00:00",
+      "symbol": "BTC",
+      "direction": "long",
+      "entry": 69621.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3475,
+      "outcome": "win",
+      "gross_pct": 4.0,
+      "exit_t": "2026-08-20 10:15:00+00:00",
+      "bars_held": 122
+    },
+    {
+      "t": "2026-08-20 10:20:00+00:00",
+      "symbol": "ETH",
+      "direction": "long",
+      "entry": 2287.5,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3414,
+      "outcome": "win",
+      "gross_pct": 4.0,
+      "exit_t": "2026-08-21 01:45:00+00:00",
+      "bars_held": 185
+    },
+    {
+      "t": "2026-08-21 01:50:00+00:00",
+      "symbol": "ETH",
+      "direction": "long",
+      "entry": 2366.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.338,
+      "outcome": "win",
+      "gross_pct": 4.0,
+      "exit_t": "2026-08-21 21:10:00+00:00",
+      "bars_held": 232
+    },
+    {
+      "t": "2026-08-21 21:20:00+00:00",
+      "symbol": "BTC",
+      "direction": "long",
+      "entry": 78098.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3499,
+      "outcome": "loss",
+      "gross_pct": -2.0,
+      "exit_t": "2026-08-23 04:55:00+00:00",
+      "bars_held": 379
+    },
+    {
+      "t": "2026-08-23 05:05:00+00:00",
+      "symbol": "BTC",
+      "direction": "short",
+      "entry": 76342.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.356,
+      "outcome": "loss",
+      "gross_pct": -2.0,
+      "exit_t": "2026-08-23 21:15:00+00:00",
+      "bars_held": 194
+    },
+    {
+      "t": "2026-08-23 21:20:00+00:00",
+      "symbol": "ETH",
+      "direction": "long",
+      "entry": 2472.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3437,
+      "outcome": "loss",
+      "gross_pct": -2.0,
+      "exit_t": "2026-08-25 21:05:00+00:00",
+      "bars_held": 573
+    },
+    {
+      "t": "2026-08-25 21:20:00+00:00",
+      "symbol": "BTC",
+      "direction": "short",
+      "entry": 78341.0,
+      "stop_pct": 2.0,
+      "take_pct": 4.0,
+      "p_win_model": 0.3482,
+      "outcome": "open",
+      "gross_pct": -0.6344,
+      "exit_t": "2026-08-27 04:20:00+00:00",
+      "bars_held": 372
+    }
+  ]
+}

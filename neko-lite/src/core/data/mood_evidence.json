@@ -1,0 +1,42 @@
+{
+ "with_mood": {
+  "choose": {
+   "accuracy": 0.5492689129052766,
+   "avg_pct": 2.817728364590627,
+   "coin_weeks": 1573
+  },
+  "check": {
+   "accuracy": 0.5025316455696203,
+   "avg_pct": 0.9872826588307742,
+   "coin_weeks": 1580
+  }
+ },
+ "extreme": {
+  "choose": {
+   "accuracy": 0.554006968641115,
+   "avg_pct": 5.177187153339774,
+   "coin_weeks": 574
+  },
+  "check": {
+   "accuracy": 0.5885714285714285,
+   "avg_pct": 1.8488638285136698,
+   "coin_weeks": 350
+  }
+ },
+ "holding": {
+  "choose": {
+   "accuracy": 0.4858757062146893,
+   "avg_pct": 2.04148360924037,
+   "coin_weeks": 1593
+  },
+  "check": {
+   "accuracy": 0.4654320987654321,
+   "avg_pct": 0.7520308523395283,
+   "coin_weeks": 1620
+  }
+ },
+ "from": "2020-08-23",
+ "to": "2026-11-15",
+ "split": "2023-10-08",
+ "coins": 10
+}

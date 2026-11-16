@@ -1,22 +1,30 @@
+# Neko web app: weekly calls, desk, forex planner, console and public page.
+# This is the default deployment. The old Telegram bot stack is Dockerfile.telegram.
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for building pysui/solders wheels
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libffi-dev && \
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Python deps
 COPY service/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# App (Telegram bot + internal API; the web frontend is intentionally excluded)
 COPY service/ ./service/
+COPY web/ ./web/
+COPY skills/ ./skills/
+COPY research/exports/tables/live_engine_replay.json ./research/exports/tables/live_engine_replay.json
+COPY research/exports/tables/crypto_weekly_search.json ./research/exports/tables/crypto_weekly_search.json
+COPY research/exports/tables/crypto_in_or_out.json ./research/exports/tables/crypto_in_or_out.json
+COPY research/exports/tables/leverage_on_rule.json ./research/exports/tables/leverage_on_rule.json
+COPY research/exports/tables/crypto_long_short.json ./research/exports/tables/crypto_long_short.json
+COPY research/exports/tables/crypto_exits.json ./research/exports/tables/crypto_exits.json
+COPY research/exports/tables/crypto_take_profit.json ./research/exports/tables/crypto_take_profit.json
 
-WORKDIR /app/service
+# Persist this directory: it holds the database and the secret key.
+# Set NEKO_PASSWORD when running; nothing else is required.
+ENV NEKO_DATA_DIR=/data
+VOLUME /data
 
-# No EXPOSE / no public port — this is a background Telegram bot + its
-# internal API on 127.0.0.1:8000 (used by live_agent for prices/positions),
-# NOT a web application. Coolify must treat it as a worker.
-CMD ["python", "start.py"]
+EXPOSE 8000
+CMD ["python", "service/start_web.py"]

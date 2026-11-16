@@ -1,0 +1,309 @@
+{
+ "generated_at": "2026-11-15T09:00:14+00:00",
+ "source": "CFTC Commitments of Traders, legacy futures only; ECB reference rates",
+ "currencies": [
+  "EUR",
+  "GBP",
+  "AUD",
+  "NZD",
+  "JPY",
+  "CHF",
+  "CAD"
+ ],
+ "from": "1999-01-04",
+ "to": "2026-11-16",
+ "cost_pct": 0.04,
+ "split": "2013-01-01",
+ "passed": 0,
+ "tried": 9,
+ "rows": [
+  {
+   "rule": "Trade with large speculators",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 4827,
+     "accuracy": 0.5273518441773726,
+     "avg_pct": 0.04212193888310084,
+     "t": 1.1949226582722967
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.49624505928853757,
+     "avg_pct": -0.011126760479049617,
+     "t": -0.49595238771877986
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 4827,
+     "accuracy": 0.5273518441773726,
+     "avg_pct": 0.0021219388831008037,
+     "t": 0.022134379088727056
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.49624505928853757,
+     "avg_pct": -0.051126760479049654,
+     "t": -2.2788698456890493
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Trade against large speculators",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 4827,
+     "accuracy": 0.4726481558226274,
+     "avg_pct": -0.04212193888310084,
+     "t": -1.1949226582722967
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.5037549407114624,
+     "avg_pct": 0.011126760479049617,
+     "t": 0.49595238771877986
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 4827,
+     "accuracy": 0.4726481558226274,
+     "avg_pct": -0.08212193888310086,
+     "t": -2.3677109374558665
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.5037549407114624,
+     "avg_pct": -0.028873239520950417,
+     "t": -1.2869650702514899
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Fade speculators at a 3-year extreme",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 867,
+     "accuracy": 0.44803695150115475,
+     "avg_pct": -0.14726570038579082,
+     "t": -1.5430189604981104
+    },
+    "check": {
+     "pair_weeks": 938,
+     "accuracy": 0.5144076840981857,
+     "avg_pct": 0.05746613566355701,
+     "t": 1.3721134593278412
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 867,
+     "accuracy": 0.44803695150115475,
+     "avg_pct": -0.18726570038579085,
+     "t": -2.060809453655794
+    },
+    "check": {
+     "pair_weeks": 938,
+     "accuracy": 0.5144076840981857,
+     "avg_pct": 0.017466135663556977,
+     "t": 0.4951880104746478
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Join speculators at a 3-year extreme",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 867,
+     "accuracy": 0.5519630484988453,
+     "avg_pct": 0.14726570038579082,
+     "t": 1.5430189604981104
+    },
+    "check": {
+     "pair_weeks": 938,
+     "accuracy": 0.4855923159018143,
+     "avg_pct": -0.05746613566355701,
+     "t": -1.3721134593278412
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 867,
+     "accuracy": 0.5519630484988453,
+     "avg_pct": 0.1072657003857908,
+     "t": 1.0252284673404264
+    },
+    "check": {
+     "pair_weeks": 938,
+     "accuracy": 0.4855923159018143,
+     "avg_pct": -0.09746613566355704,
+     "t": -2.249038908181035
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Follow last week's change in speculator position",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 4838,
+     "accuracy": 0.5007235890014472,
+     "avg_pct": 0.02160600892998288,
+     "t": 0.8206518130392606
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.4907114624505929,
+     "avg_pct": -0.02057976265226143,
+     "t": -1.0763180734129183
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 4838,
+     "accuracy": 0.5007235890014472,
+     "avg_pct": -0.018393991070017136,
+     "t": -0.6702440738300317
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.4907114624505929,
+     "avg_pct": -0.060579762652261455,
+     "t": -3.1683112447620485
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Follow the 4-week change in speculator position",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 4840,
+     "accuracy": 0.506302955156024,
+     "avg_pct": 0.022432094333140164,
+     "t": 0.7731110023861995
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.48458498023715413,
+     "avg_pct": -0.021988304341297296,
+     "t": -1.1575825212298467
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 4840,
+     "accuracy": 0.506302955156024,
+     "avg_pct": -0.017567905666859857,
+     "t": -0.5991451725390959
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.48458498023715413,
+     "avg_pct": -0.06198830434129733,
+     "t": -3.2633975095293057
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Trade against small traders",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 4851,
+     "accuracy": 0.48041237113402063,
+     "avg_pct": -0.05298969709703858,
+     "t": -1.684022930938666
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.5156126482213439,
+     "avg_pct": 0.01921846210801247,
+     "t": 0.8242366762927973
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 4851,
+     "accuracy": 0.48041237113402063,
+     "avg_pct": -0.09298969709703861,
+     "t": -2.937746099006313
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.5156126482213439,
+     "avg_pct": -0.020781537891987552,
+     "t": -0.8912734860924877
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Fade small traders at a 3-year extreme",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 553,
+     "accuracy": 0.45750452079566006,
+     "avg_pct": -0.15225219253376565,
+     "t": -1.9535876293620977
+    },
+    "check": {
+     "pair_weeks": 647,
+     "accuracy": 0.5185758513931888,
+     "avg_pct": -0.019247948346802837,
+     "t": -0.5050084754251702
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 553,
+     "accuracy": 0.45750452079566006,
+     "avg_pct": -0.1922521925337657,
+     "t": -2.488595666755116
+    },
+    "check": {
+     "pair_weeks": 647,
+     "accuracy": 0.5185758513931888,
+     "avg_pct": -0.05924794834680285,
+     "t": -1.2024318735999695
+    }
+   },
+   "passed": false
+  },
+  {
+   "rule": "Trade with commercial hedgers",
+   "no_costs": {
+    "choose": {
+     "pair_weeks": 4851,
+     "accuracy": 0.4756701030927835,
+     "avg_pct": -0.03706463278107581,
+     "t": -1.0997617192643119
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.5053359683794466,
+     "avg_pct": 0.01377972836275946,
+     "t": 0.5962896624316703
+    }
+   },
+   "with_costs": {
+    "choose": {
+     "pair_weeks": 4851,
+     "accuracy": 0.4756701030927835,
+     "avg_pct": -0.07706463278107585,
+     "t": -2.254260603912937
+    },
+    "check": {
+     "pair_weeks": 5061,
+     "accuracy": 0.5053359683794466,
+     "avg_pct": -0.026220271637240562,
+     "t": -1.134628819367083
+    }
+   },
+   "passed": false
+  }
+ ]
+}

@@ -1,0 +1,78 @@
+{
+ "long": {
+  "target": null,
+  "with": {
+   "weeks": 309,
+   "ahead": 0.49191,
+   "avg": 0.05241,
+   "worst": -0.49543,
+   "total": 16.19324,
+   "first_target": 0,
+   "final_target": 0,
+   "stopped": 0.21036,
+   "locked_out": 0
+  },
+  "stop_only": {
+   "weeks": 309,
+   "ahead": 0.49191,
+   "avg": 0.05241,
+   "worst": -0.49543,
+   "total": 16.19324,
+   "first_target": 0,
+   "final_target": 0,
+   "stopped": 0.21036,
+   "locked_out": 0
+  },
+  "at_one_normal_week": {
+   "weeks": 309,
+   "ahead": 0.50485,
+   "avg": 0.02527,
+   "worst": -0.49543,
+   "total": 7.80993,
+   "first_target": 0,
+   "final_target": 0.31392,
+   "stopped": 0.20388,
+   "locked_out": 0
+  },
+  "plans_as_good": 0,
+  "plans_tested": 83
+ },
+ "short": {
+  "target": 1,
+  "with": {
+   "weeks": 214,
+   "ahead": 0.5514,
+   "avg": 0.01139,
+   "worst": -0.56588,
+   "total": 2.43722,
+   "first_target": 0,
+   "final_target": 0.30841,
+   "stopped": 0.23364,
+   "locked_out": 0
+  },
+  "stop_only": {
+   "weeks": 214,
+   "ahead": 0.51869,
+   "avg": 0.00963,
+   "worst": -0.56588,
+   "total": 2.06005,
+   "first_target": 0,
+   "final_target": 0,
+   "stopped": 0.25234,
+   "locked_out": 0
+  },
+  "at_one_normal_week": {
+   "weeks": 214,
+   "ahead": 0.5514,
+   "avg": 0.01139,
+   "worst": -0.56588,
+   "total": 2.43722,
+   "first_target": 0,
+   "final_target": 0.30841,
+   "stopped": 0.23364,
+   "locked_out": 0
+  },
+  "plans_as_good": 30,
+  "plans_tested": 83
+ }
+}
