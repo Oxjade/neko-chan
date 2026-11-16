@@ -78,11 +78,16 @@ def _stats(symbol: str) -> dict:
     def change(bars):
         return float((close[-1] / close[-bars - 1] - 1) * 100) if len(close) > bars else None
 
+    def reference(bars):
+        return float(close[-bars - 1]) if len(close) > bars else None
+
     def vol(bars):
         return float(returns[-bars:].std(ddof=1) * ANNUAL * 100) if len(returns) >= bars else None
     return {
         "symbol": symbol, "label": row["label"], "class": row["class"],
         "week_pct": change(7 * BARS_PER_DAY), "month_pct": change(30 * BARS_PER_DAY),
+        # the prices those two are measured from, so a screen can redo them from a live price
+        "week_ref_price": reference(7 * BARS_PER_DAY), "month_ref_price": reference(30 * BARS_PER_DAY),
         "four_week_pct": change(28 * BARS_PER_DAY),
         "trend": row["trend"], "trend_days": row["trend_days"], "atr_pct": row["atr_pct"],
         "vol_7d": vol(7 * BARS_PER_DAY), "vol_30d": vol(30 * BARS_PER_DAY),
@@ -104,6 +109,7 @@ def worksheet(live: dict) -> list[dict]:
     for r in rows:
         now = live.get(r["symbol"]) or {}
         out.append({**r, "price": now.get("price"), "day_change_pct": now.get("day_change_pct"),
+                    "prev_day_price": now.get("prev_day_price"),
                     "funding_apr": (now.get("funding_hourly") or 0.0) * 24 * 365 * 100,
                     "open_interest_usd": now.get("open_interest_usd"),
                     "day_volume_usd": now.get("day_volume_usd")})
@@ -120,6 +126,25 @@ def performance() -> dict:
         window = close[-30 * BARS_PER_DAY - 1::3]
         series[md.label(symbol)] = [float(v / window[0] * 100) for v in window]
     return series
+
+
+def performance_start() -> dict:
+    """Where each thirty-day line starts (its 100), so a screen can carry the line on to the live price."""
+    out = {}
+    for symbol in PERFORMANCE:
+        close = _soft(lambda: md.candles(symbol)["close"], None)
+        if close is None or len(close) < 30 * BARS_PER_DAY + 1:
+            continue
+        out[md.label(symbol)] = {"symbol": symbol, "price": float(close[-30 * BARS_PER_DAY - 1])}
+    return out
+
+
+def universe(live: dict) -> list[dict]:
+    """Every market the movers and breadth are counted over, with what a screen needs
+    to count them again from live prices."""
+    return [{"symbol": r["symbol"], "label": r["label"], "class": r["class"], "price": r["price"],
+             "prev_day_price": r.get("prev_day_price"), "day_volume_usd": r["day_volume_usd"]}
+            for r in live.values()]
 
 
 def correlation() -> dict:
@@ -226,6 +251,7 @@ def snapshot(stake: float, now: datetime | None = None) -> dict:
         "breadth": _soft(lambda: breadth(live), {}),
         "worksheet": _soft(lambda: worksheet(live), []),
         "performance": slow("terminal:performance", 300, performance, {}),
+        "performance_start": slow("terminal:performance_start", 300, performance_start, {}),
         "correlation": slow("terminal:correlation", 300, correlation, {"labels": [], "matrix": []}),
         "signals": _soft(lambda: signal_matrix(week), []),
         "leverage": _soft(leverage_table, {"levels": [], "rows": []}),
@@ -235,5 +261,6 @@ def snapshot(stake: float, now: datetime | None = None) -> dict:
         "forex": slow("terminal:forex", 3600, lambda: forex_weekly.overview()["pairs"], []),
         "mood_history": slow("terminal:mood", 3600, mood_history, []),
         "exits": _soft(exits, None),
+        "universe": _soft(lambda: universe(live), []),
         "markets": len(live),
     }

@@ -243,6 +243,7 @@ def snapshot(stake: float, now: datetime | None = None) -> dict:
             "symbol": symbol, "label": row.get("label", md.label(symbol)),
             "class": row.get("class", md.asset_class(symbol)),
             "price": fresh.get("price", row.get("price")), "day_change_pct": fresh.get("day_change_pct"),
+            "prev_day_price": fresh.get("prev_day_price"),
             "spark": closes, "note": _note(row, rec), "recommendation": rec,
         })
     total = sum(p["pnl_usd"] for p in positions)
