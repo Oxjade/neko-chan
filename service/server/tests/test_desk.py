@@ -238,7 +238,7 @@ class WeeklyCallsTests(unittest.TestCase):
     EXITS = {"stop": 1.0, "targets": {"long": None, "short": 1.0}, "take_profit": {},
              "with": None, "holding": None, "by_call": {}}
 
-    def _week(self, mood_value, label, closes_by_coin, normal=0.05, monday_open=None):
+    def _week(self, mood_value, label, closes_by_coin, normal=0.05, monday_open=None, forming_open=None):
         import crypto_mood
         import weekly_calls as wc
         from datetime import date
@@ -250,6 +250,7 @@ class WeeklyCallsTests(unittest.TestCase):
                 mock.patch.object(wc, "calls_config", lambda: CONFIG), \
                 mock.patch.object(wc, "exit_rule", lambda: self.EXITS), \
                 mock.patch.object(wc, "daily_candles", lambda coin: candles), \
+                mock.patch.object(wc, "week_open", lambda coin, monday: forming_open), \
                 mock.patch.object(wc, "normal_week", lambda candles, sunday: normal), \
                 mock.patch.object(wc, "sunday_closes", lambda coin: closes_by_coin[coin]):
             return wc.this_week(), wc.one_line()
@@ -282,6 +283,35 @@ class WeeklyCallsTests(unittest.TestCase):
         eth = week["coins"][1]
         self.assertEqual(eth["entry"], 60.0)
         self.assertAlmostEqual(eth["stop_price"], 63.0)
+
+    def test_entry_is_fixed_at_the_weeks_open_while_monday_is_still_forming(self):
+        down = self.closes(90, 100)
+        # Monday has started but not closed: its candle is not among the finished ones yet
+        week, _ = self._week(28, "Fear", {"BTC": down, "ETH": down}, forming_open=58.0)
+        eth = week["coins"][1]
+        self.assertEqual(eth["entry"], 58.0)                 # not the live price of 50
+        self.assertAlmostEqual(eth["stop_price"], 58.0 * 1.05)
+        self.assertAlmostEqual(eth["target_price"], 58.0 * 0.95)
+        # once Monday has closed, the finished candle is used
+        week, _ = self._week(28, "Fear", {"BTC": down, "ETH": down}, monday_open=60.0, forming_open=58.0)
+        self.assertEqual(week["coins"][1]["entry"], 60.0)
+
+    def test_week_open_reads_mondays_forming_candle(self):
+        import weekly_calls as wc
+        from datetime import date, datetime, timezone
+        market_data._cache.clear()
+        day = lambda d: int(datetime(2026, 11, d, tzinfo=timezone.utc).timestamp() * 1000)
+        rows = [{"t": day(15), "o": "1800"}, {"t": day(16), "o": "1834.4"}]
+        with mock.patch.object(market_data, "_post", lambda payload: rows):
+            self.assertEqual(wc.week_open("ETH", date(2026, 11, 16)), 1834.4)
+            self.assertIsNone(wc.week_open("ETH", date(2026, 11, 23)))     # that Monday has not started
+        market_data._cache.clear()
+
+        def down(payload):
+            raise market_data.DataError("no answer")
+        with mock.patch.object(market_data, "_post", down):
+            self.assertIsNone(wc.week_open("ETH", date(2026, 11, 16)))
+        market_data._cache.clear()
 
     def test_greedy_and_rising_goes_long_and_mixed_stays_out(self):
         up, down = self.closes(110, 100), self.closes(90, 100)

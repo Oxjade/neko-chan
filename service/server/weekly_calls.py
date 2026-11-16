@@ -131,6 +131,23 @@ def sunday_closes(coin: str) -> list[dict]:
     return md.cached(f"sunday_closes:{coin}", 3600, load)
 
 
+def week_open(coin: str, monday) -> float | None:
+    """The price the week opened at: the open of Monday's daily candle.
+
+    That candle exists from 00:00 UTC while its day is still forming, so the
+    entry, stop and take profit are fixed from the first minute of the week
+    instead of following the live price until Monday has closed."""
+    def load():
+        now = int(time.time() * 1000)
+        rows = md._post({"type": "candleSnapshot", "req": {
+            "coin": coin, "interval": "1d", "startTime": now - 9 * DAY_MS, "endTime": now}})
+        return {datetime.fromtimestamp(int(r["t"]) / 1000, timezone.utc).date(): float(r["o"]) for r in rows}
+    try:
+        return md.cached(f"week_open:{coin}", 300, load).get(monday)
+    except md.DataError:
+        return None                           # the live price stands in until the candle can be read
+
+
 def spot_record() -> dict | None:
     """The long side without leverage, against simply holding."""
     try:
@@ -186,8 +203,10 @@ def this_week() -> dict:
             sign = 1 if sig == "long" else -1
             candles = daily_candles(coin)
             sunday = closes[0]["date"]
-            # The trade opens at Monday's open; before that candle has closed, use the live price.
-            entry = (candles.get(sunday + timedelta(days=1)) or {}).get("open") or price
+            # The trade opens at Monday's open. Before Monday starts there is no such candle yet,
+            # so the live price stands in.
+            monday = sunday + timedelta(days=1)
+            entry = (candles.get(monday) or {}).get("open") or week_open(coin, monday) or price
             distance = liquidation_distance(leverage, max_lev)
             row["entry"] = entry
             row["liquidation_move_pct"] = distance * 100
