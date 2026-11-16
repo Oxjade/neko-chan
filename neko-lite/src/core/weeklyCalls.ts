@@ -13,20 +13,23 @@
 // than not AND profitable in both halves of the history for that coin. The
 // suggested leverage is the highest tested level at which the weekly stake
 // was liquidated in at most one week in fifty. Positions are opened on Monday
-// (00:00 UTC) and closed the following Monday. A stop one "normal week" from
-// entry (the coin's typical weekly move over the last half year) is suggested
-// as protection. Shorts also take profit one normal week from entry, because
-// falls tend to bounce; longs have no take profit, because every nearer
-// target made longs worse. A call whose share of the weekly amount is below
-// the exchange's smallest order is flagged as too small to place.
+// (00:00 UTC), at the open of Monday's daily candle, and closed the following
+// Monday. A stop one "normal week" from entry (the coin's typical weekly move
+// over the last half year) is suggested as protection. Shorts also take
+// profit one normal week from entry, because falls tend to bounce; longs have
+// no take profit, because every nearer target made longs worse. A call whose
+// share of the weekly amount is below the exchange's smallest order is
+// flagged as too small to place.
 
+import { cached } from "./cache";
 import * as cryptoMood from "./cryptoMood";
 import callsTable from "./data/calls.json";
 import exitsTable from "./data/exits.json";
 import spotTable from "./data/spot_record.json";
 import takeProfitTable from "./data/take_profit.json";
 import { DAY_MS, SUNDAY, dayOf, isoDay, parseDay, weekday } from "./dates";
-import { closedBars, type Bars } from "./history";
+import { closedBars, formingBar, type Bars, type RawCandle } from "./history";
+import { candleWeight, info } from "./hyperliquid";
 import { catalogue, type Catalogue } from "./marketData";
 import { pySum } from "./numeric";
 import { DataError, runtime } from "./runtime";
@@ -44,6 +47,7 @@ export const FEE_PER_SIDE = 0.00045;         // exchange fee, share of the posit
 export const FUNDING_PER_DAY = 0.0003;       // typical cost of holding a leveraged long, per day
 const DAILY_DAYS = 330;
 const SUNDAY_DAYS = 70;
+const WEEK_OPEN_DAYS = 9;
 const OUT_OF_STEP = "This week's mood and prices are out of step; try again shortly.";
 
 export interface Day {
@@ -174,6 +178,36 @@ export async function sundayCloses(coin: string): Promise<SundayClose[]> {
   return out;
 }
 
+/**
+ * The price the week opened at: the open of Monday's daily candle.
+ *
+ * That candle exists from 00:00 UTC while its day is still forming, so the
+ * entry, stop and take profit are fixed from the first minute of the week
+ * instead of following the live price until Monday has closed.
+ *
+ * The request that brought the finished daily candles also brought the one
+ * still forming, so normally nothing more is asked of the exchange. Only when
+ * that candle is not in hand are the last nine daily candles asked for.
+ */
+export async function weekOpen(coin: string, monday: number): Promise<number | null> {
+  const forming = formingBar(coin, "1d", DAILY_DAYS);
+  if (forming && dayOf(forming.t) === monday) return forming.open;
+  try {
+    const opens = await cached(`week_open:${coin}`, 300, async () => {
+      const now = runtime.now();
+      const rows = await info<RawCandle[]>(
+        { type: "candleSnapshot", req: { coin, interval: "1d", startTime: now - WEEK_OPEN_DAYS * DAY_MS, endTime: now } },
+        { weight: candleWeight(WEEK_OPEN_DAYS + 1) });
+      if (!Array.isArray(rows)) throw new DataError("Market data is unavailable right now (ValueError).");
+      return new Map(rows.map((row) => [dayOf(Number(row.t)), Number(row.o)]));
+    });
+    return opens.get(monday) ?? null;
+  } catch (error) {
+    if (error instanceof DataError) return null;   // the live price stands in until the candle can be read
+    throw error;
+  }
+}
+
 function record(sideConfig: SideConfig, leverage: number | null): CoinRecord {
   const at = leverage ? (sideConfig.by_leverage ?? {})[`${leverage}x`] : undefined;
   const half = (h: SideConfig["first_half"]) => ({ right: h.right, avg_pct: h.avg_pct, coin_weeks: h.coin_weeks });
@@ -194,6 +228,8 @@ export interface WeekInputs {
   live: Catalogue | Map<string, { price?: number; max_leverage?: number }>;
   closes: Record<string, SundayClose[]>;
   candles: Record<string, Days>;
+  /** Monday's open for coins whose Monday candle has started but not finished. */
+  weekOpens?: Record<string, number | null>;
   /** Replaceable so a test can fix the normal week. */
   normalWeek?: (candles: Days, sunday: number) => number | null;
 }
@@ -235,8 +271,9 @@ export function buildWeek(inputs: WeekInputs): Week {
       const sign = sig === "long" ? 1 : -1;
       const candles = inputs.candles[coin] ?? new Map<number, Day>();
       const sunday = closes[0].day;
-      // The trade opens at Monday's open; before that candle has closed, use the live price.
-      const entry = candles.get(sunday + 1)?.open || price;
+      // The trade opens at Monday's open. Before Monday starts there is no such candle yet,
+      // so the live price stands in.
+      const entry = candles.get(sunday + 1)?.open || inputs.weekOpens?.[coin] || price;
       const distance = liquidationDistance(leverage, maxLev);
       row.entry = entry;
       row.liquidation_move_pct = distance * 100;
@@ -301,11 +338,23 @@ export async function thisWeek(): Promise<Week> {
     cryptoMood.thisWeek(), catalogue(),
     Promise.all(coins.map(sundayCloses)), Promise.all(coins.map(dailyCandles)),
   ]);
+  // Monday's open is only looked up where it decides the entry: for a coin that is
+  // called this week and whose Monday candle has not finished.
+  const value = mood.week_reading.value;
+  const opens = await Promise.all(coins.map(async (coin, i) => {
+    const weeks = closes[i];
+    if (weeks.length < 5 || isoDay(weeks[0].day) !== mood.week_reading.date) return null;
+    const monday = weeks[0].day + 1;
+    if (candles[i].get(monday)?.open) return null;
+    const sig = signal(value, weeks[0].close, weeks[4].close);
+    return sig && config[coin][sig].allowed ? weekOpen(coin, monday) : null;
+  }));
   try {
     const week = buildWeek({
       config, exits: exitRule(), mood, live,
       closes: Object.fromEntries(coins.map((coin, i) => [coin, closes[i]])),
       candles: Object.fromEntries(coins.map((coin, i) => [coin, candles[i]])),
+      weekOpens: Object.fromEntries(coins.map((coin, i) => [coin, opens[i]])),
     });
     cryptoMood.expectUpdate(false);
     return week;

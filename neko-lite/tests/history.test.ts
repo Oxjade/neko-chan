@@ -4,10 +4,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { configure, getAdvanced, getTerminal } from "../src/core/api";
-import { HISTORY_BARS, historyStatus, settled, want } from "../src/core/history";
+import { HISTORY_BARS, closedBars, formingBar, historyStatus, settled, want } from "../src/core/history";
 import * as md from "../src/core/marketData";
 import { WORKSHEET } from "../src/core/terminalAdv";
-import { INTERVALS, makeUpstream, memoryStorage, type Upstream } from "./helpers/upstream";
+import { INTERVALS, makeUpstream, memoryStorage, priceAt, type Upstream } from "./helpers/upstream";
 
 const H4 = INTERVALS["4h"];
 const NOW = Date.UTC(2026, 10, 11, 9, 30);
@@ -111,6 +111,27 @@ describe("price history between visits", () => {
     const t = bars("BTC").t;
     expect(t[t.length - 1] + H4).toBeLessThanOrEqual(up.now);
     expect(t[t.length - 1] + 2 * H4).toBeGreaterThan(up.now);
+  });
+
+  it("keeps the open of the bar still forming, which came with the closed ones", async () => {
+    const DAY = INTERVALS["1d"];
+    const today = Math.floor(NOW / DAY) * DAY;
+    expect(formingBar("ETH", "1d", 330)).toBeNull();          // nothing loaded yet, and nothing is asked for
+    const daily = await closedBars("ETH", "1d", 330);
+    expect(daily.t[daily.t.length - 1]).toBe(today - DAY);    // the closed bars stop at yesterday
+    const open = { t: today, open: Number(priceAt("ETH", today).toPrecision(8)) };
+    expect(formingBar("ETH", "1d", 330)).toEqual(open);
+    expect(up.candleRequests("1d").length).toBe(1);
+
+    visit();                                                  // a new page load reads it from storage
+    await closedBars("ETH", "1d", 330);
+    expect(formingBar("ETH", "1d", 330)).toEqual(open);
+    expect(up.candleRequests("1d").length).toBe(1);
+
+    up.now = today + DAY + 5000;                              // the next day has begun
+    expect(formingBar("ETH", "1d", 330)).toBeNull();          // yesterday's bar is no longer the one forming
+    await closedBars("ETH", "1d", 330);
+    expect(formingBar("ETH", "1d", 330)?.t).toBe(today + DAY);
   });
 
   it("a market listed too recently has no trend yet, and says why", async () => {

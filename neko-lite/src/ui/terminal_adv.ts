@@ -351,12 +351,12 @@ function exitTable(exits: AdvancedExits | null): Child {
     const plan = plans[side];
     if (!plan) continue;
     if (plan.target) {
-      rows.push(row(`${word}: stop, take profit ${plan.target} normal week away`, plan.with, true),
+      rows.push(row(`${word}: stop and take profit`, plan.with, true),
                 row(`${word}: stop only`, plan.stop_only, false));
     } else {
       rows.push(row(`${word}: stop only, no take profit`, plan.stop_only, true));
       if (plan.at_one_normal_week) {
-        rows.push(row(`${word}: with a take profit 1 normal week away`, plan.at_one_normal_week, false));
+        rows.push(row(`${word}: with a take profit`, plan.at_one_normal_week, false));
       }
     }
   }
@@ -370,8 +370,8 @@ function exitTable(exits: AdvancedExits | null): Child {
       h("th", { class: "n" }, "Ahead"), h("th", { class: "n" }, "Avg week"), h("th", { class: "n" }, "Worst week"))),
     h("tbody", null, rows)),
     h("p", { class: "dim t-pad t-micro" },
-      "Share of the stake, at the suggested leverage. Amber rows are the rules in use: shorts bank profit " +
-      "because falls tend to bounce, longs are left to run.")];
+      "Share of the stake, at the suggested leverage, with the take profit one normal week away. Amber rows " +
+      "are the rules in use: shorts bank profit because falls tend to bounce, longs are left to run.")];
 }
 
 function paintPerformance(el: Elements, adv: AdvancedSnapshot): void {

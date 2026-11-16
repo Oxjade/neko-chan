@@ -31,6 +31,8 @@ export interface Upstream {
   fixed: Map<string, RawCandle[]>;
   /** When a market was listed: no candles before this. */
   listedSince: Map<string, number>;
+  /** How long after a bar's start the exchange first has a candle for it. */
+  barDelayMs: number;
   /** Fear & Greed value for a day number. */
   mood: (day: number) => number;
   /** How long after midnight UTC the index publishes the new day's reading. */
@@ -73,7 +75,7 @@ export function label(value: number): string {
 export function makeUpstream(now: number): Upstream {
   const up: Upstream = {
     fetch: (async () => new Response("unset")) as typeof fetch,
-    now, sent: [], failWith: () => null, fixed: new Map(), listedSince: new Map(),
+    now, sent: [], failWith: () => null, fixed: new Map(), listedSince: new Map(), barDelayMs: 0,
     mood: (day) => Math.round(50 + 30 * Math.sin(day / 11)),
     moodDelayMs: 0,
     forex: { pairs: [{ pair: "EURUSD", price: 1.1, as_of: "2026-11-13", last_week_pct: 0.2, normal_week_pct: 1.0,
@@ -105,7 +107,7 @@ export function makeUpstream(now: number): Upstream {
     } else {
       const since = up.listedSince.get(req.coin) ?? -Infinity;
       rows = [];
-      for (let t = Math.floor(req.startTime / ms) * ms; t <= req.endTime && t <= up.now; t += ms) {
+      for (let t = Math.floor(req.startTime / ms) * ms; t <= req.endTime && t + up.barDelayMs <= up.now; t += ms) {
         if (t >= since) rows.push(candle(req.coin, t, ms, up.now));
       }
     }

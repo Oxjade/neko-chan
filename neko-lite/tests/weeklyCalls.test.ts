@@ -9,7 +9,7 @@ import * as cryptoMood from "../src/core/cryptoMood";
 import { isoDay, parseDay } from "../src/core/dates";
 import type { CallsConfig, MoodReading, Side, SideConfig } from "../src/core/types";
 import * as wc from "../src/core/weeklyCalls";
-import { makeUpstream } from "./helpers/upstream";
+import { makeUpstream, priceAt } from "./helpers/upstream";
 
 const day = parseDay;
 
@@ -128,13 +128,14 @@ describe("weekly calls", () => {
   });
 
   const week = (moodValue: number, label: string, closesByCoin: Record<string, wc.SundayClose[]>,
-                normal = 0.05, mondayOpen: number | null = null) => {
+                normal = 0.05, mondayOpen: number | null = null, formingOpen: number | null = null) => {
     const mood: { week_reading: MoodReading } = { week_reading: { value: moodValue, label, date: "2026-11-08" } };
     const live = new Map([["BTC", { price: 100.0, max_leverage: 40 }], ["ETH", { price: 50.0, max_leverage: 25 }]]);
     const candles: wc.Days = new Map();
     if (mondayOpen) candles.set(day("2026-11-09"), { open: mondayOpen } as wc.Day);
     return wc.buildWeek({ config: CONFIG, exits: EXITS, mood, live, closes: closesByCoin,
-                          candles: { BTC: candles, ETH: candles }, normalWeek: () => normal });
+                          candles: { BTC: candles, ETH: candles },
+                          weekOpens: { BTC: formingOpen, ETH: formingOpen }, normalWeek: () => normal });
   };
 
   it("fearful and falling shorts Ether but skips Bitcoin", () => {
@@ -164,6 +165,19 @@ describe("weekly calls", () => {
     const eth = week(28, "Fear", { BTC: down, ETH: down }, 0.05, 60.0).coins[1];
     expect(eth.entry).toBe(60.0);
     expect(eth.stop_price).toBeCloseTo(63.0, 7);
+  });
+
+  it("entry is fixed at the week's open while Monday is still forming", () => {
+    const down = closes(90, 100);
+    // Monday has started but not closed: its candle is not among the finished ones yet
+    let out = week(28, "Fear", { BTC: down, ETH: down }, 0.05, null, 58.0);
+    const eth = out.coins[1];
+    expect(eth.entry).toBe(58.0);                                // not the live price of 50
+    expect(eth.stop_price).toBeCloseTo(58.0 * 1.05, 7);
+    expect(eth.target_price).toBeCloseTo(58.0 * 0.95, 7);
+    // once Monday has closed, the finished candle is used
+    out = week(28, "Fear", { BTC: down, ETH: down }, 0.05, 60.0, 58.0);
+    expect(out.coins[1].entry).toBe(60.0);
   });
 
   it("greedy and rising goes long and mixed stays out", () => {
@@ -429,6 +443,74 @@ describe("the week from the data sources", () => {
     up.now += 30 * 60 * 1000;
     await getWeek();
     expect(moodRequests()).toBe(settledAt);
+  });
+
+  it("week open reads Monday's forming candle", async () => {
+    up.now = Date.UTC(2026, 10, 16, 10, 0);
+    const at = (d: number) => Date.UTC(2026, 10, d);
+    const row = (d: number, o: string) => ({ t: at(d), o, h: o, l: o, c: o, v: "1" });
+    up.fixed.set("ETH:1d", [row(15, "1800"), row(16, "1834.4")]);
+    expect(await wc.weekOpen("ETH", day("2026-11-16"))).toBe(1834.4);
+    expect(await wc.weekOpen("ETH", day("2026-11-23"))).toBeNull();          // that Monday has not started
+    // one request for the last nine days, as the Python reference sends it, shared by both questions
+    expect(up.candleRequests("1d").map((s) => s.payload?.req)).toEqual([
+      { coin: "ETH", interval: "1d", startTime: up.now - 9 * 24 * 3600 * 1000, endTime: up.now }]);
+
+    configure({ fetch: up.fetch, now: () => up.now, storage: null, weightPerMinute: Infinity });
+    up.failWith = (sent) => (sent.payload?.type === "candleSnapshot" ? 500 : null);
+    expect(await wc.weekOpen("ETH", day("2026-11-16"))).toBeNull();          // no answer: the live price stands in
+  });
+
+  describe("on a Monday", () => {
+    const MONDAY = Date.UTC(2026, 10, 16);
+    const calls = (week: Awaited<ReturnType<typeof getWeek>>) => week.coins.filter((c) => c.side);
+
+    beforeEach(() => {
+      up.mood = () => 20;                                       // fearful, so the falling coin is shorted
+    });
+
+    it("the entry is Monday's open and stays put while the price moves, with no request of its own", async () => {
+      up.now = MONDAY + 10 * 3600 * 1000;
+      const first = await getWeek();
+      expect(first.week_of).toBe("2026-11-16");
+      expect(calls(first).map((c) => c.coin)).toEqual(["ETH"]);
+      const eth = calls(first)[0];
+      expect(eth.entry).toBe(Number(priceAt("ETH", MONDAY).toPrecision(8)));    // the open of the candle still forming
+      expect(eth.entry).not.toBe(eth.price);
+      expect(eth.stop_price as number).toBeGreaterThan(eth.entry as number);
+      expect(eth.target_price as number).toBeLessThan(eth.entry as number);
+
+      up.now += 30 * 1000;                                      // half a minute on: the price has moved
+      const later = calls(await getWeek())[0];
+      expect(later.price).not.toBe(eth.price);
+      expect([later.entry, later.stop_price, later.target_price, later.liquidation_price])
+        .toEqual([eth.entry, eth.stop_price, eth.target_price, eth.liquidation_price]);
+      // the daily candles already fetched carried Monday's open: nothing else was asked for
+      expect(up.candleRequests("1d").length).toBe(4);
+
+      up.now = MONDAY + 34 * 3600 * 1000;                       // Tuesday: Monday has finished, with the same open
+      expect(calls(await getWeek())[0].entry).toBe(eth.entry);
+    });
+
+    it("in the first seconds, before the exchange has a candle for the day, the live price stands in", async () => {
+      up.barDelayMs = 30 * 1000;
+      up.now = MONDAY + 10 * 1000;
+      const early = calls(await getWeek())[0];
+      expect(early.coin).toBe("ETH");
+      expect(early.entry).toBe(early.price);
+      // asked the way the Python reference asks, once, for the one coin that is called
+      const nineDays = () => up.candleRequests("1d").filter((s) => {
+        const req = s.payload?.req;
+        return req && req.endTime - req.startTime === 9 * 24 * 3600 * 1000;
+      });
+      expect(nineDays().map((s) => s.payload?.req?.coin)).toEqual(["ETH"]);
+
+      up.now = MONDAY + 70 * 1000;                              // the daily candles are looked at again a minute in
+      const settledWeek = calls(await getWeek())[0];
+      expect(settledWeek.entry).toBe(Number(priceAt("ETH", MONDAY).toPrecision(8)));
+      expect(settledWeek.entry).not.toBe(settledWeek.price);
+      expect(nineDays().length).toBe(1);
+    });
   });
 
   it("says so in plain words when the mood index cannot be read", async () => {

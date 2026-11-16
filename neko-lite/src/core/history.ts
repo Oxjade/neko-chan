@@ -21,13 +21,21 @@ export interface Bars {
   close: Float64Array;
 }
 
+/** A bar that had started but not closed: when it opened, and at what price. */
+export interface FormingBar {
+  t: number;
+  open: number;
+}
+
 /**
  * What is written to storage: the bars, the open time of the newest bar the
- * exchange was asked about, and when it was asked.
+ * exchange was asked about, when it was asked, and the bar that was still
+ * forming then (the exchange sends it along with the closed ones).
  */
 export interface StoredBars extends Bars {
   through: number;
   checkedAt: number;
+  forming?: FormingBar | null;
 }
 
 /** A candle as Hyperliquid sends it: times as numbers, prices as text. */
@@ -123,10 +131,10 @@ function hydrate(s: Series): Promise<void> {
   return s.hydrating;
 }
 
-function toBars(rows: RawCandle[], through: number, checkedAt: number): StoredBars {
+function toBars(rows: RawCandle[], through: number, checkedAt: number, forming: FormingBar | null): StoredBars {
   const n = rows.length;
   const out: StoredBars = { t: new Float64Array(n), open: new Float64Array(n), high: new Float64Array(n),
-                            low: new Float64Array(n), close: new Float64Array(n), through, checkedAt };
+                            low: new Float64Array(n), close: new Float64Array(n), through, checkedAt, forming };
   rows.forEach((row, i) => {
     out.t[i] = Number(row.t);
     out.open[i] = Number(row.o);
@@ -148,7 +156,7 @@ function join(older: Bars, upTo: number, newer: StoredBars): StoredBars {
   };
   return { t: merge(older.t, newer.t), open: merge(older.open, newer.open), high: merge(older.high, newer.high),
            low: merge(older.low, newer.low), close: merge(older.close, newer.close),
-           through: newer.through, checkedAt: newer.checkedAt };
+           through: newer.through, checkedAt: newer.checkedAt, forming: newer.forming };
 }
 
 /** The bars a fresh request would return now: Hyperliquid includes the bar that contains the start time. */
@@ -182,11 +190,15 @@ async function fetchBars(s: Series, background: boolean): Promise<void> {
   if (mine !== generation) return;
   if (!Array.isArray(rows)) throw new DataError("Market data is unavailable right now (ValueError).");
   const closed = rows.filter((row) => Number(row.t) + ms <= now);
-  let next = toBars(closed, lastClosedOpen(s.interval, now), now);
+  // The bar after the closed ones has started but not finished. Its prices still move,
+  // except the one it opened at, which is kept: the week's entry is Monday's open.
+  const unfinished = rows.find((row) => Number(row.t) + ms > now);
+  const forming = unfinished ? { t: Number(unfinished.t), open: Number(unfinished.o) } : null;
+  let next = toBars(closed, lastClosedOpen(s.interval, now), now, forming);
   if (from !== start && stored) next = join(stored, closed.length ? Number(closed[0].t) : Infinity, next);
   const kept = inWindow(next, s.interval, s.count, now);
   s.bars = { t: kept.t.slice(), open: kept.open.slice(), high: kept.high.slice(), low: kept.low.slice(),
-             close: kept.close.slice(), through: next.through, checkedAt: now };
+             close: kept.close.slice(), through: next.through, checkedAt: now, forming };
   s.error = null;
   const storage = runtime.storage;
   if (storage) void storage.put(s.key, s.bars).catch(() => { /* storage full or blocked: memory still has it */ });
@@ -225,6 +237,19 @@ export async function closedBars(symbol: string, interval: BarInterval, count: n
     }
   }
   return inWindow(s.bars as StoredBars, interval, count, runtime.now());
+}
+
+/**
+ * The bar that is forming right now, if the bars already held came with it.
+ * Never asks the exchange: this only reads what the last request for the
+ * closed bars brought back. Null before those bars are loaded, when the
+ * exchange had not started the bar yet, or when a newer bar has begun since.
+ */
+export function formingBar(symbol: string, interval: BarInterval, count: number): FormingBar | null {
+  const forming = seriesFor(symbol, interval, count).bars?.forming;
+  if (!forming || typeof forming.t !== "number" || typeof forming.open !== "number") return null;
+  const now = runtime.now();
+  return forming.t <= now && now < forming.t + BAR_MS[interval] ? forming : null;
 }
 
 // ---- long histories, loaded in the background ----------------------------------

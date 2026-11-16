@@ -49,6 +49,9 @@ Different on purpose:
   timer, and just after midnight on Monday the mood index is looked for every
   minute until it publishes the new day, so the new week's call appears as
   soon as its inputs exist.
+- On Mondays the week's entry price (the open of Monday's daily candle) is
+  read from the daily candles already fetched, which include the day still
+  forming, instead of a request of its own. The value is the same.
 
 ## Where the data comes from
 
@@ -119,7 +122,8 @@ npm test
 Without a recording the parity test is skipped; with several, each is
 checked. Record again and re-run it after any change to a rule, in Python or
 here. A recording made on a Monday is worth having: the entry price then comes
-from the live price instead of a closed candle.
+from the open of the daily candle that is still forming, not from a finished
+one.
 
 ## Deploy on Vercel
 
