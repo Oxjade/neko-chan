@@ -75,8 +75,15 @@ direction. It measures the trader's own plan:
   target and the broker's round-trip spread in pips; results show pips with
   the price and the dollars beside them. Percent figures are still returned
   next to the pips ones.
+- **Finished weeks.** A week runs from one Friday's fixing to the next. Last
+  week's move, the normal week, the trends and the replay all use finished
+  weeks only. From Monday's first fixing the week being traded is shown apart
+  as "This week so far" (`this_week_pct`, `this_week_pips`: the latest fixing
+  against the last Friday close) and is not scored as a trade. A week whose
+  Friday had no fixing (a holiday) counts as finished once that Friday has
+  passed.
 - **Normal week.** How far the pair has been moving in a week (last 26
-  weeks), in pips at today's price. The week closed inside that range in
+  finished weeks), in pips at today's price. The week closed inside that range in
   about 69% of past weeks. The form starts with a stop three quarters of a
   normal week away and a target twice as far, in whole pips.
 - **Shape replay.** The stop and target are turned into a percentage of the
@@ -173,7 +180,7 @@ feed and chart plus:
 | Liquidation rate by leverage | Share of traded weeks wiped out, and the average week, from 1x to 30x; the suggested level is outlined | `crypto_long_short.json` |
 | Week by week | The last twelve finished weeks and the running total | daily candles |
 | Funding and open interest | Per coin | Hyperliquid |
-| Forex board | Last week and a normal week in pips, the week's likely price range and the trend, for 14 pairs | ECB reference rates |
+| Forex board | The last finished week and a normal week in pips, the week's likely price range and the trend, for 14 pairs | ECB reference rates |
 
 Nothing is filled in for effect: there is no news or economic calendar because
 the platform has no source for one. Each panel fails on its own, so a source

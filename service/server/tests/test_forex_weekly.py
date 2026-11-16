@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -69,6 +70,59 @@ class ReplayShapeTests(unittest.TestCase):
         self.assertAlmostEqual(s["avg_result_pips"], s["avg_result_pct"] * 100.0)
 
 
+class WeekInProgressTests(unittest.TestCase):
+    """Weeks end with Friday's fixing; the week still being traded is not a week yet."""
+
+    FRIDAY = date(2026, 11, 20)
+
+    @staticmethod
+    def through(last_day):
+        days = pd.bdate_range("2024-01-01", last_day)
+        rng = np.random.default_rng(4)
+        return pd.Series(1.10 * np.exp(np.cumsum(rng.normal(0, 0.004, len(days)))), index=days)
+
+    def test_a_week_is_in_progress_until_its_friday_fixing_or_the_friday_has_passed(self):
+        cases = [
+            # Friday label, last fixing, today, still in progress?
+            (self.FRIDAY, date(2026, 11, 16), date(2026, 11, 16), True),    # Monday, one fixing in
+            (self.FRIDAY, date(2026, 11, 19), date(2026, 11, 20), True),    # Friday before its fixing
+            (self.FRIDAY, date(2026, 11, 20), date(2026, 11, 20), False),   # Friday after its fixing
+            (self.FRIDAY, date(2026, 11, 19), date(2026, 11, 21), False),   # a holiday Friday, seen on Saturday
+            (date(2026, 11, 13), date(2026, 11, 13), date(2026, 11, 15), False),   # an ordinary weekend
+        ]
+        for friday, last_fixing, today, expected in cases:
+            self.assertEqual(fw.week_in_progress(friday, last_fixing, today), expected, (last_fixing, today))
+
+    def test_monday_with_one_fixing_after_a_completed_friday(self):
+        finished = fw.weekly_frame(self.through("2026-11-13"), today=date(2026, 11, 14))
+        monday = fw.weekly_frame(self.through("2026-11-16"), today=date(2026, 11, 16))
+        self.assertEqual(monday.index[-1].date(), date(2026, 11, 13))
+        pd.testing.assert_frame_equal(monday, finished)          # Monday's fixing changes nothing measured per week
+
+    def test_friday_before_and_after_its_fixing(self):
+        before = fw.weekly_frame(self.through("2026-11-19"), today=self.FRIDAY)
+        self.assertEqual(before.index[-1].date(), date(2026, 11, 13))
+        after = fw.weekly_frame(self.through("2026-11-20"), today=self.FRIDAY)
+        self.assertEqual(after.index[-1].date(), self.FRIDAY)
+        self.assertEqual(len(after), len(before) + 1)
+
+    def test_holiday_friday_seen_on_saturday_closes_the_week_at_thursdays_fixing(self):
+        series = self.through("2026-11-19")                      # no fixing on Friday the 20th
+        weeks = fw.weekly_frame(series, today=date(2026, 11, 21))
+        self.assertEqual(weeks.index[-1].date(), self.FRIDAY)
+        self.assertEqual(weeks["close"].iloc[-1], series.iloc[-1])
+
+    def test_the_unfinished_week_is_not_scored_as_a_trade(self):
+        with mock.patch.object(fw, "today_utc", lambda: date(2026, 11, 18)):
+            midweek = fw.replay_shape(self.through("2026-11-18"), "long", 0.75, 1.5)
+            friday = fw.replay_shape(self.through("2026-11-13"), "long", 0.75, 1.5)
+        self.assertEqual(midweek, friday)
+        with mock.patch.object(fw, "today_utc", lambda: self.FRIDAY):
+            done = fw.replay_shape(self.through("2026-11-20"), "long", 0.75, 1.5)
+        self.assertEqual(len(done), len(friday) + 1)
+        self.assertEqual(done[:-1], friday)
+
+
 class PipTests(unittest.TestCase):
     def test_a_pip_is_the_second_decimal_for_yen_pairs_and_the_fourth_for_the_rest(self):
         yen = {"USDJPY", "EURJPY", "GBPJPY", "AUDJPY"}
@@ -124,6 +178,47 @@ class PlanTests(unittest.TestCase):
             self.assertGreater(r["range_high"], r["price"])
             self.assertGreater(r["range_held"], 0.6)       # about two weeks in three
             self.assertLess(r["range_held"], 0.8)
+
+    def test_the_week_in_progress_is_reported_apart_from_last_week(self):
+        friday = fw.overview()                                   # the table ends on Friday 13 November 2026
+        self.assertEqual(friday["as_of"], "2026-11-13")
+        for r in friday["pairs"]:
+            self.assertIsNone(r["this_week_pct"])                # nothing has traded since that Friday
+            self.assertIsNone(r["this_week_pips"])
+        plan_friday = fw.plan("EURUSD", "long", 50, 100, 1000, 1)
+
+        # Monday's fixing arrives: the euro is half a percent lower against everything
+        monday = self.daily.iloc[[-1]].copy()
+        monday.index = [pd.Timestamp("2026-11-16")]
+        monday.index.name = self.daily.index.name
+        monday = monday * 0.995
+        with_monday = pd.concat([self.daily, monday])
+        with mock.patch.object(fw, "daily_rates", lambda: with_monday), \
+                mock.patch.object(fw, "today_utc", lambda: date(2026, 11, 16)):
+            now = fw.overview()
+            plan_monday = fw.plan("EURUSD", "long", 50, 100, 1000, 1)
+        self.assertEqual(now["as_of"], "2026-11-16")
+        before = {r["pair"]: r for r in friday["pairs"]}
+        for r in now["pairs"]:
+            was = before[r["pair"]]
+            # everything measured per week still rests on the week that ended on Friday
+            for key in ("last_week_pct", "last_week_pips", "normal_week_pct", "range_held", "trend_13w", "trend_52w"):
+                self.assertEqual(r[key], was[key], (r["pair"], key))
+            # and the new fixing shows as this week so far, against Friday's close
+            self.assertAlmostEqual(r["this_week_pct"], (r["price"] / was["price"] - 1) * 100)
+            self.assertAlmostEqual(r["this_week_pips"], (r["price"] - was["price"]) / r["pip_size"])
+        eurusd = next(r for r in now["pairs"] if r["pair"] == "EURUSD")
+        self.assertAlmostEqual(eurusd["this_week_pct"], -0.5)
+        self.assertAlmostEqual(eurusd["this_week_pips"], -0.005 * before["EURUSD"]["price"] / 0.0001)
+        eurgbp = next(r for r in now["pairs"] if r["pair"] == "EURGBP")
+        self.assertAlmostEqual(eurgbp["this_week_pct"], -0.5)
+        gbpusd = next(r for r in now["pairs"] if r["pair"] == "GBPUSD")
+        self.assertAlmostEqual(gbpusd["this_week_pct"], 0.0)     # both legs moved together
+        # the plan enters at Monday's fixing, and the unfinished week is not one of its past weeks
+        self.assertEqual(plan_monday["price"], eurusd["price"])
+        self.assertEqual(plan_monday["all"]["weeks"], plan_friday["all"]["weeks"])
+        self.assertEqual(plan_monday["normal_week_pct"], plan_friday["normal_week_pct"])
+        self.assertEqual(plan_monday["trend_13w"], plan_friday["trend_13w"])
 
     def test_plan_prices_and_sizing(self):
         p = fw.plan("EURUSD", "short", 50, 100, 1000, 1)

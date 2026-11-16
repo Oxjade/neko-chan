@@ -17,6 +17,11 @@ fourth decimal place of the price, or the second for pairs quoted in yen.
 Inside, a distance is a percentage of the current price, so the replay
 compares like with like across 27 years of very different price levels.
 
+Weeks run from one Friday's fixing to the next. Everything measured per week
+(last week's move, the normal week, the trends, the plan's history) uses
+finished weeks only; the week still being traded is reported apart, as "this
+week so far".
+
 Data: the European Central Bank's daily reference rates (one fixing a day).
 Stops and targets are therefore checked on daily fixings, not intraday
 prices, so real touches happen a little more often than counted here.
@@ -28,6 +33,7 @@ import io
 import threading
 import time
 import zipfile
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -134,10 +140,29 @@ def base_in_usd(daily: pd.DataFrame, pair: str) -> float:
     return float(last["USD"]) if base == "EUR" else float(last["USD"] / last[base])
 
 
-def weekly_frame(series: pd.Series) -> pd.DataFrame:
+def today_utc() -> date:
+    return datetime.fromtimestamp(time.time(), timezone.utc).date()
+
+
+def week_in_progress(friday: date, last_fixing: date, today: date) -> bool:
+    """Whether the week that ends on this Friday is still being traded.
+
+    It is until that Friday's fixing is in. Once the Friday is behind us the
+    week counts as finished even if the Friday had no fixing (a holiday)."""
+    return friday >= today and last_fixing < friday
+
+
+def weekly_frame(series: pd.Series, today: date | None = None) -> pd.DataFrame:
     """One row per completed week: Friday close, that week's move, and the
-    normal weekly move (in percent) known at that Friday."""
+    normal weekly move (in percent) known at that Friday.
+
+    From Monday's first fixing the newest week is still in progress; it is
+    left out, so a day or two of trading is never counted as a whole week."""
     close = series.resample("W-FRI").last().dropna()
+    if len(close):
+        friday, last_fixing = close.index[-1].date(), series.index[-1].date()
+        if week_in_progress(friday, last_fixing, today or today_utc()):
+            close = close.iloc[:-1]
     ret = close.pct_change() * 100
     return pd.DataFrame({"close": close, "ret": ret,
                          "normal": ret.rolling(VOL_WEEKS).std()}).dropna()
@@ -223,12 +248,18 @@ def overview() -> dict:
         inside = (weeks["ret"].abs().shift(-1) <= weeks["normal"]).iloc[:-1]
         close = weeks["close"]
         pip = pip_size(pair)
+        # The week being traded now: the latest fixing against the last finished Friday close.
+        last_close = float(close.iloc[-1])
+        started = series.index[-1] > weeks.index[-1]
         rows.append({
             "pair": pair, "price": price, "as_of": series.index[-1].date().isoformat(),
-            "last_week_pct": float(last["ret"]), "normal_week_pct": normal,
+            "last_week_pct": float(last["ret"]),
+            "this_week_pct": (price / last_close - 1) * 100 if started else None,
+            "normal_week_pct": normal,
             "pip_size": pip,
             # last week's move as it happened, and a normal week at today's price
             "last_week_pips": float(close.iloc[-1] - close.iloc[-2]) / pip,
+            "this_week_pips": (price - last_close) / pip if started else None,
             "normal_week_pips": normal * pips_per_percent(pair, price),
             "range_low": price * (1 - normal / 100), "range_high": price * (1 + normal / 100),
             "range_held": float(inside.mean()),
