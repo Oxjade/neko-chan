@@ -23,9 +23,18 @@ const PANELS = ["mov", "brd", "mood", "wks", "sig", "risk", "perf", "corr", "lev
 
 const part = (el: Elements, name: string) => el[name] as HTMLElement;
 
-function panel(area: string, title: string, body: HTMLElement, extra?: Child): HTMLElement {
+// How fast a panel's figures truly change. Nothing is animated to look busier than it is.
+const PACE = { live: "live", seconds: "every few seconds", minutes: "every few minutes", daily: "daily",
+               record: "tested record" };
+type Pace = keyof typeof PACE;
+
+function paceTag(pace: Pace): HTMLElement {
+  return h("span", { class: "t-pace", "data-pace": pace, title: "How often these figures change" }, PACE[pace]);
+}
+
+function panel(area: string, title: string, body: HTMLElement, extra?: Child, pace?: Pace): HTMLElement {
   return h("section", { class: `t-panel a-${area}` },
-    h("div", { class: "t-title" }, title, extra || null), body);
+    h("div", { class: "t-title" }, h("span", null, title, pace ? paceTag(pace) : null), extra || null), body);
 }
 
 interface DenseColumn<Row> {
@@ -80,24 +89,27 @@ export function buildAdvanced(el: Elements, parts: { chartPanel: () => HTMLEleme
   const chart = parts.chartPanel();
   chart.classList.add("a-cht");
   return h("div", { class: "t-frame", "data-mode": "advanced" },
-    el.bar,
-    panel("clk", "Sessions", part(el, "clk")),
-    panel("mov", "Movers today, by asset class", part(el, "mov")),
-    panel("brd", "Breadth", part(el, "brd"), h("span", { class: "dim" }, "up / down today")),
-    panel("mood", "Market mood", part(el, "mood")),
-    panel("wks", "Market worksheet", part(el, "wks"), el.wksNote),
+    el.top || el.bar,
+    panel("clk", "Sessions", part(el, "clk"), null, "live"),
+    panel("mov", "Movers today, by asset class", part(el, "mov"), null, "live"),
+    panel("brd", "Breadth", part(el, "brd"), h("span", { class: "dim" }, "up / down today"), "live"),
+    panel("mood", "Market mood", part(el, "mood"), null, "daily"),
+    panel("wks", "Market worksheet", part(el, "wks"), el.wksNote, "live"),
     chart,
-    panel("bok", "Order book and trades", part(el, "book")),
+    panel("bok", "Order book and trades", part(el, "book"), null, "live"),
     h("section", { class: "t-panel a-feed" },
-      h("div", { class: "t-title" }, "Desk feed", h("span", { class: "dim" }, "what to do now")), el.feed),
-    panel("sig", "Signal matrix", part(el, "sig"), h("span", { class: "dim" }, "weeks right, each half of history")),
-    panel("risk", "Positions and risk", part(el, "risk"), parts.stakeForm()),
-    panel("perf", "Thirty days, rebased to 100", part(el, "perf")),
-    panel("corr", "Correlation, 30 days", part(el, "corr")),
-    panel("lev", "Liquidation rate by leverage", part(el, "lev"), h("span", { class: "dim" }, "share of traded weeks")),
-    panel("score", "Week by week", part(el, "score")),
-    panel("fund", "Funding and open interest", part(el, "fund")),
-    panel("fx", "Forex board", part(el, "fx"), h("span", { class: "dim" }, "central-bank rates")));
+      h("div", { class: "t-title" }, h("span", null, "Desk feed", paceTag("seconds")),
+        h("span", { class: "dim" }, "what to do now")), el.feed),
+    panel("sig", "Signal matrix", part(el, "sig"), h("span", { class: "dim" }, "weeks right, each half of history"),
+      "record"),
+    panel("risk", "Positions and risk", part(el, "risk"), parts.stakeForm(), "live"),
+    panel("perf", "Thirty days, rebased to 100", part(el, "perf"), null, "live"),
+    panel("corr", "Correlation, 30 days", part(el, "corr"), null, "minutes"),
+    panel("lev", "Liquidation rate by leverage", part(el, "lev"), h("span", { class: "dim" }, "share of traded weeks"),
+      "record"),
+    panel("score", "Week by week", part(el, "score"), null, "record"),
+    panel("fund", "Funding and open interest", part(el, "fund"), null, "live"),
+    panel("fx", "Forex board", part(el, "fx"), h("span", { class: "dim" }, "central-bank rates"), "daily"));
 }
 
 // ---- sessions ----------------------------------------------------------------
@@ -234,15 +246,24 @@ function paintWorksheet(el: Elements, state: TerminalState, adv: AdvancedSnapsho
   replace(part(el, "wks"), dense<WorksheetRow>([
     { label: "Market", amber: true, cell: (r) => h("button", { type: "button", class: "t-rowbtn" }, r.label) },
     { label: "Last", num: true,
-      cell: (r) => h("span", { "data-live": r.symbol, "data-flash": "off" }, px(helpers.live(r.symbol, r.price))) },
-    { label: "Day", num: true, cell: (r) => pct(r.day_change_pct), heat: (r) => heat(r.day_change_pct, 6) },
-    { label: "7d", num: true, cell: (r) => pct(r.week_pct, 1), heat: (r) => heat(r.week_pct, 15) },
-    { label: "30d", num: true, cell: (r) => pct(r.month_pct, 1), heat: (r) => heat(r.month_pct, 30) },
+      cell: (r) => h("span", { "data-live": r.symbol }, px(helpers.live(r.symbol, r.price))) },
+    // the three changes are worked out again from the live price on every tick, heat and all
+    { label: "Day", num: true, heat: (r) => heat(r.day_change_pct, 6),
+      cell: (r) => h("span", { "data-change": r.symbol, "data-heat": "6", "data-flash": "off" }, pct(r.day_change_pct)) },
+    { label: "7d", num: true, heat: (r) => heat(r.week_pct, 15),
+      cell: (r) => h("span", { "data-change": r.symbol, "data-from": r.week_ref_price, "data-digits": "1",
+                               "data-heat": "15", "data-flash": "off" }, pct(r.week_pct, 1)) },
+    { label: "30d", num: true, heat: (r) => heat(r.month_pct, 30),
+      cell: (r) => h("span", { "data-change": r.symbol, "data-from": r.month_ref_price, "data-digits": "1",
+                               "data-heat": "30", "data-flash": "off" }, pct(r.month_pct, 1)) },
     { label: "Trend", cell: (r) => `${r.trend === "up" ? "▲" : "▼"} ${r.trend_days.toFixed(0)}d`,
       cls: (r) => (r.trend === "up" ? "up" : "down") },
     { label: "Vol 30d", num: true, cell: (r) => (r.vol_30d === null ? "–" : `${r.vol_30d.toFixed(0)}%`) },
-    { label: "Fund/yr", num: true, cell: (r) => pct(r.funding_apr, 1), cls: (r) => tone(r.funding_apr) },
-    { label: "Open int.", num: true, cell: (r) => compact(r.open_interest_usd) },
+    { label: "Fund/yr", num: true,
+      cell: (r) => h("span", { class: tone(r.funding_apr), "data-fund": r.symbol, "data-flash": "off" },
+        pct(r.funding_apr, 1)) },
+    { label: "Open int.", num: true,
+      cell: (r) => h("span", { "data-oi": r.symbol, "data-flash": "off" }, compact(r.open_interest_usd)) },
     { label: "Trend rule", cell: (r) => (r.signal ? r.signal.toUpperCase() : "—"),
       cls: (r) => (r.signal === "long" ? "up" : r.signal === "short" ? "down" : "dim") },
     { label: "Won", num: true, cell: (r) => `${r.record_wins}/${r.record_trades}` },
@@ -322,9 +343,9 @@ function paintRisk(el: Elements, adv: AdvancedSnapshot): void {
     { label: "Exposure", num: true, cell: (r) => `$${r.exposure_usd.toFixed(2)}` },
     { label: "P&L", num: true, cell: (r) => usd(r.pnl_usd), cls: (r) => tone(r.pnl_usd) },
     { label: "To stop", num: true, cell: (r) => (r.stop_distance_pct === null || r.stop_distance_pct === undefined
-        ? (r.status === "target" ? "profit taken" : r.status) : `${r.stop_distance_pct.toFixed(1)}%`) },
+        ? (r.status === "target" ? "profit taken" : r.status) : `${r.stop_distance_pct.toFixed(2)}%`) },
     { label: "To liq.", num: true, cell: (r) => (r.liquidation_distance_pct === null
-        ? "–" : `${r.liquidation_distance_pct.toFixed(0)}%`) },
+        ? "–" : `${r.liquidation_distance_pct.toFixed(1)}%`) },
     { label: "At stop", num: true, cell: (r) => (r.loss_at_stop_usd ? usd(-r.loss_at_stop_usd) : "–"),
       cls: () => "down" },
   ], risk.rows, { empty: "No open positions this week." }),
@@ -493,6 +514,27 @@ function paintForex(el: Elements, adv: AdvancedSnapshot): void {
   ], adv.forex),
     h("p", { class: "dim t-pad t-micro" }, "No rule tested has an edge on a forex direction. Ranges are for sizing your own idea. " +
       "A pip is the fourth decimal place of the price (the second for yen pairs)."));
+}
+
+/** The figures the live panels are rebuilt from: the snapshot's shapes, worked out again from live prices. */
+export type LivePanels = Pick<AdvancedSnapshot, "movers" | "breadth" | "risk" | "exits" | "performance" | "funding">;
+
+// The panels that follow live prices by being rebuilt: movers, breadth, risk, the thirty-day
+// lines and funding. A panel whose figures have not moved is left alone.
+const LIVE_PANELS: Array<[keyof LivePanels, string, (el: Elements, adv: AdvancedSnapshot) => void]> = [
+  ["movers", "mov", paintMovers], ["breadth", "brd", paintBreadth], ["risk", "risk", paintRisk],
+  ["performance", "perf", paintPerformance], ["funding", "fund", paintFunding]];
+const shown = new WeakMap<HTMLElement, string>();
+
+export function paintLivePanels(el: Elements, live: LivePanels): void {
+  for (const [name, key, paintOne] of LIVE_PANELS) {
+    const body = el[key];
+    if (!body || live[name] === undefined || live[name] === null) continue;
+    const text = JSON.stringify(live[name]);
+    if (shown.get(body) === text) continue;
+    shown.set(body, text);
+    paintOne(el, live as AdvancedSnapshot);
+  }
 }
 
 export function paintAdvanced(el: Elements, state: TerminalState, helpers: Helpers): void {

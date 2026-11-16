@@ -330,6 +330,7 @@ export async function snapshot(stake: number): Promise<TerminalSnapshot> {
     return {
       symbol, label: row.label, class: row.class,
       price: fresh ? fresh.price : row.price, day_change_pct: fresh ? fresh.day_change_pct : null,
+      prev_day_price: fresh ? fresh.prev_day_price : null,
       spark: closes, note: note(row, rec), recommendation: rec,
     };
   });

@@ -81,14 +81,18 @@
 
 <section class="stack" id="basic">
   <h2>Reading the Basic screen</h2>
-  <p>The <a href="/">terminal</a> opens in Basic mode. It has five parts.</p>
+  <p>The <a href="/">terminal</a> opens in Basic mode. Every figure that depends on a price moves as the exchange sends new ones, and flashes green or red when it does.</p>
   <dl>
+    <dt>Status and ticker strip</dt>
+    <dd>The status at the top right says how prices are arriving. Live, with the number of updates a second, means the exchange's stream is connected. Every 1s means your network blocks the stream, so prices are asked for once a second instead. No data means nothing is arriving. The strip under the top bar shows every watched market with its live price and today's change; tap one to chart it.</dd>
     <dt>Position tracker</dt>
     <dd>Model positions: what your weekly amount would be doing had the calls been followed. It does not know what you actually hold. Each card shows the size, the entry, the last price, the stop, the take profit and the result so far. A coin with no call shows Stay out; a call your amount cannot place shows Too small.</dd>
     <dt>The chart</dt>
-    <dd>The selected market, with lines for the entry, the stop and the take profit. 1H, 4H and 1D are hourly, four-hour and daily candles. 1S is a live one-second chart built in your browser: it starts empty and fills as trades arrive.</dd>
+    <dd>The selected market, with lines for the entry, the stop and the take profit. 1H, 4H and 1D are hourly, four-hour and daily candles. 1S is a live one-second chart built in your browser: it starts empty and fills as prices and trades arrive. If no prices arrive it says so, and does not draw a flat line.</dd>
+    <dt>Live quote and trade tape</dt>
+    <dd>Under the chart's header: the best price someone will buy at (bid) and sell at (ask), how much is waiting at each, the gap between them (spread) and the last trade. Under the chart: the last eight trades, green for a buy and red for a sell. Both need the live stream.</dd>
     <dt>Market dashboard</dt>
-    <dd>Live prices and the day's change for the four coins and a few other markets, for context. Select a row to chart it.</dd>
+    <dd>Live prices and the day's change for the four coins and a few other markets, for context. Each small line ends at the live price. Select a card to chart it.</dd>
     <dt>Recommendation gauge</dt>
     <dd>For the selected coin: long, short or stay out, how many of the three signals agree, and the entry, stop, take profit and liquidation prices when there is a call.</dd>
     <dt>Desk feed</dt>
@@ -100,17 +104,24 @@
   <h2>Advanced mode, panel by panel</h2>
   <p>Choose Advanced at the top of the <a href="/">terminal</a>. Advanced is for understanding the market. The calls come only from the weekly rule, never from these panels.</p>
   <p>The first visit downloads price history for two to three minutes, and the worksheet fills in as it arrives. Later visits are quick.</p>
+  <p>Each panel's title carries a small tag with its true pace. <strong>Live</strong> panels move all the time from the exchange's stream, whatever the chart is set to: 1S is the size of the chart's candles, not the speed of the screen. The others are facts that change slowly, and nothing is animated to make them look busier.</p>
+  <ul>
+    <li><strong>Live:</strong> sessions, movers, breadth, the worksheet, order book and trades, positions and risk, the thirty-day lines, funding and open interest.</li>
+    <li><strong>Every few minutes:</strong> correlation.</li>
+    <li><strong>Daily:</strong> market mood, and the forex board (one central-bank rate a day).</li>
+    <li><strong>Tested record:</strong> the signal matrix, liquidation rate by leverage, week by week, and the exit rules inside positions and risk. These change only when the tests are run again.</li>
+  </ul>
   <dl>
     <dt>Sessions</dt>
     <dd>Clocks for the main financial centres and whether each is open. Crypto trades all week; forex closes for the weekend.</dd>
     <dt>Movers today, by asset class</dt>
-    <dd>The biggest risers and fallers today among crypto, stocks, indices, forex and commodities. Use it to see where the day's action is.</dd>
+    <dd>The biggest risers and fallers today among crypto, stocks, indices, forex and commodities, ranked again about every second. Use it to see where the day's action is.</dd>
     <dt>Breadth</dt>
     <dd>How many markets are up and how many are down. When nearly all point one way, the day is about the whole market, not one coin.</dd>
     <dt>Market mood</dt>
     <dd>The Fear &amp; Greed index over the last four months, with the 50 line the weekly rule uses. It shows how close the mood is to changing sides.</dd>
     <dt>Market worksheet</dt>
-    <dd>Thirty markets side by side. Tap a row to load its chart and order book. The heat map shows where money is moving.</dd>
+    <dd>Thirty markets side by side. Tap a row to load its chart and order book. The heat map shows where money is moving; the day, 7 day and 30 day changes are worked out again from each new price.</dd>
     <dt>Order book and trades</dt>
     <dd>The buy and sell orders waiting around the price of the selected market, and the latest trades. A thin book means a large order will move the price.</dd>
     <dt>Signal matrix</dt>

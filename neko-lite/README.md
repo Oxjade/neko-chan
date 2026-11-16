@@ -190,6 +190,23 @@ returns (`weekly_calls.this_week`, `weekly_calls.scoreboard`,
 one extra field: `pending` on the advanced snapshot, the number of worksheet
 markets still downloading.
 
+## What is live on the terminal
+
+The exchange's stream is followed for every market a screen shows (8 on Basic,
+30 on Advanced): best bid and offer, and the market's own figures once a
+second. Prices, day changes, profit, the quote line, the ticker strip, the
+worksheet's changes, funding, movers, breadth, risk and the thirty-day lines
+are all worked out again in the browser from those, at once, and each Advanced
+panel's title says its true pace (live, every few minutes, daily, tested
+record). `src/ui/terminal_live.ts` holds the arithmetic and the rules, as
+plain functions with tests.
+
+If the stream cannot connect (a firewall, proxy or VPN can block websockets),
+the terminal asks the exchange for all mid prices once a second instead,
+through the same request budget as everything else, and the status chip reads
+"Every 1s" in place of "Live · N updates/s". When nothing arrives for five
+seconds the one-second chart stops and says so.
+
 ## Network use
 
 Hyperliquid allows each IP address 1200 "weight" a minute. The core keeps a
@@ -209,6 +226,16 @@ request for most calls) and the handful of files of the site itself:
 | Advanced terminal, first visit, until all 30 worksheet markets are in (2 to 3 minutes) | 80 to 110 | 14 MB, of which 12.9 MB is price history downloaded once |
 | Advanced terminal, later visit | 12 | 0.14 MB |
 | Forex page, first visit, with two plans checked | 8 | 0.04 MB |
+
+While a terminal tab is open and visible it also costs, per minute:
+
+| What | Requests a minute | Budget used |
+| --- | --- | --- |
+| Advanced, stream live: mid prices of the markets the stream is not followed for (movers and breadth) | 60 | 120 of 1200 |
+| Either screen, stream blocked: all mid prices, both lists | 120 | 240 of 1200 |
+
+The second is about 1.7 MB a minute (the exchange's full price list is 25 kB),
+and only while the stream is blocked.
 | Guide | 3 | 0.02 MB |
 
 The two to three minutes on a first Advanced visit are the exchange's rate

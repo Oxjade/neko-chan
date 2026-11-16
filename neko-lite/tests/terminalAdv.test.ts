@@ -15,6 +15,7 @@ import { INTERVALS, candleRows, makeUpstream } from "./helpers/upstream";
 function market(symbol: string, cls: Market["class"], change: number | null, volume = 1_000_000.0,
                 over: Partial<Market> = {}): Market {
   return { symbol, label: symbol.split(":").pop() as string, class: cls, price: 100.0, day_change_pct: change,
+           prev_day_price: change === null ? null : 100.0 / (1 + change / 100),
            day_volume_usd: volume, funding_hourly: 0.0000125, open_interest_usd: 5_000_000.0, max_leverage: 20,
            ...over };
 }
